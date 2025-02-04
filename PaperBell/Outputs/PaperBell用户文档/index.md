@@ -21,11 +21,20 @@ title: PaperBell
 
 `PaperBell`: Research, to be connected.
 
-👋 `PaperBell` 是使用 `Obsidian` 管理你学术生涯的终极方案。如果你是首次接触 `PaperBell`，请按照以下步骤操作：
+## 下载地址
+
+👋 `PaperBell` 是使用 `Obsidian` 管理你学术生涯的终极方案。如果你已经使用 `Obsidian` 作为日常笔记软件，那么通过下方链接下载最新版本的 `PaperBell` 示例库，开箱即用！开始更高效地管理你的学术生涯吧。
+
+- [GitHub Releases](https://github.com/SongshGeo/Obsidian-PaperBell/releases): 此途径可以下载到最新版本，但需要 GitHub 访问（有时需要科学上网）。
+- [百度云](https://pan.baidu.com/s/1n4vMZun-JiuWaHbPRlqkVg): 提取码 5682，此途径仅发表主要版本，补丁版本不在此更新。
+
+## 新手指引
+
+如果你是首次接触 `Obsidian`，我建议在开始折腾 `PaperBell` 之前，请按照以下步骤操作：
 
 1. 🤔️ 先判断 `PaperBell` [[是否适用于你]]
 2. 🙋 熟悉下本仓库的[[核心设计理念]]，并通过[介绍视频](https://www.bilibili.com/video/BV15J4m1N7X8/?share_source=copy_web&vd_source=5402be8f77e5ca4d4b74ed198fbdad57)了解核心功能。
-3. ✍️ 在[这里](https://github.com/SongshGeo/Obsidian-PaperBell/releases)下载最新版本的示例库。
+3. ✍️ 通过[相应链接](#下载地址)下载最新版本的示例库。
 4. 对于第一次接触 `Obsidian` 的新人，先看看[Obsidian 的使用方法](https://help.obsidian.md/Home)与[[使用示例仓库]]。
 5. 参照以下核心功能介绍文档，使用 `PaperBell` 管理你的学术生活：
    - [[管理科研项目]]
