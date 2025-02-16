@@ -17,7 +17,16 @@ banner_icon: 🧭
 > [!question]
 > 为什么我导入文献时，ZotLit 无法导入文献？
 
-首先排查模板问题，打开 `ZotLit` 插件的设置，上方的 `Template` 标签页，检查 `Ejectable` 栏目下的文档是否能正常打开（路径没问题）。
+### 排查 ZotLit 版本
+
+首先排查 ZotLit 版本问题，确保你使用的是最新的插件版本，并适配当前的 Obsidian 版本。
+
+> [!warning]
+> 【参见 [GitHub Issue #14](https://github.com/PaperBell-Org/Obsidian-PaperBell/issues/14)】已知对于obsidian 1.7.7，可能会出现失败的问题。这是一个Zotlit带来的问题。目前的解决办法是降级到obsidian 1.6.x 或者升级到1.8.x（推荐升级）。
+
+### 排查模板问题
+
+其次排查模板问题，打开 `ZotLit` 插件的设置，上方的 `Template` 标签页，检查 `Ejectable` 栏目下的文档是否能正常打开（路径没问题）。
 
 ![lvPLDZ](https://songshgeo-picgo-1302043007.cos.ap-beijing.myqcloud.com/uPic/lvPLDZ.png)
 
@@ -62,3 +71,18 @@ banner_icon: 🧭
 确实有这个bug，因此仅在视频和示例库里，为了演示好看我示例库里用标题，我个人的库会使用 `citekey` 作为笔记标题，而不是文献标题，这样更稳定：
 
 ![Bq7ka3](https://songshgeo-picgo-1302043007.cos.ap-beijing.myqcloud.com/uPic/Bq7ka3.png)
+
+## 导入文献时 Zotero 总会弹出窗口
+
+> [!question]
+>
+> 为什么我导入文献时，Zotero 总会弹出一个烦人的确认窗口？
+
+可以参考[这篇帖子](https://forums.zotero.org/discussion/109031/allow-this-site-to-open-the-obsidian-link-with-obsidian)，我个人的经验是，在 Zotero 的 `Better BibTeX` 插件设置里，将 `Allow this site to open the Obsidian link with Obsidian` 设置为 `Always` 即可。
+
+## 如何批量导入文献？
+
+> [!question]
+> 如何批量导入 Zotero 的文献到 `PaperBell`？
+
+这是一个 `ZotLit` 插件正在努力解决的问题，目前没有稳定的解决方案，但可以参考[这篇帖子](https://github.com/PKM-er/obsidian-zotlit/pull/351)。

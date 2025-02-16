@@ -17,3 +17,5 @@ PaperBell/Outputs/**/*.pdf
 PaperBell/Outputs/**/*.log
 .env
 longform-sessions.json
+PaperBell/.gitignore
+PaperBell/.git

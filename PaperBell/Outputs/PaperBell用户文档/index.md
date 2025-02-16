@@ -26,7 +26,7 @@ title: PaperBell
 👋 `PaperBell` 是使用 `Obsidian` 管理你学术生涯的终极方案。如果你已经使用 `Obsidian` 作为日常笔记软件，那么通过下方链接下载最新版本的 `PaperBell` 示例库，开箱即用！开始更高效地管理你的学术生涯吧。
 
 - [GitHub Releases](https://github.com/SongshGeo/Obsidian-PaperBell/releases): 此途径可以下载到最新版本，但需要 GitHub 访问（有时需要科学上网）。
-- [百度云](https://pan.baidu.com/s/1n4vMZun-JiuWaHbPRlqkVg): 提取码 5682，此途径仅发表主要版本，补丁版本不在此更新。
+- [百度云](https://pan.baidu.com/s/1mtcTuTIwNrlusKl7IjM2wA): 提取码 ppb4，此途径仅发表主要版本，补丁版本不在此更新。
 
 ## 新手指引
 
