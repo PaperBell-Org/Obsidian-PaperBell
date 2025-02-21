@@ -1,7 +1,86 @@
 @use "../../styles/variables.scss" as *;
 
-button#explorer {
-  all: unset;
+@media all and ($mobile) {
+  .page > #quartz-body {
+    // Shift page position when toggling Explorer on mobile.
+    & > :not(.sidebar.left:has(.explorer)) {
+      transform: translateX(0);
+      transition: transform 300ms ease-in-out;
+    }
+    &.lock-scroll > :not(.sidebar.left:has(.explorer)) {
+      transform: translateX(100dvw);
+      transition: transform 300ms ease-in-out;
+    }
+
+    // Sticky top bar (stays in place when scrolling down on mobile).
+    .sidebar.left:has(.explorer) {
+      box-sizing: border-box;
+      position: sticky;
+      background-color: var(--light);
+    }
+
+    // Hide Explorer on mobile until done loading.
+    // Prevents ugly animation on page load.
+    .hide-until-loaded ~ #explorer-content {
+      display: none;
+    }
+  }
+}
+
+.explorer {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow-y: hidden;
+
+  @media all and ($mobile) {
+    order: -1;
+    height: initial;
+    overflow: hidden;
+    flex-shrink: 0;
+    align-self: flex-start;
+  }
+
+  button#mobile-explorer {
+    display: none;
+  }
+
+  button#desktop-explorer {
+    display: flex;
+  }
+
+  @media all and ($mobile) {
+    button#mobile-explorer {
+      display: flex;
+    }
+
+    button#desktop-explorer {
+      display: none;
+    }
+  }
+
+  &.desktop-only {
+    @media all and not ($mobile) {
+      display: flex;
+    }
+  }
+
+  /*&:after {
+    pointer-events: none;
+    content: "";
+    width: 100%;
+    height: 50px;
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    opacity: 1;
+    transition: opacity 0.3s ease;
+    background: linear-gradient(transparent 0px, var(--light));
+  }*/
+}
+
+button#mobile-explorer,
+button#desktop-explorer {
   background-color: transparent;
   border: none;
   text-align: left;
@@ -11,7 +90,7 @@ button#explorer {
   display: flex;
   align-items: center;
 
-  & h1 {
+  & h2 {
     font-size: 1rem;
     display: inline-block;
     margin: 0;
@@ -45,12 +124,20 @@ button#explorer {
 #explorer-content {
   list-style: none;
   overflow: hidden;
-  max-height: none;
-  transition: max-height 0.35s ease;
+  overflow-y: auto;
+  max-height: 0px;
+  transition:
+    max-height 0.35s ease,
+    visibility 0s linear 0.35s;
   margin-top: 0.5rem;
+  visibility: hidden;
 
-  &.collapsed > .overflow::after {
-    opacity: 0;
+  &.collapsed {
+    max-height: 100%;
+    transition:
+      max-height 0.35s ease,
+      visibility 0s linear 0s;
+    visibility: visible;
   }
 
   & ul {
@@ -61,11 +148,16 @@ button#explorer {
       max-height 0.35s ease,
       transform 0.35s ease,
       opacity 0.2s ease;
+
     & li > a {
       color: var(--dark);
       opacity: 0.75;
       pointer-events: all;
     }
+  }
+
+  > #explorer-ul {
+    max-height: none;
   }
 }
 
@@ -145,4 +237,81 @@ li:has(> .folder-outer:not(.open)) > .folder-container > svg {
   height: 4px;
   // remove default margin from li
   margin: 0;
+}
+
+.explorer {
+  @media all and ($mobile) {
+    #explorer-content {
+      box-sizing: border-box;
+      overscroll-behavior: none;
+      z-index: 100;
+      position: absolute;
+      top: 0;
+      background-color: var(--light);
+      max-width: 100dvw;
+      left: -100dvw;
+      width: 100%;
+      transition: transform 300ms ease-in-out;
+      overflow: hidden;
+      padding: $topSpacing 2rem 2rem;
+      height: 100dvh;
+      max-height: 100dvh;
+      margin-top: 0;
+      visibility: hidden;
+
+      &:not(.collapsed) {
+        transform: translateX(100dvw);
+        visibility: visible;
+      }
+
+      ul.overflow {
+        max-height: 100%;
+        width: 100%;
+      }
+
+      &.collapsed {
+        transform: translateX(0);
+        visibility: visible;
+      }
+    }
+
+    #mobile-explorer {
+      margin: 5px;
+      z-index: 101;
+
+      &:not(.collapsed) .lucide-menu {
+        transform: rotate(-90deg);
+        transition: transform 200ms ease-in-out;
+      }
+
+      .lucide-menu {
+        stroke: var(--darkgray);
+        transition: transform 200ms ease;
+
+        &:hover {
+          stroke: var(--dark);
+        }
+      }
+    }
+  }
+}
+
+.no-scroll {
+  opacity: 0;
+  overflow: hidden;
+}
+
+html:has(.no-scroll) {
+  overflow: hidden;
+}
+
+@media all and not ($mobile) {
+  .no-scroll {
+    opacity: 1 !important;
+    overflow: auto !important;
+  }
+
+  html:has(.no-scroll) {
+    overflow: auto !important;
+  }
 }

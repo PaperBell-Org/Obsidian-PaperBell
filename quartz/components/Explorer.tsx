@@ -1,5 +1,5 @@
 import { QuartzComponent, QuartzComponentConstructor, QuartzComponentProps } from "./types"
-import explorerStyle from "./styles/explorer.scss"
+import style from "./styles/explorer.scss"
 
 // @ts-ignore
 import script from "./scripts/explorer.inline"
@@ -44,12 +44,9 @@ export default ((userOpts?: Partial<Options>) => {
   // memoized
   let fileTree: FileNode
   let jsonTree: string
+  let lastBuildId: string = ""
 
   function constructFileTree(allFiles: QuartzPluginData[]) {
-    if (fileTree) {
-      return
-    }
-
     // Construct tree from allFiles
     fileTree = new FileNode("")
     allFiles.forEach((file) => fileTree.add(file))
@@ -76,23 +73,58 @@ export default ((userOpts?: Partial<Options>) => {
   }
 
   const Explorer: QuartzComponent = ({
+    ctx,
     cfg,
     allFiles,
     displayClass,
     fileData,
   }: QuartzComponentProps) => {
-    constructFileTree(allFiles)
+    if (ctx.buildId !== lastBuildId) {
+      lastBuildId = ctx.buildId
+      constructFileTree(allFiles)
+    }
     return (
       <div class={classNames(displayClass, "explorer")}>
         <button
           type="button"
-          id="explorer"
+          id="mobile-explorer"
+          class="collapsed hide-until-loaded"
           data-behavior={opts.folderClickBehavior}
           data-collapsed={opts.folderDefaultState}
           data-savestate={opts.useSavedState}
           data-tree={jsonTree}
+          data-mobile={true}
+          aria-controls="explorer-content"
+          aria-expanded={false}
         >
-          <h1>{opts.title ?? i18n(cfg.locale).components.explorer.title}</h1>
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="24"
+            height="24"
+            viewBox="0 0 24 24"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            class="lucide lucide-menu"
+          >
+            <line x1="4" x2="20" y1="12" y2="12" />
+            <line x1="4" x2="20" y1="6" y2="6" />
+            <line x1="4" x2="20" y1="18" y2="18" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          id="desktop-explorer"
+          class="title-button"
+          data-behavior={opts.folderClickBehavior}
+          data-collapsed={opts.folderDefaultState}
+          data-savestate={opts.useSavedState}
+          data-tree={jsonTree}
+          data-mobile={false}
+          aria-controls="explorer-content"
+          aria-expanded={true}
+        >
+          <h2>{opts.title ?? i18n(cfg.locale).components.explorer.title}</h2>
           <svg
             xmlns="http://www.w3.org/2000/svg"
             width="14"
@@ -118,7 +150,7 @@ export default ((userOpts?: Partial<Options>) => {
     )
   }
 
-  Explorer.css = explorerStyle
+  Explorer.css = style
   Explorer.afterDOMLoaded = script
   return Explorer
 }) satisfies QuartzComponentConstructor

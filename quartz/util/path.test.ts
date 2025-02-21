@@ -158,6 +158,29 @@ describe("transforms", () => {
       path.isRelativeURL,
     )
   })
+
+  test("joinSegments", () => {
+    assert.strictEqual(path.joinSegments("a", "b"), "a/b")
+    assert.strictEqual(path.joinSegments("a/", "b"), "a/b")
+    assert.strictEqual(path.joinSegments("a", "b/"), "a/b/")
+    assert.strictEqual(path.joinSegments("a/", "b/"), "a/b/")
+
+    // preserve leading and trailing slashes
+    assert.strictEqual(path.joinSegments("/a", "b"), "/a/b")
+    assert.strictEqual(path.joinSegments("/a/", "b"), "/a/b")
+    assert.strictEqual(path.joinSegments("/a", "b/"), "/a/b/")
+    assert.strictEqual(path.joinSegments("/a/", "b/"), "/a/b/")
+
+    // lone slash
+    assert.strictEqual(path.joinSegments("/a/", "b", "/"), "/a/b/")
+    assert.strictEqual(path.joinSegments("a/", "b" + "/"), "a/b/")
+
+    // works with protocol specifiers
+    assert.strictEqual(path.joinSegments("https://example.com", "a"), "https://example.com/a")
+    assert.strictEqual(path.joinSegments("https://example.com/", "a"), "https://example.com/a")
+    assert.strictEqual(path.joinSegments("https://example.com", "a/"), "https://example.com/a/")
+    assert.strictEqual(path.joinSegments("https://example.com/", "a/"), "https://example.com/a/")
+  })
 })
 
 describe("link strategies", () => {

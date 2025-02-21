@@ -1,5 +1,6 @@
 import micromorph from "micromorph"
 import { FullSlug, RelativeURL, getFullSlug, normalizeRelativeURLs } from "../../util/path"
+import { fetchCanonical } from "./util"
 
 // adapted from `micromorph`
 // https://github.com/natemoo-re/micromorph
@@ -42,10 +43,24 @@ function notifyNav(url: FullSlug) {
 const cleanupFns: Set<(...args: any[]) => void> = new Set()
 window.addCleanup = (fn) => cleanupFns.add(fn)
 
+function startLoading() {
+  const loadingBar = document.createElement("div")
+  loadingBar.className = "navigation-progress"
+  loadingBar.style.width = "0"
+  if (!document.body.contains(loadingBar)) {
+    document.body.appendChild(loadingBar)
+  }
+
+  setTimeout(() => {
+    loadingBar.style.width = "80%"
+  }, 100)
+}
+
 let p: DOMParser
 async function navigate(url: URL, isBack: boolean = false) {
+  startLoading()
   p = p || new DOMParser()
-  const contents = await fetch(`${url}`)
+  const contents = await fetchCanonical(url)
     .then((res) => {
       const contentType = res.headers.get("content-type")
       if (contentType?.startsWith("text/html")) {
@@ -104,6 +119,7 @@ async function navigate(url: URL, isBack: boolean = false) {
   if (!isBack) {
     history.pushState({}, "", url)
   }
+
   notifyNav(getFullSlug(window))
   delete announcer.dataset.persist
 }

@@ -16,6 +16,12 @@ export type JSResource = {
     }
 )
 
+export type CSSResource = {
+  content: string
+  inline?: boolean
+  spaPreserve?: boolean
+}
+
 export function JSResourceToScriptElement(resource: JSResource, preserve?: boolean): JSX.Element {
   const scriptType = resource.moduleType ?? "application/javascript"
   const spaPreserve = preserve ?? resource.spaPreserve
@@ -36,7 +42,24 @@ export function JSResourceToScriptElement(resource: JSResource, preserve?: boole
   }
 }
 
+export function CSSResourceToStyleElement(resource: CSSResource, preserve?: boolean): JSX.Element {
+  const spaPreserve = preserve ?? resource.spaPreserve
+  if (resource.inline ?? false) {
+    return <style>{resource.content}</style>
+  } else {
+    return (
+      <link
+        key={resource.content}
+        href={resource.content}
+        rel="stylesheet"
+        type="text/css"
+        spa-preserve={spaPreserve}
+      />
+    )
+  }
+}
+
 export interface StaticResources {
-  css: string[]
+  css: CSSResource[]
   js: JSResource[]
 }

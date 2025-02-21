@@ -2,21 +2,25 @@ import { QuartzComponent, QuartzComponentConstructor, QuartzComponentProps } fro
 import path from "path"
 
 import style from "../styles/listPage.scss"
-import { PageList } from "../PageList"
-import { stripSlashes, simplifySlug } from "../../util/path"
+import { byDateAndAlphabetical, PageList, SortFn } from "../PageList"
+import { stripSlashes, simplifySlug, joinSegments, FullSlug } from "../../util/path"
 import { Root } from "hast"
 import { htmlToJsx } from "../../util/jsx"
 import { i18n } from "../../i18n"
+import { QuartzPluginData } from "../../plugins/vfile"
 
 interface FolderContentOptions {
   /**
    * Whether to display number of folders
    */
   showFolderCount: boolean
+  showSubfolders: boolean
+  sort?: SortFn
 }
 
 const defaultOptions: FolderContentOptions = {
   showFolderCount: true,
+  showSubfolders: true,
 }
 
 export default ((opts?: Partial<FolderContentOptions>) => {
@@ -25,18 +29,52 @@ export default ((opts?: Partial<FolderContentOptions>) => {
   const FolderContent: QuartzComponent = (props: QuartzComponentProps) => {
     const { tree, fileData, allFiles, cfg } = props
     const folderSlug = stripSlashes(simplifySlug(fileData.slug!))
-    const allPagesInFolder = allFiles.filter((file) => {
+    const folderParts = folderSlug.split(path.posix.sep)
+
+    const allPagesInFolder: QuartzPluginData[] = []
+    const allPagesInSubfolders: Map<FullSlug, QuartzPluginData[]> = new Map()
+
+    allFiles.forEach((file) => {
       const fileSlug = stripSlashes(simplifySlug(file.slug!))
       const prefixed = fileSlug.startsWith(folderSlug) && fileSlug !== folderSlug
-      const folderParts = folderSlug.split(path.posix.sep)
       const fileParts = fileSlug.split(path.posix.sep)
       const isDirectChild = fileParts.length === folderParts.length + 1
-      return prefixed && isDirectChild
+
+      if (!prefixed) {
+        return
+      }
+
+      if (isDirectChild) {
+        allPagesInFolder.push(file)
+      } else if (options.showSubfolders) {
+        const subfolderSlug = joinSegments(
+          ...fileParts.slice(0, folderParts.length + 1),
+        ) as FullSlug
+        const pagesInFolder = allPagesInSubfolders.get(subfolderSlug) || []
+        allPagesInSubfolders.set(subfolderSlug, [...pagesInFolder, file])
+      }
     })
+
+    allPagesInSubfolders.forEach((files, subfolderSlug) => {
+      const hasIndex = allPagesInFolder.some(
+        (file) => subfolderSlug === stripSlashes(simplifySlug(file.slug!)),
+      )
+      if (!hasIndex) {
+        const subfolderDates = files.sort(byDateAndAlphabetical(cfg))[0].dates
+        const subfolderTitle = subfolderSlug.split(path.posix.sep).at(-1)!
+        allPagesInFolder.push({
+          slug: subfolderSlug,
+          dates: subfolderDates,
+          frontmatter: { title: subfolderTitle, tags: ["folder"] },
+        })
+      }
+    })
+
     const cssClasses: string[] = fileData.frontmatter?.cssclasses ?? []
-    const classes = ["popover-hint", ...cssClasses].join(" ")
+    const classes = cssClasses.join(" ")
     const listProps = {
       ...props,
+      sort: options.sort,
       allFiles: allPagesInFolder,
     }
 
@@ -46,8 +84,8 @@ export default ((opts?: Partial<FolderContentOptions>) => {
         : htmlToJsx(fileData.filePath!, tree)
 
     return (
-      <div class={classes}>
-        <article>{content}</article>
+      <div class="popover-hint">
+        <article class={classes}>{content}</article>
         <div class="page-listing">
           {options.showFolderCount && (
             <p>
