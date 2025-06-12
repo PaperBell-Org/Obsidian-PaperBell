@@ -67,5 +67,6 @@ const colorSet = new Set([...Object.keys(label), ...Object.keys(byColor)]);
 
 <%_for (const annot of byColor[color]) { %>
 <%~ include("annotation", annot) %>
+<%%>
 <%_ } %>
 <% } %>
