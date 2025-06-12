@@ -33,6 +33,3 @@ let isImportant = it.tags.some(t => t.name === '🌟星标');
 %>
 
 important: <%= isImportant ? 'True' : 'False' %>
-
-abstract: |
-  <%= it.abstractNote %>
