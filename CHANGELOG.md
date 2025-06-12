@@ -86,6 +86,18 @@
 - 修复了一些已知问题 📅 2024-05-13
 
 <a id='changelog-0.1.0'></a>
+## [4.3.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.2.0...v4.3.0) (2025-06-12)
+
+
+### Features
+
+* **feature:** :bug: split anno notes correctly now ([873d211](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/873d211acab3ca013255f98476056513ea1d7d5a))
+
+
+### Bug Fixes
+
+* **feature:** :bug: delete abstract field when connecting with ZotLit ([9629595](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/96295952b73f24e721f3c10df28be1fdb1352504))
+
 ## [4.2.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.1.1...v4.2.0) (2025-06-10)
 
 
