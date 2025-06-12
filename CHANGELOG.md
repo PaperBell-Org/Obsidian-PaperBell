@@ -86,6 +86,13 @@
 - 修复了一些已知问题 📅 2024-05-13
 
 <a id='changelog-0.1.0'></a>
+## [4.2.1](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.2.0...v4.2.1) (2025-06-12)
+
+
+### Bug Fixes
+
+* **feature:** 🐛 delete abstract field when connecting with ZotLit ([22a1d67](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22a1d67efea9a18101b5efa9c0d90c3a406b572a))
+
 ## [4.2.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.1.1...v4.2.0) (2025-06-10)
 
 
