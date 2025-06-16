@@ -61,7 +61,7 @@
     "mdast-util-to-string": "^4.0.0",
     "micromorph": "^0.4.5",
     "pixi.js": "^8.10.1",
-    "preact": "^10.26.8",
+    "preact": "^10.26.9",
     "preact-render-to-string": "^6.5.13",
     "pretty-bytes": "^7.0.0",
     "pretty-time": "^1.1.0",
@@ -102,14 +102,14 @@
     "@types/d3": "^7.4.3",
     "@types/hast": "^3.0.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^22.15.30",
+    "@types/node": "^24.0.3",
     "@types/pretty-time": "^1.1.5",
     "@types/source-map-support": "^0.5.10",
     "@types/ws": "^8.18.1",
     "@types/yargs": "^17.0.33",
     "esbuild": "^0.25.5",
     "prettier": "^3.5.3",
-    "tsx": "^4.19.4",
+    "tsx": "^4.20.3",
     "typescript": "^5.8.3"
   }
 }
