@@ -317,7 +317,7 @@
                 }
               },
               {
-                "id": "410b732c154a4862",
+                "id": "f91a4a39a4964efa",
                 "type": "leaf",
                 "state": {
                   "type": "thino_view",
@@ -327,13 +327,13 @@
                 }
               },
               {
-                "id": "611bde6c20e2820f",
+                "id": "153532a1e4d3aa07",
                 "type": "leaf",
                 "state": {
-                  "type": "obsidian-projects",
+                  "type": "task-genius-view",
                   "state": {},
-                  "icon": "projects-icon",
-                  "title": "Projects"
+                  "icon": "folders",
+                  "title": "项目"
                 }
               }
             ]
@@ -537,16 +537,6 @@
             "dimension": 70.93802345058626,
             "children": [
               {
-                "id": "a3af0d341318cdbe",
-                "type": "leaf",
-                "state": {
-                  "type": "tasks_timeline_view",
-                  "state": {},
-                  "icon": "calendar-clock",
-                  "title": "Tasks Timeline"
-                }
-              },
-              {
                 "id": "87e3f56e33a53aee",
                 "type": "leaf",
                 "state": {
@@ -592,11 +582,13 @@
           "canvas:新建白板": false,
           "command-palette:打开命令面板": false,
           "markdown-importer:打开 Markdown 格式转换器": false,
-          "workspaces:管理工作区布局": false
+          "workspaces:管理工作区布局": false,
+          "obsidian-task-progress-bar:打开 Task Genius 视图": false,
+          "obsidian42-brat:BRAT": false
         }
       },
       "active": "09485baf3a99e2db",
-      "mtime": "2025-05-29T15:23:16+02:00"
+      "mtime": "2025-06-30T21:23:15+02:00"
     }
   },
   "active": "主工作区"

@@ -5,7 +5,6 @@
   "obsidian-banners",
   "homepage",
   "obsidian-memos",
-  "obsidian-tasks-plugin",
   "templater-obsidian",
   "customizable-page-header-buttons",
   "obsidian-hover-editor",
@@ -13,7 +12,6 @@
   "obsidian-style-settings",
   "obsidian-sortable",
   "obsidian-dynamic-toc",
-  "tasks-calendar-wrapper",
   "obsidian-minimal-settings",
   "obsidian-map-view",
   "tag-wrangler",
@@ -29,5 +27,6 @@
   "obsidian-enhancing-export",
   "floating-toc",
   "obsidian-tracker",
-  "paperbell"
+  "paperbell",
+  "obsidian-task-progress-bar"
 ]
