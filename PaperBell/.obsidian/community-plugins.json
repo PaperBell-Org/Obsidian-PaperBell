@@ -2,7 +2,6 @@
   "quickadd",
   "obsidian-admonition",
   "obsidian-advanced-uri",
-  "obsidian-banners",
   "homepage",
   "obsidian-memos",
   "templater-obsidian",
@@ -28,5 +27,6 @@
   "floating-toc",
   "obsidian-tracker",
   "paperbell",
-  "obsidian-task-progress-bar"
+  "obsidian-task-progress-bar",
+  "pexels-banner"
 ]

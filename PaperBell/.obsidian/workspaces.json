@@ -332,8 +332,8 @@
                 "state": {
                   "type": "task-genius-view",
                   "state": {},
-                  "icon": "folders",
-                  "title": "项目"
+                  "icon": "inbox",
+                  "title": "收件箱"
                 }
               }
             ]
@@ -560,12 +560,23 @@
                   "icon": "highlighter",
                   "title": "Zotero Annotations"
                 }
+              },
+              {
+                "id": "e9715246798f35f6",
+                "type": "leaf",
+                "state": {
+                  "type": "tg-timeline-sidebar-view",
+                  "state": {},
+                  "icon": "calendar-clock",
+                  "title": "时间轴"
+                }
               }
-            ]
+            ],
+            "currentTab": 2
           }
         ],
         "direction": "horizontal",
-        "width": 300
+        "width": 319
       },
       "left-ribbon": {
         "hiddenItems": {
@@ -583,12 +594,11 @@
           "command-palette:打开命令面板": false,
           "markdown-importer:打开 Markdown 格式转换器": false,
           "workspaces:管理工作区布局": false,
-          "obsidian-task-progress-bar:打开 Task Genius 视图": false,
-          "obsidian42-brat:BRAT": false
+          "obsidian-task-progress-bar:打开 Task Genius 视图": false
         }
       },
       "active": "09485baf3a99e2db",
-      "mtime": "2025-06-30T21:23:15+02:00"
+      "mtime": "2025-07-06T11:07:33+02:00"
     }
   },
   "active": "主工作区"
