@@ -25,7 +25,7 @@ jobs:
         with:
           fetch-depth: 1
       - name: Inject slug/short variables
-        uses: rlespinasse/github-slug-action@v5.1.0
+        uses: rlespinasse/github-slug-action@v5.2.0
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
@@ -37,7 +37,7 @@ jobs:
             network=host
       - name: Install cosign
         if: github.event_name != 'pull_request'
-        uses: sigstore/cosign-installer@v3.9.1
+        uses: sigstore/cosign-installer@v3.9.2
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         if: github.event_name != 'pull_request'
