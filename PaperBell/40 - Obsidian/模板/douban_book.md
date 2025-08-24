@@ -4,7 +4,6 @@ cover: {{VALUE:cover}}
 tags:
 - reading
 - {{VALUE:tag}}
-- project/index
 douban_url: {{VALUE:douban_url}}
 author: {{VALUE:author}}
 isbn: {{VALUE:isbn}}
@@ -17,11 +16,11 @@ date: {{DATE}}
 star: {{VALUE:star}}
 ---
 ## 内容简介
+
 《{{VALUE:bookname}}》
 ![bookcover|inlR|260]({{VALUE:cover}})
 {{VALUE:intro}}
 
 ## Excerpts
 
-## Comments:
-
+## Comments
