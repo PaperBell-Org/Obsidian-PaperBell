@@ -168,7 +168,7 @@
 /* ----------------------------------------------------- */
 /* .view-content.pixel-banner > .markdown-source-view .cm-sizer,
 .view-content.pixel-banner > .markdown-reading-view .markdown-preview-sizer {
-    padding-top: var(--pixel-banner-content-start, 150px) !important;
+    padding-top: var(--pixel-banner-content-start, 355px) !important;
     padding-bottom: 0 !important;
 } */
 /* -- fix for embedded notes -- */
