@@ -1,0 +1,21 @@
+filters:
+  and:
+    - file.path.startsWith("Inputs/Books")
+views:
+  - type: cards
+    name: 图书馆
+    order:
+      - file.name
+      - file.tags
+      - author
+    image: note.cover
+    cardSize: 190
+    imageAspectRatio: 1.4
+  - type: cards
+    name: 高分图书
+    filters:
+      and:
+        - star == "5"
+    image: note.cover
+    cardSize: 120
+    imageAspectRatio: 1.4

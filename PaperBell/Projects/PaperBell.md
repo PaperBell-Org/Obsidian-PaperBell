@@ -21,7 +21,7 @@ url: "[🔗链接](obsidian://advanced-uri?vault=PaperBell&commandid=obsidian-pr
 - [x] v2: 学者追踪
 - [x] v3: 论文积累
 - [x] v4: 专属插件
-- [ ] v5: 项目管理
+- [x] v5 项目管理
 
 ## 🧭 Navigation
 
