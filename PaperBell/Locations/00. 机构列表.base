@@ -1,0 +1,16 @@
+filters:
+  and:
+    - file.path.startsWith("Locations/Institutes")
+formulas:
+  当前机构: institute[0]
+  最近机构: institute[0]
+  官方网站: link(website, "🌏 访问")
+views:
+  - type: cards
+    name: 机构列表
+    order:
+      - file.name
+      - formula.官方网站
+    cardSize: 140
+    image: note.logo
+    imageAspectRatio: 1
