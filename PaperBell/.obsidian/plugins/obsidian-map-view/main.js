@@ -52,11 +52,15 @@ function getDefaultExportFromCjs (x) {
 }
 
 function getAugmentedNamespace(n) {
-  if (n.__esModule) return n;
+  if (Object.prototype.hasOwnProperty.call(n, '__esModule')) return n;
   var f = n.default;
 	if (typeof f == "function") {
 		var a = function a () {
-			if (this instanceof a) {
+			var isInstance = false;
+      try {
+        isInstance = this instanceof a;
+      } catch {}
+			if (isInstance) {
         return Reflect.construct(f, arguments, this.constructor);
 			}
 			return f.apply(this, arguments);
@@ -275,7 +279,7 @@ function requireFunctionCall () {
 	var NATIVE_BIND = requireFunctionBindNative();
 
 	var call = Function.prototype.call;
-
+	// eslint-disable-next-line es/no-function-prototype-bind -- safe
 	functionCall = NATIVE_BIND ? call.bind(call) : function () {
 	  return call.apply(call, arguments);
 	};
@@ -311,6 +315,7 @@ function requireFunctionUncurryThis () {
 
 	var FunctionPrototype = Function.prototype;
 	var call = FunctionPrototype.call;
+	// eslint-disable-next-line es/no-function-prototype-bind -- safe
 	var uncurryThisWithBind = NATIVE_BIND && FunctionPrototype.bind.bind(call, call);
 
 	functionUncurryThis = NATIVE_BIND ? uncurryThisWithBind : function (fn) {
@@ -587,10 +592,10 @@ function requireSharedStore () {
 	var store = sharedStore.exports = globalThis[SHARED] || defineGlobalProperty(SHARED, {});
 
 	(store.versions || (store.versions = [])).push({
-	  version: '3.39.0',
+	  version: '3.45.1',
 	  mode: IS_PURE ? 'pure' : 'global',
-	  copyright: '© 2014-2024 Denis Pushkarev (zloirock.ru)',
-	  license: 'https://github.com/zloirock/core-js/blob/v3.39.0/LICENSE',
+	  copyright: '© 2014-2025 Denis Pushkarev (zloirock.ru)',
+	  license: 'https://github.com/zloirock/core-js/blob/v3.45.1/LICENSE',
 	  source: 'https://github.com/zloirock/core-js'
 	});
 	return sharedStore.exports;
@@ -677,7 +682,7 @@ function requireUid () {
 
 	var id = 0;
 	var postfix = Math.random();
-	var toString = uncurryThis(1.0.toString);
+	var toString = uncurryThis(1.1.toString);
 
 	uid = function (key) {
 	  return 'Symbol(' + (key === undefined ? '' : key) + ')_' + toString(++id + postfix, 36);
@@ -2792,7 +2797,7 @@ function requireIterate () {
 	  var iterator, iterFn, index, length, result, next, step;
 
 	  var stop = function (condition) {
-	    if (iterator) iteratorClose(iterator, 'normal', condition);
+	    if (iterator) iteratorClose(iterator, 'normal');
 	    return new Result(true, condition);
 	  };
 
@@ -3834,6 +3839,61 @@ function requireValidateArgumentsLength () {
 	return validateArgumentsLength;
 }
 
+var regexpFlagsDetection;
+var hasRequiredRegexpFlagsDetection;
+
+function requireRegexpFlagsDetection () {
+	if (hasRequiredRegexpFlagsDetection) return regexpFlagsDetection;
+	hasRequiredRegexpFlagsDetection = 1;
+	var globalThis = requireGlobalThis();
+	var fails = requireFails();
+
+	// babel-minify and Closure Compiler transpiles RegExp('.', 'd') -> /./d and it causes SyntaxError
+	var RegExp = globalThis.RegExp;
+
+	var FLAGS_GETTER_IS_CORRECT = !fails(function () {
+	  var INDICES_SUPPORT = true;
+	  try {
+	    RegExp('.', 'd');
+	  } catch (error) {
+	    INDICES_SUPPORT = false;
+	  }
+
+	  var O = {};
+	  // modern V8 bug
+	  var calls = '';
+	  var expected = INDICES_SUPPORT ? 'dgimsy' : 'gimsy';
+
+	  var addGetter = function (key, chr) {
+	    // eslint-disable-next-line es/no-object-defineproperty -- safe
+	    Object.defineProperty(O, key, { get: function () {
+	      calls += chr;
+	      return true;
+	    } });
+	  };
+
+	  var pairs = {
+	    dotAll: 's',
+	    global: 'g',
+	    ignoreCase: 'i',
+	    multiline: 'm',
+	    sticky: 'y'
+	  };
+
+	  if (INDICES_SUPPORT) pairs.hasIndices = 'd';
+
+	  for (var key in pairs) addGetter(key, pairs[key]);
+
+	  // eslint-disable-next-line es/no-object-getownpropertydescriptor -- safe
+	  var result = Object.getOwnPropertyDescriptor(RegExp.prototype, 'flags').get.call(O);
+
+	  return result !== expected || calls !== expected;
+	});
+
+	regexpFlagsDetection = { correct: FLAGS_GETTER_IS_CORRECT };
+	return regexpFlagsDetection;
+}
+
 var regexpFlags;
 var hasRequiredRegexpFlags;
 
@@ -3869,14 +3929,17 @@ function requireRegexpGetFlags () {
 	var call = requireFunctionCall();
 	var hasOwn = requireHasOwnProperty();
 	var isPrototypeOf = requireObjectIsPrototypeOf();
-	var regExpFlags = requireRegexpFlags();
+	var regExpFlagsDetection = requireRegexpFlagsDetection();
+	var regExpFlagsGetterImplementation = requireRegexpFlags();
 
 	var RegExpPrototype = RegExp.prototype;
 
-	regexpGetFlags = function (R) {
-	  var flags = R.flags;
-	  return flags === undefined && !('flags' in RegExpPrototype) && !hasOwn(R, 'flags') && isPrototypeOf(RegExpPrototype, R)
-	    ? call(regExpFlags, R) : flags;
+	regexpGetFlags = regExpFlagsDetection.correct ? function (it) {
+	  return it.flags;
+	} : function (it) {
+	  return (!regExpFlagsDetection.correct && isPrototypeOf(RegExpPrototype, it) && !hasOwn(it, 'flags'))
+	    ? call(regExpFlagsGetterImplementation, it)
+	    : it.flags;
 	};
 	return regexpGetFlags;
 }
@@ -4106,7 +4169,7 @@ function requireWeb_structuredClone () {
 	var objectKeys = getBuiltIn('Object', 'keys');
 	var push = uncurryThis([].push);
 	var thisBooleanValue = uncurryThis(true.valueOf);
-	var thisNumberValue = uncurryThis(1.0.valueOf);
+	var thisNumberValue = uncurryThis(1.1.valueOf);
 	var thisStringValue = uncurryThis(''.valueOf);
 	var thisTimeValue = uncurryThis(Date.prototype.getTime);
 	var PERFORMANCE_MARK = uid('structuredClone');
@@ -19171,7 +19234,7 @@ function requireLeafletSrc () {
 var leafletSrcExports = requireLeafletSrc();
 var leafletSrc = /*@__PURE__*/getDefaultExportFromCjs(leafletSrcExports);
 
-var e = /*#__PURE__*/_mergeNamespaces({
+var t$2 = /*#__PURE__*/_mergeNamespaces({
 	__proto__: null,
 	default: leafletSrc
 }, [leafletSrcExports]);
@@ -19211,7 +19274,7 @@ const HIGHLIGHT_CLASS_NAME = 'map-view-highlight';
 const MIN_QUICK_EMBED_ZOOM = 8;
 const MIN_HEIGHT_TO_SHOW_MARKER_POPUP = 400;
 
-function t$2(){return t$2=Object.assign?Object.assign.bind():function(e){for(var t=1;t<arguments.length;t++){var r=arguments[t];for(var n in r)Object.prototype.hasOwnProperty.call(r,n)&&(e[n]=r[n]);}return e},t$2.apply(this,arguments)}function r$2(e,t){e.prototype=Object.create(t.prototype),e.prototype.constructor=e,n(e,t);}function n(e,t){return n=Object.setPrototypeOf?Object.setPrototypeOf.bind():function(e,t){return e.__proto__=t,e},n(e,t)}function s$1(e,t,r,n){void 0===t&&(t=""),void 0===n&&(n={});var o=document.createElement(e);return t&&(o.className=t),Object.keys(n).forEach(function(e){if("function"==typeof n[e]){var t=0===e.indexOf("on")?e.substr(2).toLowerCase():e;o.addEventListener(t,n[e]);}else "html"===e?o.innerHTML=n[e]:"text"===e?o.innerText=n[e]:o.setAttribute(e,n[e]);}),r&&r.appendChild(o),o}function a(e){e.preventDefault(),e.stopPropagation();}var l=function(){return [].slice.call(arguments).filter(Boolean).join(" ").trim()};function c(e,t){e&&e.classList&&(Array.isArray(t)?t:[t]).forEach(function(t){e.classList.contains(t)||e.classList.add(t);});}function u(e,t){e&&e.classList&&(Array.isArray(t)?t:[t]).forEach(function(t){e.classList.contains(t)&&e.classList.remove(t);});}var h,p$1=13,d=40,f=38,m=[p$1,27,d,f,37,39],v=/*#__PURE__*/function(){function e(e){var t=this,r=e.handleSubmit,n=e.searchLabel,o=e.classNames,i=void 0===o?{}:o;this.container=void 0,this.form=void 0,this.input=void 0,this.handleSubmit=void 0,this.hasError=!1,this.container=s$1("div",l("geosearch",i.container)),this.form=s$1("form",["",i.form].join(" "),this.container,{autocomplete:"none",onClick:a,onDblClick:a,touchStart:a,touchEnd:a}),this.input=s$1("input",["glass",i.input].join(" "),this.form,{type:"text",placeholder:n||"search",onInput:this.onInput,onKeyUp:function(e){return t.onKeyUp(e)},onKeyPress:function(e){return t.onKeyPress(e)},onFocus:this.onFocus,onBlur:this.onBlur,onClick:function(){t.input.focus(),t.input.dispatchEvent(new Event("focus"));}}),this.handleSubmit=r;}var t=e.prototype;return t.onFocus=function(){c(this.form,"active");},t.onBlur=function(){u(this.form,"active");},t.onSubmit=function(e){try{var t=this;return a(e),u(r=t.container,"error"),c(r,"pending"),Promise.resolve(t.handleSubmit({query:t.input.value})).then(function(){u(t.container,"pending");})}catch(e){return Promise.reject(e)}var r;},t.onInput=function(){this.hasError&&(u(this.container,"error"),this.hasError=!1);},t.onKeyUp=function(e){27===e.keyCode&&(u(this.container,["pending","active"]),this.input.value="",document.body.focus(),document.body.blur());},t.onKeyPress=function(e){e.keyCode===p$1&&this.onSubmit(e);},t.setQuery=function(e){this.input.value=e;},e}(),g$1=/*#__PURE__*/function(){function e(e){var t=this,r=e.handleClick,n=e.classNames,o=void 0===n?{}:n,i=e.notFoundMessage;this.handleClick=void 0,this.selected=-1,this.results=[],this.container=void 0,this.resultItem=void 0,this.notFoundMessage=void 0,this.onClick=function(e){if("function"==typeof t.handleClick){var r=e.target;if(r&&t.container.contains(r)&&r.hasAttribute("data-key")){var n=Number(r.getAttribute("data-key"));t.handleClick({result:t.results[n]});}}},this.handleClick=r,this.notFoundMessage=i?s$1("div",l(o.notfound),void 0,{html:i}):void 0,this.container=s$1("div",l("results",o.resultlist)),this.container.addEventListener("click",this.onClick,!0),this.resultItem=s$1("div",l(o.item));}var t=e.prototype;return t.render=function(e,t){var r=this;void 0===e&&(e=[]),this.clear(),e.forEach(function(e,n){var o=r.resultItem.cloneNode(!0);o.setAttribute("data-key",""+n),o.innerHTML=t({result:e}),r.container.appendChild(o);}),e.length>0?(c(this.container.parentElement,"open"),c(this.container,"active")):this.notFoundMessage&&(this.container.appendChild(this.notFoundMessage),c(this.container.parentElement,"open")),this.results=e;},t.select=function(e){return Array.from(this.container.children).forEach(function(t,r){return r===e?c(t,"active"):u(t,"active")}),this.selected=e,this.results[e]},t.count=function(){return this.results?this.results.length:0},t.clear=function(){for(this.selected=-1;this.container.lastChild;)this.container.removeChild(this.container.lastChild);u(this.container.parentElement,"open"),u(this.container,"active");},e}(),y={position:"topleft",style:"button",showMarker:!0,showPopup:!1,popupFormat:function(e){return ""+e.result.label},resultFormat:function(e){return ""+e.result.label},marker:{icon:e&&leafletSrcExports.Icon?new leafletSrcExports.Icon.Default:void 0,draggable:!1},maxMarkers:1,maxSuggestions:5,retainZoomLevel:!1,animateZoom:!0,searchLabel:"Enter address",clearSearchLabel:"Clear search",notFoundMessage:"",messageHideDelay:3e3,zoomLevel:18,classNames:{container:"leaflet-bar leaflet-control leaflet-control-geosearch",button:"leaflet-bar-part leaflet-bar-part-single",resetButton:"reset",msgbox:"leaflet-bar message",form:"",input:"",resultlist:"",item:"",notfound:"leaflet-bar-notfound"},autoComplete:!0,autoCompleteDelay:250,autoClose:!1,keepResult:!1,updateMap:!0},b="Leaflet must be loaded before instantiating the GeoSearch control";({options:t$2({},y),classNames:t$2({},y.classNames),initialize:function(r){var n,o,i,a,l=this;if(!e)throw new Error(b);if(!r.provider)throw new Error("Provider is missing from options");this.options=t$2({},y,r),this.classNames=t$2({},this.classNames,r.classNames),this.markers=new leafletSrcExports.FeatureGroup,this.classNames.container+=" leaflet-geosearch-"+this.options.style,this.searchElement=new v({searchLabel:this.options.searchLabel,classNames:{container:this.classNames.container,form:this.classNames.form,input:this.classNames.input},handleSubmit:function(e){return l.onSubmit(e)}}),this.button=s$1("a",this.classNames.button,this.searchElement.container,{title:this.options.searchLabel,href:"#",onClick:function(e){return l.onClick(e)}}),leafletSrcExports.DomEvent.disableClickPropagation(this.button),this.resetButton=s$1("button",this.classNames.resetButton,this.searchElement.form,{text:"×","aria-label":this.options.clearSearchLabel,onClick:function(){""===l.searchElement.input.value?l.close():l.clearResults(null,!0);}}),leafletSrcExports.DomEvent.disableClickPropagation(this.resetButton),this.options.autoComplete&&(this.resultList=new g$1({handleClick:function(e){var t=e.result;l.searchElement.input.value=t.label,l.onSubmit({query:t.label,data:t});},classNames:{resultlist:this.classNames.resultlist,item:this.classNames.item,notfound:this.classNames.notfound},notFoundMessage:this.options.notFoundMessage}),this.searchElement.form.appendChild(this.resultList.container),this.searchElement.input.addEventListener("keyup",(n=function(e){return l.autoSearch(e)},void 0===(o=this.options.autoCompleteDelay)&&(o=250),void 0===i&&(i=!1),function(){var e=[].slice.call(arguments);a&&clearTimeout(a),a=setTimeout(function(){a=null,i||n.apply(void 0,e);},o),i&&!a&&n.apply(void 0,e);}),!0),this.searchElement.input.addEventListener("keydown",function(e){return l.selectResult(e)},!0),this.searchElement.input.addEventListener("keydown",function(e){return l.clearResults(e,!0)},!0)),this.searchElement.form.addEventListener("click",function(e){e.preventDefault();},!1);},onAdd:function(t){var r=this.options,n=r.showMarker,o=r.style;if(this.map=t,n&&this.markers.addTo(t),"bar"===o){var i=t.getContainer().querySelector(".leaflet-control-container");this.container=s$1("div","leaflet-control-geosearch leaflet-geosearch-bar"),this.container.appendChild(this.searchElement.form),i.appendChild(this.container);}return leafletSrcExports.DomEvent.disableClickPropagation(this.searchElement.form),this.searchElement.container},onRemove:function(){var e;return null==(e=this.container)||e.remove(),this},open:function(){var e=this.searchElement,t=e.input;c(e.container,"active"),t.focus();},close:function(){u(this.searchElement.container,"active"),this.clearResults();},onClick:function(e){e.preventDefault(),e.stopPropagation(),this.searchElement.container.classList.contains("active")?this.close():this.open();},selectResult:function(e){if(-1!==[p$1,d,f].indexOf(e.keyCode))if(e.preventDefault(),e.keyCode!==p$1){var t=this.resultList.count()-1;if(!(t<0)){var r=this.resultList.selected,n=e.keyCode===d?r+1:r-1,o=this.resultList.select(n<0?t:n>t?0:n);this.searchElement.input.value=o.label;}}else {var i=this.resultList.select(this.resultList.selected);this.onSubmit({query:this.searchElement.input.value,data:i});}},clearResults:function(e,t){if(void 0===t&&(t=!1),!e||27===e.keyCode){var r=this.options,n=r.autoComplete;!t&&r.keepResult||(this.searchElement.input.value="",this.markers.clearLayers()),n&&this.resultList.clear();}},autoSearch:function(e){try{var t=this;if(m.indexOf(e.keyCode)>-1)return Promise.resolve();var r=e.target.value,n=t.options.provider,o=function(){if(r.length)return Promise.resolve(n.search({query:r})).then(function(e){e=e.slice(0,t.options.maxSuggestions),t.resultList.render(e,t.options.resultFormat);});t.resultList.clear();}();return Promise.resolve(o&&o.then?o.then(function(){}):void 0)}catch(e){return Promise.reject(e)}},onSubmit:function(e){try{var t=this;return t.resultList.clear(),Promise.resolve(t.options.provider.search(e)).then(function(r){r&&r.length>0&&t.showResult(r[0],e);})}catch(e){return Promise.reject(e)}},showResult:function(e,t){var r=this.options,n=r.autoClose,o=r.updateMap,i=this.markers.getLayers();i.length>=this.options.maxMarkers&&this.markers.removeLayer(i[0]);var s=this.addMarker(e,t);o&&this.centerMap(e),this.map.fireEvent("geosearch/showlocation",{location:e,marker:s}),n&&this.closeResults();},closeResults:function(){var e=this.searchElement.container;e.classList.contains("active")&&u(e,"active"),this.clearResults();},addMarker:function(t,r){var n=this,o=this.options,i=o.marker,s=o.showPopup,a=o.popupFormat,l=new leafletSrcExports.Marker([t.y,t.x],i),c=t.label;return "function"==typeof a&&(c=a({query:r,result:t})),l.bindPopup(c),this.markers.addLayer(l),s&&l.openPopup(),i.draggable&&l.on("dragend",function(e){n.map.fireEvent("geosearch/marker/dragend",{location:l.getLatLng(),event:e});}),l},centerMap:function(t){var r=this.options,n=r.retainZoomLevel,o=r.animateZoom,i=t.bounds?new leafletSrcExports.LatLngBounds(t.bounds):new leafletSrcExports.LatLng(t.y,t.x).toBounds(10),s=i.isValid()?i:this.markers.getBounds();!n&&i.isValid()&&!t.bounds||n||!i.isValid()?this.map.setView(s.getCenter(),this.getZoom(),{animate:o}):this.map.fitBounds(s,{animate:o});},getZoom:function(){var e=this.options,t=e.zoomLevel;return e.retainZoomLevel?this.map.getZoom():t}});!function(e){e[e.SEARCH=0]="SEARCH",e[e.REVERSE=1]="REVERSE";}(h||(h={}));var x$1=/*#__PURE__*/function(){function e(e){void 0===e&&(e={}),this.options=void 0,this.options=e;}var r=e.prototype;return r.getParamString=function(e){void 0===e&&(e={});var r=t$2({},this.options.params,e);return Object.keys(r).map(function(e){return encodeURIComponent(e)+"="+encodeURIComponent(r[e])}).join("&")},r.getUrl=function(e,t){return e+"?"+this.getParamString(t)},r.search=function(e){try{var t=this,r=t.endpoint({query:e.query,type:h.SEARCH});return Promise.resolve(fetch(r)).then(function(e){return Promise.resolve(e.json()).then(function(e){return t.parse({data:e})})})}catch(e){return Promise.reject(e)}},e}();function C(e){return e&&e.__esModule&&Object.prototype.hasOwnProperty.call(e,"default")?e.default:e}"function"==typeof SuppressedError&&SuppressedError;var P$1,R=/*@__PURE__*/C(function e(t,r){if(t===r)return !0;if(t&&r&&"object"==typeof t&&"object"==typeof r){if(t.constructor!==r.constructor)return !1;var n,o,i;if(Array.isArray(t)){if((n=t.length)!=r.length)return !1;for(o=n;0!=o--;)if(!e(t[o],r[o]))return !1;return !0}if(t.constructor===RegExp)return t.source===r.source&&t.flags===r.flags;if(t.valueOf!==Object.prototype.valueOf)return t.valueOf()===r.valueOf();if(t.toString!==Object.prototype.toString)return t.toString()===r.toString();if((n=(i=Object.keys(t)).length)!==Object.keys(r).length)return !1;for(o=n;0!=o--;)if(!Object.prototype.hasOwnProperty.call(r,i[o]))return !1;for(o=n;0!=o--;){var s=i[o];if(!e(t[s],r[s]))return !1}return !0}return t!=t&&r!=r});!function(e){e[e.INITIALIZED=0]="INITIALIZED",e[e.LOADING=1]="LOADING",e[e.SUCCESS=2]="SUCCESS",e[e.FAILURE=3]="FAILURE";}(P$1||(P$1={}));class j{constructor({apiKey:e,authReferrerPolicy:t,channel:r,client:n,id:o="__googleMapsScriptId",language:i,libraries:s=[],mapIds:a,nonce:l,region:c,retries:u=3,url:h="https://maps.googleapis.com/maps/api/js",version:p}){if(this.callbacks=[],this.done=!1,this.loading=!1,this.errors=[],this.apiKey=e,this.authReferrerPolicy=t,this.channel=r,this.client=n,this.id=o||"__googleMapsScriptId",this.language=i,this.libraries=s,this.mapIds=a,this.nonce=l,this.region=c,this.retries=u,this.url=h,this.version=p,j.instance){if(!R(this.options,j.instance.options))throw new Error(`Loader must not be called again with different options. ${JSON.stringify(this.options)} !== ${JSON.stringify(j.instance.options)}`);return j.instance}j.instance=this;}get options(){return {version:this.version,apiKey:this.apiKey,channel:this.channel,client:this.client,id:this.id,libraries:this.libraries,language:this.language,region:this.region,mapIds:this.mapIds,nonce:this.nonce,url:this.url,authReferrerPolicy:this.authReferrerPolicy}}get status(){return this.errors.length?P$1.FAILURE:this.done?P$1.SUCCESS:this.loading?P$1.LOADING:P$1.INITIALIZED}get failed(){return this.done&&!this.loading&&this.errors.length>=this.retries+1}createUrl(){let e=this.url;return e+="?callback=__googleMapsCallback&loading=async",this.apiKey&&(e+=`&key=${this.apiKey}`),this.channel&&(e+=`&channel=${this.channel}`),this.client&&(e+=`&client=${this.client}`),this.libraries.length>0&&(e+=`&libraries=${this.libraries.join(",")}`),this.language&&(e+=`&language=${this.language}`),this.region&&(e+=`&region=${this.region}`),this.version&&(e+=`&v=${this.version}`),this.mapIds&&(e+=`&map_ids=${this.mapIds.join(",")}`),this.authReferrerPolicy&&(e+=`&auth_referrer_policy=${this.authReferrerPolicy}`),e}deleteScript(){const e=document.getElementById(this.id);e&&e.remove();}load(){return this.loadPromise()}loadPromise(){return new Promise((e,t)=>{this.loadCallback(r=>{r?t(r.error):e(window.google);});})}importLibrary(e){return this.execute(),google.maps.importLibrary(e)}loadCallback(e){this.callbacks.push(e),this.execute();}setScript(){var e,t;if(document.getElementById(this.id))return void this.callback();const r={key:this.apiKey,channel:this.channel,client:this.client,libraries:this.libraries.length&&this.libraries,v:this.version,mapIds:this.mapIds,language:this.language,region:this.region,authReferrerPolicy:this.authReferrerPolicy};Object.keys(r).forEach(e=>!r[e]&&delete r[e]),(null===(t=null===(e=null===window||void 0===window?void 0:window.google)||void 0===e?void 0:e.maps)||void 0===t?void 0:t.importLibrary)||(e=>{let t,r,n,o="The Google Maps JavaScript API",i="google",s="importLibrary",a="__ib__",l=document,c=window;c=c[i]||(c[i]={});const u=c.maps||(c.maps={}),h=new Set,p=new URLSearchParams,d=()=>t||(t=new Promise((s,c)=>{return d=this,m=function*(){var d;for(n in yield r=l.createElement("script"),r.id=this.id,p.set("libraries",[...h]+""),e)p.set(n.replace(/[A-Z]/g,e=>"_"+e[0].toLowerCase()),e[n]);p.set("callback",i+".maps."+a),r.src=this.url+"?"+p,u[a]=s,r.onerror=()=>t=c(Error(o+" could not load.")),r.nonce=this.nonce||(null===(d=l.querySelector("script[nonce]"))||void 0===d?void 0:d.nonce)||"",l.head.append(r);},new((f=void 0)||(f=Promise))(function(e,t){function r(e){try{o(m.next(e));}catch(e){t(e);}}function n(e){try{o(m.throw(e));}catch(e){t(e);}}function o(t){var o;t.done?e(t.value):(o=t.value,o instanceof f?o:new f(function(e){e(o);})).then(r,n);}o((m=m.apply(d,[])).next());});var d,f,m;}));u[s]?console.warn(o+" only loads once. Ignoring:",e):u[s]=(e,...t)=>h.add(e)&&d().then(()=>u[s](e,...t));})(r);const n=this.libraries.map(e=>this.importLibrary(e));n.length||n.push(this.importLibrary("core")),Promise.all(n).then(()=>this.callback(),e=>{const t=new ErrorEvent("error",{error:e});this.loadErrorCallback(t);});}reset(){this.deleteScript(),this.done=!1,this.loading=!1,this.errors=[],this.onerrorEvent=null;}resetIfRetryingFailed(){this.failed&&this.reset();}loadErrorCallback(e){if(this.errors.push(e),this.errors.length<=this.retries){const e=this.errors.length*Math.pow(2,this.errors.length);console.error(`Failed to load Google Maps script, retrying in ${e} ms.`),setTimeout(()=>{this.deleteScript(),this.setScript();},e);}else this.onerrorEvent=e,this.callback();}callback(){this.done=!0,this.loading=!1,this.callbacks.forEach(e=>{e(this.onerrorEvent);}),this.callbacks=[];}execute(){if(this.resetIfRetryingFailed(),this.done)this.callback();else {if(window.google&&window.google.maps&&window.google.maps.version)return console.warn("Google Maps already loaded outside @googlemaps/js-api-loader.This may result in undesirable behavior as options and script parameters may not match."),void this.callback();this.loading||(this.loading=!0,this.setScript());}}}var A$1=/*#__PURE__*/function(e){function t(t){var r;return (r=e.call(this,t)||this).loader=null,r.geocoder=null,"undefined"!=typeof window&&(r.loader=new j(t).load().then(function(e){var t=new e.maps.Geocoder;return r.geocoder=t,t})),r}r$2(t,e);var n=t.prototype;return n.endpoint=function(e){throw new Error("Method not implemented.")},n.parse=function(e){return e.data.results.map(function(e){var t=e.geometry.location.toJSON(),r=t.lat,n=t.lng,o=e.geometry.viewport.toJSON();return {x:n,y:r,label:e.formatted_address,bounds:[[o.south,o.west],[o.north,o.east]],raw:e}})},n.search=function(e){try{var t=function(t){if(!t)throw new Error("GoogleMaps GeoCoder is not loaded. Are you trying to run this server side?");return Promise.resolve(t.geocode({address:e.query},function(e){return {results:e}}).catch(function(e){return "ZERO_RESULTS"!==e.code&&console.error(e.code+": "+e.message),{results:[]}})).then(function(e){return r.parse({data:e})})},r=this,n=r.geocoder;return Promise.resolve(n?t(n):Promise.resolve(r.loader).then(t))}catch(e){return Promise.reject(e)}},t}(x$1),F=/*#__PURE__*/function(e){function t(t){var r;void 0===t&&(t={}),(r=e.call(this,t)||this).searchUrl=void 0,r.reverseUrl=void 0;var n="https://nominatim.openstreetmap.org";return r.searchUrl=t.searchUrl||n+"/search",r.reverseUrl=t.reverseUrl||n+"/reverse",r}r$2(t,e);var n=t.prototype;return n.endpoint=function(e){var t=e.query,r=e.type,n="string"==typeof t?{q:t}:t;return n.format="json",this.getUrl(r===h.REVERSE?this.reverseUrl:this.searchUrl,n)},n.parse=function(e){return (Array.isArray(e.data)?e.data:[e.data]).map(function(e){return {x:Number(e.lon),y:Number(e.lat),label:e.display_name,bounds:[[parseFloat(e.boundingbox[0]),parseFloat(e.boundingbox[2])],[parseFloat(e.boundingbox[1]),parseFloat(e.boundingbox[3])]],raw:e}})},t}(x$1);
+function e(){return e=Object.assign?Object.assign.bind():function(t){for(var e=1;e<arguments.length;e++){var r=arguments[e];for(var n in r)Object.prototype.hasOwnProperty.call(r,n)&&(t[n]=r[n]);}return t},e.apply(this,arguments)}function r$2(t,e){t.prototype=Object.create(e.prototype),t.prototype.constructor=t,n(t,e);}function n(t,e){return n=Object.setPrototypeOf?Object.setPrototypeOf.bind():function(t,e){return t.__proto__=e,t},n(t,e)}var h,y={position:"topleft",style:"button",showMarker:true,showPopup:false,popupFormat:function(t){return ""+t.result.label},resultFormat:function(t){return ""+t.result.label},marker:{icon:t$2&&leafletSrcExports.Icon?new leafletSrcExports.Icon.Default:void 0,draggable:false},maxMarkers:1,maxSuggestions:5,retainZoomLevel:false,animateZoom:true,searchLabel:"Enter address",clearSearchLabel:"Clear search",notFoundMessage:"",messageHideDelay:3e3,zoomLevel:18,classNames:{container:"leaflet-bar leaflet-control leaflet-control-geosearch",button:"leaflet-bar-part leaflet-bar-part-single",resetButton:"reset",msgbox:"leaflet-bar message",form:"",input:"",resultlist:"",item:"",notfound:"leaflet-bar-notfound"},autoComplete:true,autoCompleteDelay:250,autoClose:false,keepResult:false,updateMap:true,resetButton:"×"};({options:e({},y),classNames:e({},y.classNames)});!function(t){t[t.SEARCH=0]="SEARCH",t[t.REVERSE=1]="REVERSE";}(h||(h={}));var x$1=/*#__PURE__*/function(){function t(t){ void 0===t&&(t={}),this.options=void 0,this.options=t;}var r=t.prototype;return r.getParamString=function(t){ void 0===t&&(t={});var r=e({},this.options.params,t);return Object.keys(r).map(function(t){return encodeURIComponent(t)+"="+encodeURIComponent(r[t])}).join("&")},r.getUrl=function(t,e){return t+"?"+this.getParamString(e)},r.search=function(t){try{var e=this,r=e.endpoint({query:t.query,type:h.SEARCH});return Promise.resolve(fetch(r)).then(function(t){return Promise.resolve(t.json()).then(function(t){return e.parse({data:t})})})}catch(t){return Promise.reject(t)}},t}();function j(t){return t&&t.__esModule&&Object.prototype.hasOwnProperty.call(t,"default")?t.default:t}"function"==typeof SuppressedError&&SuppressedError;var I,N=/*@__PURE__*/j(function t(e,r){if(e===r)return  true;if(e&&r&&"object"==typeof e&&"object"==typeof r){if(e.constructor!==r.constructor)return  false;var n,o,i;if(Array.isArray(e)){if((n=e.length)!=r.length)return  false;for(o=n;0!=o--;)if(!t(e[o],r[o]))return  false;return  true}if(e.constructor===RegExp)return e.source===r.source&&e.flags===r.flags;if(e.valueOf!==Object.prototype.valueOf)return e.valueOf()===r.valueOf();if(e.toString!==Object.prototype.toString)return e.toString()===r.toString();if((n=(i=Object.keys(e)).length)!==Object.keys(r).length)return  false;for(o=n;0!=o--;)if(!Object.prototype.hasOwnProperty.call(r,i[o]))return  false;for(o=n;0!=o--;){var s=i[o];if(!t(e[s],r[s]))return  false}return  true}return e!=e&&r!=r});!function(t){t[t.INITIALIZED=0]="INITIALIZED",t[t.LOADING=1]="LOADING",t[t.SUCCESS=2]="SUCCESS",t[t.FAILURE=3]="FAILURE";}(I||(I={}));class O{constructor({apiKey:t,authReferrerPolicy:e,channel:r,client:n,id:o="__googleMapsScriptId",language:i,libraries:s=[],mapIds:a,nonce:l,region:c,retries:u=3,url:h="https://maps.googleapis.com/maps/api/js",version:p}){if(this.callbacks=[],this.done=false,this.loading=false,this.errors=[],this.apiKey=t,this.authReferrerPolicy=e,this.channel=r,this.client=n,this.id=o||"__googleMapsScriptId",this.language=i,this.libraries=s,this.mapIds=a,this.nonce=l,this.region=c,this.retries=u,this.url=h,this.version=p,O.instance){if(!N(this.options,O.instance.options))throw new Error(`Loader must not be called again with different options. ${JSON.stringify(this.options)} !== ${JSON.stringify(O.instance.options)}`);return O.instance}O.instance=this;}get options(){return {version:this.version,apiKey:this.apiKey,channel:this.channel,client:this.client,id:this.id,libraries:this.libraries,language:this.language,region:this.region,mapIds:this.mapIds,nonce:this.nonce,url:this.url,authReferrerPolicy:this.authReferrerPolicy}}get status(){return this.errors.length?I.FAILURE:this.done?I.SUCCESS:this.loading?I.LOADING:I.INITIALIZED}get failed(){return this.done&&!this.loading&&this.errors.length>=this.retries+1}createUrl(){let t=this.url;return t+="?callback=__googleMapsCallback&loading=async",this.apiKey&&(t+=`&key=${this.apiKey}`),this.channel&&(t+=`&channel=${this.channel}`),this.client&&(t+=`&client=${this.client}`),this.libraries.length>0&&(t+=`&libraries=${this.libraries.join(",")}`),this.language&&(t+=`&language=${this.language}`),this.region&&(t+=`&region=${this.region}`),this.version&&(t+=`&v=${this.version}`),this.mapIds&&(t+=`&map_ids=${this.mapIds.join(",")}`),this.authReferrerPolicy&&(t+=`&auth_referrer_policy=${this.authReferrerPolicy}`),t}deleteScript(){const t=document.getElementById(this.id);t&&t.remove();}load(){return this.loadPromise()}loadPromise(){return new Promise((t,e)=>{this.loadCallback(r=>{r?e(r.error):t(window.google);});})}importLibrary(t){return this.execute(),google.maps.importLibrary(t)}loadCallback(t){this.callbacks.push(t),this.execute();}setScript(){var t,e;if(document.getElementById(this.id))return void this.callback();const r={key:this.apiKey,channel:this.channel,client:this.client,libraries:this.libraries.length&&this.libraries,v:this.version,mapIds:this.mapIds,language:this.language,region:this.region,authReferrerPolicy:this.authReferrerPolicy};Object.keys(r).forEach(t=>!r[t]&&delete r[t]),(null===(e=null===(t=null===window||void 0===window?void 0:window.google)||void 0===t?void 0:t.maps)||void 0===e?void 0:e.importLibrary)||(t=>{let e,r,n,o="The Google Maps JavaScript API",i="google",s="importLibrary",a="__ib__",l=document,c=window;c=c[i]||(c[i]={});const u=c.maps||(c.maps={}),h=new Set,p=new URLSearchParams,d=()=>e||(e=new Promise((s,c)=>{return d=this,m=function*(){var d;for(n in yield r=l.createElement("script"),r.id=this.id,p.set("libraries",[...h]+""),t)p.set(n.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),t[n]);p.set("callback",i+".maps."+a),r.src=this.url+"?"+p,u[a]=s,r.onerror=()=>e=c(Error(o+" could not load.")),r.nonce=this.nonce||(null===(d=l.querySelector("script[nonce]"))||void 0===d?void 0:d.nonce)||"",l.head.append(r);},new((f=void 0)||(f=Promise))(function(t,e){function r(t){try{o(m.next(t));}catch(t){e(t);}}function n(t){try{o(m.throw(t));}catch(t){e(t);}}function o(e){var o;e.done?t(e.value):(o=e.value,o instanceof f?o:new f(function(t){t(o);})).then(r,n);}o((m=m.apply(d,[])).next());});var d,f,m;}));u[s]?console.warn(o+" only loads once. Ignoring:",t):u[s]=(t,...e)=>h.add(t)&&d().then(()=>u[s](t,...e));})(r);const n=this.libraries.map(t=>this.importLibrary(t));n.length||n.push(this.importLibrary("core")),Promise.all(n).then(()=>this.callback(),t=>{const e=new ErrorEvent("error",{error:t});this.loadErrorCallback(e);});}reset(){this.deleteScript(),this.done=false,this.loading=false,this.errors=[],this.onerrorEvent=null;}resetIfRetryingFailed(){this.failed&&this.reset();}loadErrorCallback(t){if(this.errors.push(t),this.errors.length<=this.retries){const t=this.errors.length*Math.pow(2,this.errors.length);console.error(`Failed to load Google Maps script, retrying in ${t} ms.`),setTimeout(()=>{this.deleteScript(),this.setScript();},t);}else this.onerrorEvent=t,this.callback();}callback(){this.done=true,this.loading=false,this.callbacks.forEach(t=>{t(this.onerrorEvent);}),this.callbacks=[];}execute(){if(this.resetIfRetryingFailed(),this.done)this.callback();else {if(window.google&&window.google.maps&&window.google.maps.version)return console.warn("Google Maps already loaded outside @googlemaps/js-api-loader.This may result in undesirable behavior as options and script parameters may not match."),void this.callback();this.loading||(this.loading=true,this.setScript());}}}var F=/*#__PURE__*/function(t){function e(e){var r;return (r=t.call(this,e)||this).loader=null,r.geocoder=null,"undefined"!=typeof window&&(r.loader=new O(e).load().then(function(t){var e=new t.maps.Geocoder;return r.geocoder=e,e})),r}r$2(e,t);var n=e.prototype;return n.endpoint=function(t){throw new Error("Method not implemented.")},n.parse=function(t){return t.data.results.map(function(t){var e=t.geometry.location.toJSON(),r=e.lat,n=e.lng,o=t.geometry.viewport.toJSON();return {x:n,y:r,label:t.formatted_address,bounds:[[o.south,o.west],[o.north,o.east]],raw:t}})},n.search=function(t){try{var e=function(e){if(!e)throw new Error("GoogleMaps GeoCoder is not loaded. Are you trying to run this server side?");return Promise.resolve(e.geocode({address:t.query},function(t){return {results:t}}).catch(function(t){return "ZERO_RESULTS"!==t.code&&console.error(t.code+": "+t.message),{results:[]}})).then(function(t){return r.parse({data:t})})},r=this,n=r.geocoder;return Promise.resolve(n?e(n):Promise.resolve(r.loader).then(e))}catch(t){return Promise.reject(t)}},e}(x$1),_=/*#__PURE__*/function(t){function e(e){var r;void 0===e&&(e={}),(r=t.call(this,e)||this).searchUrl=void 0,r.reverseUrl=void 0;var n="https://nominatim.openstreetmap.org";return r.searchUrl=e.searchUrl||n+"/search",r.reverseUrl=e.reverseUrl||n+"/reverse",r}r$2(e,t);var n=e.prototype;return n.endpoint=function(t){var e=t.query,r=t.type,n="string"==typeof e?{q:e}:e;return n.format="json",this.getUrl(r===h.REVERSE?this.reverseUrl:this.searchUrl,n)},n.parse=function(t){return (Array.isArray(t.data)?t.data:[t.data]).map(function(t){return {x:Number(t.lon),y:Number(t.lat),label:t.display_name,bounds:[[parseFloat(t.boundingbox[0]),parseFloat(t.boundingbox[2])],[parseFloat(t.boundingbox[1]),parseFloat(t.boundingbox[3])]],raw:t}})},e}(x$1);
 
 const token = '%[a-f0-9]{2}';
 const singleMatcher = new RegExp('(' + token + ')|([^%]+?)', 'gi');
@@ -19658,12 +19721,32 @@ function parseValue(value, options, type) {
 		return type(value);
 	}
 
-	if (options.parseBooleans && value !== null && (value.toLowerCase() === 'true' || value.toLowerCase() === 'false')) {
+	if (type === 'boolean' && value === null) {
+		return true;
+	}
+
+	if (type === 'boolean' && value !== null && (value.toLowerCase() === 'true' || value.toLowerCase() === 'false')) {
 		return value.toLowerCase() === 'true';
+	}
+
+	if (type === 'boolean' && value !== null && (value.toLowerCase() === '1' || value.toLowerCase() === '0')) {
+		return value.toLowerCase() === '1';
+	}
+
+	if (type === 'string[]' && options.arrayFormat !== 'none' && typeof value === 'string') {
+		return [value];
+	}
+
+	if (type === 'number[]' && options.arrayFormat !== 'none' && !Number.isNaN(Number(value)) && (typeof value === 'string' && value.trim() !== '')) {
+		return [Number(value)];
 	}
 
 	if (type === 'number' && !Number.isNaN(Number(value)) && (typeof value === 'string' && value.trim() !== '')) {
 		return Number(value);
+	}
+
+	if (options.parseBooleans && value !== null && (value.toLowerCase() === 'true' || value.toLowerCase() === 'false')) {
+		return value.toLowerCase() === 'true';
 	}
 
 	if (options.parseNumbers && !Number.isNaN(Number(value)) && (typeof value === 'string' && value.trim() !== '')) {
@@ -19849,7 +19932,7 @@ function stringifyUrl(object, options) {
 	const queryFromUrl = extract(object.url);
 
 	const query = {
-		...parse$2(queryFromUrl, {sort: false}),
+		...parse$2(queryFromUrl, {sort: false, ...options}),
 		...object.query,
 	};
 
@@ -23600,15 +23683,12 @@ function requireBundle () {
 var bundleExports = requireBundle();
 
 const node_env = globalThis.process?.env?.NODE_ENV;
-if (!node_env) {
-	console.warn('If bundling, conditions should include development or production. If not bundling, conditions or NODE_ENV should include development or production. See https://www.npmjs.com/package/esm-env for tips on setting conditions in popular bundlers and runtimes.');
-}
-
-var DEV = node_env && !node_env.toLowerCase().includes('prod');
+var DEV = node_env && !node_env.toLowerCase().startsWith('prod');
 
 // Store the references to globals in case someone tries to monkey patch these, causing the below
 // to de-opt (this occurs often when using popular extensions).
 var is_array = Array.isArray;
+var index_of = Array.prototype.indexOf;
 var array_from = Array.from;
 var define_property = Object.defineProperty;
 var get_descriptor = Object.getOwnPropertyDescriptor;
@@ -23616,6 +23696,7 @@ var get_descriptors = Object.getOwnPropertyDescriptors;
 var object_prototype = Object.prototype;
 var array_prototype = Array.prototype;
 var get_prototype_of = Object.getPrototypeOf;
+var is_extensible = Object.isExtensible;
 
 const noop$3 = () => {};
 
@@ -23624,6 +23705,27 @@ function run_all(arr) {
 	for (var i = 0; i < arr.length; i++) {
 		arr[i]();
 	}
+}
+
+/**
+ * TODO replace with Promise.withResolvers once supported widely enough
+ * @template T
+ */
+function deferred() {
+	/** @type {(value: T) => void} */
+	var resolve;
+
+	/** @type {(reason: any) => void} */
+	var reject;
+
+	/** @type {Promise<T>} */
+	var promise = new Promise((res, rej) => {
+		resolve = res;
+		reject = rej;
+	});
+
+	// @ts-expect-error
+	return { promise, resolve, reject };
 }
 
 const DERIVED = 1 << 1;
@@ -23643,16 +23745,341 @@ const DESTROYED = 1 << 14;
 const EFFECT_RAN = 1 << 15;
 /** 'Transparent' effects do not create a transition boundary */
 const EFFECT_TRANSPARENT = 1 << 16;
-const INSPECT_EFFECT = 1 << 18;
-const HEAD_EFFECT = 1 << 19;
-const EFFECT_HAS_DERIVED = 1 << 20;
+const INSPECT_EFFECT = 1 << 17;
+const HEAD_EFFECT = 1 << 18;
+const EFFECT_PRESERVED = 1 << 19;
+const USER_EFFECT = 1 << 20;
+
+// Flags used for async
+const REACTION_IS_UPDATING = 1 << 21;
+const ASYNC = 1 << 22;
+
+const ERROR_VALUE = 1 << 23;
 
 const STATE_SYMBOL = Symbol('$state');
-const STATE_SYMBOL_METADATA = Symbol('$state metadata');
-const LEGACY_PROPS = Symbol('legacy props');
 const LOADING_ATTR_SYMBOL = Symbol('');
+const PROXY_PATH_SYMBOL = Symbol('proxy path');
+
+/** allow users to ignore aborted signal errors if `reason.name === 'StaleReactionError` */
+const STALE_REACTION = new (class StaleReactionError extends Error {
+	name = 'StaleReactionError';
+	message = 'The reaction that called `getAbortSignal()` was re-run or destroyed';
+})();
+
+/* This file is generated by scripts/process-messages/index.js. Do not edit! */
+
+
+/**
+ * Cannot await outside a `<svelte:boundary>` with a `pending` snippet
+ * @returns {never}
+ */
+function await_outside_boundary() {
+	if (DEV) {
+		const error = new Error(`await_outside_boundary\nCannot await outside a \`<svelte:boundary>\` with a \`pending\` snippet\nhttps://svelte.dev/e/await_outside_boundary`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/await_outside_boundary`);
+	}
+}
+
+/**
+ * `%name%(...)` can only be used during component initialisation
+ * @param {string} name
+ * @returns {never}
+ */
+function lifecycle_outside_component(name) {
+	if (DEV) {
+		const error = new Error(`lifecycle_outside_component\n\`${name}(...)\` can only be used during component initialisation\nhttps://svelte.dev/e/lifecycle_outside_component`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/lifecycle_outside_component`);
+	}
+}
+
+/* This file is generated by scripts/process-messages/index.js. Do not edit! */
+
+
+/**
+ * Cannot create a `$derived(...)` with an `await` expression outside of an effect tree
+ * @returns {never}
+ */
+function async_derived_orphan() {
+	if (DEV) {
+		const error = new Error(`async_derived_orphan\nCannot create a \`$derived(...)\` with an \`await\` expression outside of an effect tree\nhttps://svelte.dev/e/async_derived_orphan`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/async_derived_orphan`);
+	}
+}
+
+/**
+ * Using `bind:value` together with a checkbox input is not allowed. Use `bind:checked` instead
+ * @returns {never}
+ */
+function bind_invalid_checkbox_value() {
+	if (DEV) {
+		const error = new Error(`bind_invalid_checkbox_value\nUsing \`bind:value\` together with a checkbox input is not allowed. Use \`bind:checked\` instead\nhttps://svelte.dev/e/bind_invalid_checkbox_value`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/bind_invalid_checkbox_value`);
+	}
+}
+
+/**
+ * A derived value cannot reference itself recursively
+ * @returns {never}
+ */
+function derived_references_self() {
+	if (DEV) {
+		const error = new Error(`derived_references_self\nA derived value cannot reference itself recursively\nhttps://svelte.dev/e/derived_references_self`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/derived_references_self`);
+	}
+}
+
+/**
+ * `%rune%` cannot be used inside an effect cleanup function
+ * @param {string} rune
+ * @returns {never}
+ */
+function effect_in_teardown(rune) {
+	if (DEV) {
+		const error = new Error(`effect_in_teardown\n\`${rune}\` cannot be used inside an effect cleanup function\nhttps://svelte.dev/e/effect_in_teardown`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/effect_in_teardown`);
+	}
+}
+
+/**
+ * Effect cannot be created inside a `$derived` value that was not itself created inside an effect
+ * @returns {never}
+ */
+function effect_in_unowned_derived() {
+	if (DEV) {
+		const error = new Error(`effect_in_unowned_derived\nEffect cannot be created inside a \`$derived\` value that was not itself created inside an effect\nhttps://svelte.dev/e/effect_in_unowned_derived`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/effect_in_unowned_derived`);
+	}
+}
+
+/**
+ * `%rune%` can only be used inside an effect (e.g. during component initialisation)
+ * @param {string} rune
+ * @returns {never}
+ */
+function effect_orphan(rune) {
+	if (DEV) {
+		const error = new Error(`effect_orphan\n\`${rune}\` can only be used inside an effect (e.g. during component initialisation)\nhttps://svelte.dev/e/effect_orphan`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/effect_orphan`);
+	}
+}
+
+/**
+ * Maximum update depth exceeded. This typically indicates that an effect reads and writes the same piece of state
+ * @returns {never}
+ */
+function effect_update_depth_exceeded() {
+	if (DEV) {
+		const error = new Error(`effect_update_depth_exceeded\nMaximum update depth exceeded. This typically indicates that an effect reads and writes the same piece of state\nhttps://svelte.dev/e/effect_update_depth_exceeded`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/effect_update_depth_exceeded`);
+	}
+}
+
+/**
+ * Could not `{@render}` snippet due to the expression being `null` or `undefined`. Consider using optional chaining `{@render snippet?.()}`
+ * @returns {never}
+ */
+function invalid_snippet() {
+	if (DEV) {
+		const error = new Error(`invalid_snippet\nCould not \`{@render}\` snippet due to the expression being \`null\` or \`undefined\`. Consider using optional chaining \`{@render snippet?.()}\`\nhttps://svelte.dev/e/invalid_snippet`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/invalid_snippet`);
+	}
+}
+
+/**
+ * The `%rune%` rune is only available inside `.svelte` and `.svelte.js/ts` files
+ * @param {string} rune
+ * @returns {never}
+ */
+function rune_outside_svelte(rune) {
+	if (DEV) {
+		const error = new Error(`rune_outside_svelte\nThe \`${rune}\` rune is only available inside \`.svelte\` and \`.svelte.js/ts\` files\nhttps://svelte.dev/e/rune_outside_svelte`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/rune_outside_svelte`);
+	}
+}
+
+/**
+ * Property descriptors defined on `$state` objects must contain `value` and always be `enumerable`, `configurable` and `writable`.
+ * @returns {never}
+ */
+function state_descriptors_fixed() {
+	if (DEV) {
+		const error = new Error(`state_descriptors_fixed\nProperty descriptors defined on \`$state\` objects must contain \`value\` and always be \`enumerable\`, \`configurable\` and \`writable\`.\nhttps://svelte.dev/e/state_descriptors_fixed`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/state_descriptors_fixed`);
+	}
+}
+
+/**
+ * Cannot set prototype of `$state` object
+ * @returns {never}
+ */
+function state_prototype_fixed() {
+	if (DEV) {
+		const error = new Error(`state_prototype_fixed\nCannot set prototype of \`$state\` object\nhttps://svelte.dev/e/state_prototype_fixed`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/state_prototype_fixed`);
+	}
+}
+
+/**
+ * Updating state inside `$derived(...)`, `$inspect(...)` or a template expression is forbidden. If the value should not be reactive, declare it without `$state`
+ * @returns {never}
+ */
+function state_unsafe_mutation() {
+	if (DEV) {
+		const error = new Error(`state_unsafe_mutation\nUpdating state inside \`$derived(...)\`, \`$inspect(...)\` or a template expression is forbidden. If the value should not be reactive, declare it without \`$state\`\nhttps://svelte.dev/e/state_unsafe_mutation`);
+
+		error.name = 'Svelte error';
+
+		throw error;
+	} else {
+		throw new Error(`https://svelte.dev/e/state_unsafe_mutation`);
+	}
+}
+
+const EACH_ITEM_REACTIVE = 1;
+const EACH_INDEX_REACTIVE = 1 << 1;
+/** See EachBlock interface metadata.is_controlled for an explanation what this is */
+const EACH_IS_CONTROLLED = 1 << 2;
+const EACH_IS_ANIMATED = 1 << 3;
+const EACH_ITEM_IMMUTABLE = 1 << 4;
+
+const TEMPLATE_FRAGMENT = 1;
+const TEMPLATE_USE_IMPORT_NODE = 1 << 1;
+
+const UNINITIALIZED = Symbol();
+
+// Dev-time component properties
+const FILENAME = Symbol('filename');
+
+const NAMESPACE_HTML = 'http://www.w3.org/1999/xhtml';
+
+/* This file is generated by scripts/process-messages/index.js. Do not edit! */
+
+
+var bold = 'font-weight: bold';
+var normal = 'font-weight: normal';
+
+/**
+ * Detected reactivity loss when reading `%name%`. This happens when state is read in an async function after an earlier `await`
+ * @param {string} name
+ */
+function await_reactivity_loss(name) {
+	if (DEV) {
+		console.warn(`%c[svelte] await_reactivity_loss\n%cDetected reactivity loss when reading \`${name}\`. This happens when state is read in an async function after an earlier \`await\`\nhttps://svelte.dev/e/await_reactivity_loss`, bold, normal);
+	} else {
+		console.warn(`https://svelte.dev/e/await_reactivity_loss`);
+	}
+}
+
+/**
+ * Tried to unmount a component that was not mounted
+ */
+function lifecycle_double_unmount() {
+	if (DEV) {
+		console.warn(`%c[svelte] lifecycle_double_unmount\n%cTried to unmount a component that was not mounted\nhttps://svelte.dev/e/lifecycle_double_unmount`, bold, normal);
+	} else {
+		console.warn(`https://svelte.dev/e/lifecycle_double_unmount`);
+	}
+}
+
+/**
+ * The `value` property of a `<select multiple>` element should be an array, but it received a non-array value. The selection will be kept as is.
+ */
+function select_multiple_invalid_value() {
+	if (DEV) {
+		console.warn(`%c[svelte] select_multiple_invalid_value\n%cThe \`value\` property of a \`<select multiple>\` element should be an array, but it received a non-array value. The selection will be kept as is.\nhttps://svelte.dev/e/select_multiple_invalid_value`, bold, normal);
+	} else {
+		console.warn(`https://svelte.dev/e/select_multiple_invalid_value`);
+	}
+}
+
+/**
+ * Reactive `$state(...)` proxies and the values they proxy have different identities. Because of this, comparisons with `%operator%` will produce unexpected results
+ * @param {string} operator
+ */
+function state_proxy_equality_mismatch(operator) {
+	if (DEV) {
+		console.warn(`%c[svelte] state_proxy_equality_mismatch\n%cReactive \`$state(...)\` proxies and the values they proxy have different identities. Because of this, comparisons with \`${operator}\` will produce unexpected results\nhttps://svelte.dev/e/state_proxy_equality_mismatch`, bold, normal);
+	} else {
+		console.warn(`https://svelte.dev/e/state_proxy_equality_mismatch`);
+	}
+}
+
+/** @import { TemplateNode } from '#client' */
+
+
+/**
+ * Use this variable to guard everything related to hydration code so it can be treeshaken out
+ * if the user doesn't use the `hydrate` method and these code paths are therefore not needed.
+ */
+let hydrating = false;
 
 /** @import { Equals } from '#client' */
+
 /** @type {Equals} */
 function equals(value) {
 	return value === this.v;
@@ -23674,226 +24101,1305 @@ function safe_equals(value) {
 	return !safe_not_equal(value, this.v);
 }
 
-/* This file is generated by scripts/process-messages/index.js. Do not edit! */
+let tracing_mode_flag = false;
 
+/** @import { Derived, Reaction, Value } from '#client' */
 
 /**
- * Using `bind:value` together with a checkbox input is not allowed. Use `bind:checked` instead
- * @returns {never}
+ * @param {string} label
+ * @returns {Error & { stack: string } | null}
  */
-function bind_invalid_checkbox_value() {
-	if (DEV) {
-		const error = new Error(`bind_invalid_checkbox_value\nUsing \`bind:value\` together with a checkbox input is not allowed. Use \`bind:checked\` instead`);
+function get_stack(label) {
+	let error = Error();
+	const stack = error.stack;
 
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("bind_invalid_checkbox_value");
+	if (!stack) return null;
+
+	const lines = stack.split('\n');
+	const new_lines = ['\n'];
+
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
+
+		if (line === 'Error') {
+			continue;
+		}
+		if (line.includes('validate_each_keys')) {
+			return null;
+		}
+		if (line.includes('svelte/src/internal')) {
+			continue;
+		}
+		new_lines.push(line);
+	}
+
+	if (new_lines.length === 1) {
+		return null;
+	}
+
+	define_property(error, 'stack', {
+		value: new_lines.join('\n')
+	});
+
+	define_property(error, 'name', {
+		// 'Error' suffix is required for stack traces to be rendered properly
+		value: `${label}Error`
+	});
+
+	return /** @type {Error & { stack: string }} */ (error);
+}
+
+/**
+ * @param {Value} source
+ * @param {string} label
+ */
+function tag(source, label) {
+	source.label = label;
+	tag_proxy(source.v, label);
+
+	return source;
+}
+
+/**
+ * @param {unknown} value
+ * @param {string} label
+ */
+function tag_proxy(value, label) {
+	// @ts-expect-error
+	value?.[PROXY_PATH_SYMBOL]?.(label);
+	return value;
+}
+
+/** @import { ComponentContext, DevStackEntry, Effect } from '#client' */
+
+/** @type {ComponentContext | null} */
+let component_context = null;
+
+/** @param {ComponentContext | null} context */
+function set_component_context(context) {
+	component_context = context;
+}
+
+/** @type {DevStackEntry | null} */
+let dev_stack = null;
+
+/** @param {DevStackEntry | null} stack */
+function set_dev_stack(stack) {
+	dev_stack = stack;
+}
+
+/**
+ * The current component function. Different from current component context:
+ * ```html
+ * <!-- App.svelte -->
+ * <Foo>
+ *   <Bar /> <!-- context == Foo.svelte, function == App.svelte -->
+ * </Foo>
+ * ```
+ * @type {ComponentContext['function']}
+ */
+let dev_current_component_function = null;
+
+/** @param {ComponentContext['function']} fn */
+function set_dev_current_component_function(fn) {
+	dev_current_component_function = fn;
+}
+
+/**
+ * @param {Record<string, unknown>} props
+ * @param {any} runes
+ * @param {Function} [fn]
+ * @returns {void}
+ */
+function push(props, runes = false, fn) {
+	component_context = {
+		p: component_context,
+		c: null,
+		e: null,
+		s: props,
+		x: null,
+		l: null
+	};
+
+	if (DEV) {
+		// component function
+		component_context.function = fn;
+		dev_current_component_function = fn;
 	}
 }
 
 /**
- * A derived value cannot reference itself recursively
- * @returns {never}
+ * @template {Record<string, any>} T
+ * @param {T} [component]
+ * @returns {T}
  */
-function derived_references_self() {
-	if (DEV) {
-		const error = new Error(`derived_references_self\nA derived value cannot reference itself recursively`);
+function pop(component) {
+	var context = /** @type {ComponentContext} */ (component_context);
+	var effects = context.e;
 
-		error.name = 'Svelte error';
-		throw error;
+	if (effects !== null) {
+		context.e = null;
+
+		for (var fn of effects) {
+			create_user_effect(fn);
+		}
+	}
+
+	if (component !== undefined) {
+		context.x = component;
+	}
+
+	component_context = context.p;
+
+	if (DEV) {
+		dev_current_component_function = component_context?.function ?? null;
+	}
+
+	return component ?? /** @type {T} */ ({});
+}
+
+/** @returns {boolean} */
+function is_runes() {
+	return true;
+}
+
+/** @import { Derived, Effect } from '#client' */
+/** @import { Boundary } from './dom/blocks/boundary.js' */
+
+const adjustments = new WeakMap();
+
+/**
+ * @param {unknown} error
+ */
+function handle_error(error) {
+	var effect = active_effect;
+
+	// for unowned deriveds, don't throw until we read the value
+	if (effect === null) {
+		/** @type {Derived} */ (active_reaction).f |= ERROR_VALUE;
+		return error;
+	}
+
+	if (DEV && error instanceof Error && !adjustments.has(error)) {
+		adjustments.set(error, get_adjustments(error, effect));
+	}
+
+	if ((effect.f & EFFECT_RAN) === 0) {
+		// if the error occurred while creating this subtree, we let it
+		// bubble up until it hits a boundary that can handle it
+		if ((effect.f & BOUNDARY_EFFECT) === 0) {
+			if (!effect.parent && error instanceof Error) {
+				apply_adjustments(error);
+			}
+
+			throw error;
+		}
+
+		/** @type {Boundary} */ (effect.b).error(error);
 	} else {
-		// TODO print a link to the documentation
-		throw new Error("derived_references_self");
+		// otherwise we bubble up the effect tree ourselves
+		invoke_error_boundary(error, effect);
 	}
 }
 
 /**
- * `%rune%` cannot be used inside an effect cleanup function
- * @param {string} rune
- * @returns {never}
+ * @param {unknown} error
+ * @param {Effect | null} effect
  */
-function effect_in_teardown(rune) {
-	if (DEV) {
-		const error = new Error(`effect_in_teardown\n\`${rune}\` cannot be used inside an effect cleanup function`);
+function invoke_error_boundary(error, effect) {
+	while (effect !== null) {
+		if ((effect.f & BOUNDARY_EFFECT) !== 0) {
+			try {
+				/** @type {Boundary} */ (effect.b).error(error);
+				return;
+			} catch (e) {
+				error = e;
+			}
+		}
 
-		error.name = 'Svelte error';
-		throw error;
+		effect = effect.parent;
+	}
+
+	if (error instanceof Error) {
+		apply_adjustments(error);
+	}
+
+	throw error;
+}
+
+/**
+ * Add useful information to the error message/stack in development
+ * @param {Error} error
+ * @param {Effect} effect
+ */
+function get_adjustments(error, effect) {
+	const message_descriptor = get_descriptor(error, 'message');
+
+	// if the message was already changed and it's not configurable we can't change it
+	// or it will throw a different error swallowing the original error
+	if (message_descriptor && !message_descriptor.configurable) return;
+
+	var indent = is_firefox ? '  ' : '\t';
+	var component_stack = `\n${indent}in ${effect.fn?.name || '<unknown>'}`;
+	var context = effect.ctx;
+
+	while (context !== null) {
+		component_stack += `\n${indent}in ${context.function?.[FILENAME].split('/').pop()}`;
+		context = context.p;
+	}
+
+	return {
+		message: error.message + `\n${component_stack}\n`,
+		stack: error.stack
+			?.split('\n')
+			.filter((line) => !line.includes('svelte/src/internal'))
+			.join('\n')
+	};
+}
+
+/**
+ * @param {Error} error
+ */
+function apply_adjustments(error) {
+	const adjusted = adjustments.get(error);
+
+	if (adjusted) {
+		define_property(error, 'message', {
+			value: adjusted.message
+		});
+
+		define_property(error, 'stack', {
+			value: adjusted.stack
+		});
+	}
+}
+
+/** @type {Array<() => void>} */
+let micro_tasks = [];
+
+/** @type {Array<() => void>} */
+let idle_tasks = [];
+
+function run_micro_tasks() {
+	var tasks = micro_tasks;
+	micro_tasks = [];
+	run_all(tasks);
+}
+
+function run_idle_tasks() {
+	var tasks = idle_tasks;
+	idle_tasks = [];
+	run_all(tasks);
+}
+
+/**
+ * @param {() => void} fn
+ */
+function queue_micro_task(fn) {
+	if (micro_tasks.length === 0) {
+		queueMicrotask(run_micro_tasks);
+	}
+
+	micro_tasks.push(fn);
+}
+
+/**
+ * Synchronously run any queued tasks.
+ */
+function flush_tasks() {
+	if (micro_tasks.length > 0) {
+		run_micro_tasks();
+	}
+
+	if (idle_tasks.length > 0) {
+		run_idle_tasks();
+	}
+}
+
+/** @import { Effect, Source, TemplateNode, } from '#client' */
+
+function get_pending_boundary() {
+	var boundary = /** @type {Effect} */ (active_effect).b;
+
+	while (boundary !== null && !boundary.has_pending_snippet()) {
+		boundary = boundary.parent;
+	}
+
+	if (boundary === null) {
+		await_outside_boundary();
+	}
+
+	return boundary;
+}
+
+/** @import { Derived, Effect, Source } from '#client' */
+/** @import { Batch } from './batch.js'; */
+
+/** @type {Effect | null} */
+let current_async_effect = null;
+
+/** @param {Effect | null} v */
+function set_from_async_derived(v) {
+	current_async_effect = v;
+}
+
+const recent_async_deriveds = new Set();
+
+/**
+ * @template V
+ * @param {() => V} fn
+ * @returns {Derived<V>}
+ */
+/*#__NO_SIDE_EFFECTS__*/
+function derived(fn) {
+	var flags = DERIVED | DIRTY;
+	var parent_derived =
+		active_reaction !== null && (active_reaction.f & DERIVED) !== 0
+			? /** @type {Derived} */ (active_reaction)
+			: null;
+
+	if (active_effect === null || (parent_derived !== null && (parent_derived.f & UNOWNED) !== 0)) {
+		flags |= UNOWNED;
 	} else {
-		// TODO print a link to the documentation
-		throw new Error("effect_in_teardown");
+		// Since deriveds are evaluated lazily, any effects created inside them are
+		// created too late to ensure that the parent effect is added to the tree
+		active_effect.f |= EFFECT_PRESERVED;
+	}
+
+	/** @type {Derived<V>} */
+	const signal = {
+		ctx: component_context,
+		deps: null,
+		effects: null,
+		equals,
+		f: flags,
+		fn,
+		reactions: null,
+		rv: 0,
+		v: /** @type {V} */ (UNINITIALIZED),
+		wv: 0,
+		parent: parent_derived ?? active_effect,
+		ac: null
+	};
+
+	return signal;
+}
+
+/**
+ * @template V
+ * @param {() => V | Promise<V>} fn
+ * @param {string} [location] If provided, print a warning if the value is not read immediately after update
+ * @returns {Promise<Source<V>>}
+ */
+/*#__NO_SIDE_EFFECTS__*/
+function async_derived(fn, location) {
+	let parent = /** @type {Effect | null} */ (active_effect);
+
+	if (parent === null) {
+		async_derived_orphan();
+	}
+
+	var boundary = /** @type {Boundary} */ (parent.b);
+
+	var promise = /** @type {Promise<V>} */ (/** @type {unknown} */ (undefined));
+	var signal = source(/** @type {V} */ (UNINITIALIZED));
+
+	/** @type {Promise<V> | null} */
+	var prev = null;
+
+	// only suspend in async deriveds created on initialisation
+	var should_suspend = !active_reaction;
+
+	async_effect(() => {
+		if (DEV) current_async_effect = active_effect;
+
+		try {
+			var p = fn();
+			// Make sure to always access the then property to read any signals
+			// it might access, so that we track them as dependencies.
+			if (prev) Promise.resolve(p).catch(() => {}); // avoid unhandled rejection
+		} catch (error) {
+			p = Promise.reject(error);
+		}
+
+		if (DEV) current_async_effect = null;
+
+		var r = () => p;
+		promise = prev?.then(r, r) ?? Promise.resolve(p);
+
+		prev = promise;
+
+		var batch = /** @type {Batch} */ (current_batch);
+		var pending = boundary.pending;
+
+		if (should_suspend) {
+			boundary.update_pending_count(1);
+			if (!pending) batch.increment();
+		}
+
+		/**
+		 * @param {any} value
+		 * @param {unknown} error
+		 */
+		const handler = (value, error = undefined) => {
+			prev = null;
+
+			current_async_effect = null;
+
+			if (!pending) batch.activate();
+
+			if (error) {
+				if (error !== STALE_REACTION) {
+					signal.f |= ERROR_VALUE;
+
+					// @ts-expect-error the error is the wrong type, but we don't care
+					internal_set(signal, error);
+				}
+			} else {
+				if ((signal.f & ERROR_VALUE) !== 0) {
+					signal.f ^= ERROR_VALUE;
+				}
+
+				internal_set(signal, value);
+			}
+
+			if (should_suspend) {
+				boundary.update_pending_count(-1);
+				if (!pending) batch.decrement();
+			}
+
+			unset_context();
+		};
+
+		promise.then(handler, (e) => handler(null, e || 'unknown'));
+
+		if (batch) {
+			return () => {
+				queueMicrotask(() => batch.neuter());
+			};
+		}
+	});
+
+	if (DEV) {
+		// add a flag that lets this be printed as a derived
+		// when using `$inspect.trace()`
+		signal.f |= ASYNC;
+	}
+
+	return new Promise((fulfil) => {
+		/** @param {Promise<V>} p */
+		function next(p) {
+			function go() {
+				if (p === promise) {
+					fulfil(signal);
+				} else {
+					// if the effect re-runs before the initial promise
+					// resolves, delay resolution until we have a value
+					next(promise);
+				}
+			}
+
+			p.then(go, go);
+		}
+
+		next(promise);
+	});
+}
+
+/**
+ * @template V
+ * @param {() => V} fn
+ * @returns {Derived<V>}
+ */
+/*#__NO_SIDE_EFFECTS__*/
+function user_derived(fn) {
+	const d = derived(fn);
+
+	push_reaction_value(d);
+
+	return d;
+}
+
+/**
+ * @template V
+ * @param {() => V} fn
+ * @returns {Derived<V>}
+ */
+/*#__NO_SIDE_EFFECTS__*/
+function derived_safe_equal(fn) {
+	const signal = derived(fn);
+	signal.equals = safe_equals;
+	return signal;
+}
+
+/**
+ * @param {Derived} derived
+ * @returns {void}
+ */
+function destroy_derived_effects(derived) {
+	var effects = derived.effects;
+
+	if (effects !== null) {
+		derived.effects = null;
+
+		for (var i = 0; i < effects.length; i += 1) {
+			destroy_effect(/** @type {Effect} */ (effects[i]));
+		}
 	}
 }
 
 /**
- * Effect cannot be created inside a `$derived` value that was not itself created inside an effect
- * @returns {never}
+ * The currently updating deriveds, used to detect infinite recursion
+ * in dev mode and provide a nicer error than 'too much recursion'
+ * @type {Derived[]}
  */
-function effect_in_unowned_derived() {
-	if (DEV) {
-		const error = new Error(`effect_in_unowned_derived\nEffect cannot be created inside a \`$derived\` value that was not itself created inside an effect`);
+let stack = [];
 
-		error.name = 'Svelte error';
-		throw error;
+/**
+ * @param {Derived} derived
+ * @returns {Effect | null}
+ */
+function get_derived_parent_effect(derived) {
+	var parent = derived.parent;
+	while (parent !== null) {
+		if ((parent.f & DERIVED) === 0) {
+			return /** @type {Effect} */ (parent);
+		}
+		parent = parent.parent;
+	}
+	return null;
+}
+
+/**
+ * @template T
+ * @param {Derived} derived
+ * @returns {T}
+ */
+function execute_derived(derived) {
+	var value;
+	var prev_active_effect = active_effect;
+
+	set_active_effect(get_derived_parent_effect(derived));
+
+	if (DEV) {
+		let prev_inspect_effects = inspect_effects;
+		set_inspect_effects(new Set());
+		try {
+			if (stack.includes(derived)) {
+				derived_references_self();
+			}
+
+			stack.push(derived);
+
+			destroy_derived_effects(derived);
+			value = update_reaction(derived);
+		} finally {
+			set_active_effect(prev_active_effect);
+			set_inspect_effects(prev_inspect_effects);
+			stack.pop();
+		}
 	} else {
-		// TODO print a link to the documentation
-		throw new Error("effect_in_unowned_derived");
+		try {
+			destroy_derived_effects(derived);
+			value = update_reaction(derived);
+		} finally {
+			set_active_effect(prev_active_effect);
+		}
+	}
+
+	return value;
+}
+
+/**
+ * @param {Derived} derived
+ * @returns {void}
+ */
+function update_derived(derived) {
+	var value = execute_derived(derived);
+
+	if (!derived.equals(value)) {
+		derived.v = value;
+		derived.wv = increment_write_version();
+	}
+
+	// don't mark derived clean if we're reading it inside a
+	// cleanup function, or it will cache a stale value
+	if (is_destroying_effect) {
+		return;
+	}
+
+	{
+		var status =
+			(skip_reaction || (derived.f & UNOWNED) !== 0) && derived.deps !== null ? MAYBE_DIRTY : CLEAN;
+
+		set_signal_status(derived, status);
+	}
+}
+
+/** @import { Effect, Value } from '#client' */
+
+
+/**
+ *
+ * @param {Array<() => any>} sync
+ * @param {Array<() => Promise<any>>} async
+ * @param {(values: Value[]) => any} fn
+ */
+function flatten(sync, async, fn) {
+	const d = derived ;
+
+	if (async.length === 0) {
+		fn(sync.map(d));
+		return;
+	}
+
+	var batch = current_batch;
+	var parent = /** @type {Effect} */ (active_effect);
+
+	var restore = capture();
+	var boundary = get_pending_boundary();
+
+	Promise.all(async.map((expression) => async_derived(expression)))
+		.then((result) => {
+			batch?.activate();
+
+			restore();
+
+			try {
+				fn([...sync.map(d), ...result]);
+			} catch (error) {
+				// ignore errors in blocks that have already been destroyed
+				if ((parent.f & DESTROYED) === 0) {
+					invoke_error_boundary(error, parent);
+				}
+			}
+
+			batch?.deactivate();
+			unset_context();
+		})
+		.catch((error) => {
+			boundary.error(error);
+		});
+}
+
+/**
+ * Captures the current effect context so that we can restore it after
+ * some asynchronous work has happened (so that e.g. `await a + b`
+ * causes `b` to be registered as a dependency).
+ */
+function capture() {
+	var previous_effect = active_effect;
+	var previous_reaction = active_reaction;
+	var previous_component_context = component_context;
+	var previous_batch = current_batch;
+
+	return function restore() {
+		set_active_effect(previous_effect);
+		set_active_reaction(previous_reaction);
+		set_component_context(previous_component_context);
+		previous_batch?.activate();
+
+		if (DEV) {
+			set_from_async_derived(null);
+		}
+	};
+}
+
+function unset_context() {
+	set_active_effect(null);
+	set_active_reaction(null);
+	set_component_context(null);
+	if (DEV) set_from_async_derived(null);
+}
+
+/** @import { Derived, Effect, Source } from '#client' */
+
+/** @type {Set<Batch>} */
+const batches = new Set();
+
+/** @type {Batch | null} */
+let current_batch = null;
+
+/**
+ * This is needed to avoid overwriting inputs in non-async mode
+ * TODO 6.0 remove this, as non-async mode will go away
+ * @type {Batch | null}
+ */
+let previous_batch = null;
+
+/** @type {Set<() => void>} */
+let effect_pending_updates = new Set();
+
+/** @type {Array<() => void>} */
+let tasks = [];
+
+function dequeue() {
+	const task = /** @type {() => void} */ (tasks.shift());
+
+	if (tasks.length > 0) {
+		queueMicrotask(dequeue);
+	}
+
+	task();
+}
+
+/** @type {Effect[]} */
+let queued_root_effects = [];
+
+/** @type {Effect | null} */
+let last_scheduled_effect = null;
+
+let is_flushing = false;
+let is_flushing_sync = false;
+
+class Batch {
+	/**
+	 * The current values of any sources that are updated in this batch
+	 * They keys of this map are identical to `this.#previous`
+	 * @type {Map<Source, any>}
+	 */
+	current = new Map();
+
+	/**
+	 * The values of any sources that are updated in this batch _before_ those updates took place.
+	 * They keys of this map are identical to `this.#current`
+	 * @type {Map<Source, any>}
+	 */
+	#previous = new Map();
+
+	/**
+	 * When the batch is committed (and the DOM is updated), we need to remove old branches
+	 * and append new ones by calling the functions added inside (if/each/key/etc) blocks
+	 * @type {Set<() => void>}
+	 */
+	#callbacks = new Set();
+
+	/**
+	 * The number of async effects that are currently in flight
+	 */
+	#pending = 0;
+
+	/**
+	 * A deferred that resolves when the batch is committed, used with `settled()`
+	 * TODO replace with Promise.withResolvers once supported widely enough
+	 * @type {{ promise: Promise<void>, resolve: (value?: any) => void, reject: (reason: unknown) => void } | null}
+	 */
+	#deferred = null;
+
+	/**
+	 * True if an async effect inside this batch resolved and
+	 * its parent branch was already deleted
+	 */
+	#neutered = false;
+
+	/**
+	 * Async effects (created inside `async_derived`) encountered during processing.
+	 * These run after the rest of the batch has updated, since they should
+	 * always have the latest values
+	 * @type {Effect[]}
+	 */
+	#async_effects = [];
+
+	/**
+	 * The same as `#async_effects`, but for effects inside a newly-created
+	 * `<svelte:boundary>` — these do not prevent the batch from committing
+	 * @type {Effect[]}
+	 */
+	#boundary_async_effects = [];
+
+	/**
+	 * Template effects and `$effect.pre` effects, which run when
+	 * a batch is committed
+	 * @type {Effect[]}
+	 */
+	#render_effects = [];
+
+	/**
+	 * The same as `#render_effects`, but for `$effect` (which runs after)
+	 * @type {Effect[]}
+	 */
+	#effects = [];
+
+	/**
+	 * Block effects, which may need to re-run on subsequent flushes
+	 * in order to update internal sources (e.g. each block items)
+	 * @type {Effect[]}
+	 */
+	#block_effects = [];
+
+	/**
+	 * Deferred effects (which run after async work has completed) that are DIRTY
+	 * @type {Effect[]}
+	 */
+	#dirty_effects = [];
+
+	/**
+	 * Deferred effects that are MAYBE_DIRTY
+	 * @type {Effect[]}
+	 */
+	#maybe_dirty_effects = [];
+
+	/**
+	 * A set of branches that still exist, but will be destroyed when this batch
+	 * is committed — we skip over these during `process`
+	 * @type {Set<Effect>}
+	 */
+	skipped_effects = new Set();
+
+	/**
+	 *
+	 * @param {Effect[]} root_effects
+	 */
+	process(root_effects) {
+		queued_root_effects = [];
+
+		previous_batch = null;
+
+		for (const root of root_effects) {
+			this.#traverse_effect_tree(root);
+		}
+
+		// if we didn't start any new async work, and no async work
+		// is outstanding from a previous flush, commit
+		if (this.#async_effects.length === 0 && this.#pending === 0) {
+			this.#commit();
+
+			var render_effects = this.#render_effects;
+			var effects = this.#effects;
+
+			this.#render_effects = [];
+			this.#effects = [];
+			this.#block_effects = [];
+
+			// If sources are written to, then work needs to happen in a separate batch, else prior sources would be mixed with
+			// newly updated sources, which could lead to infinite loops when effects run over and over again.
+			previous_batch = current_batch;
+			current_batch = null;
+
+			flush_queued_effects(render_effects);
+			flush_queued_effects(effects);
+
+			// Reinstate the current batch if there was no new one created, as `process()` runs in a loop in `flush_effects()`.
+			// That method expects `current_batch` to be set, and could run the loop again if effects result in new effects
+			// being scheduled but without writes happening in which case no new batch is created.
+			if (current_batch === null) {
+				current_batch = this;
+			} else {
+				batches.delete(this);
+			}
+
+			this.#deferred?.resolve();
+		} else {
+			this.#defer_effects(this.#render_effects);
+			this.#defer_effects(this.#effects);
+			this.#defer_effects(this.#block_effects);
+		}
+
+		for (const effect of this.#async_effects) {
+			update_effect(effect);
+		}
+
+		for (const effect of this.#boundary_async_effects) {
+			update_effect(effect);
+		}
+
+		this.#async_effects = [];
+		this.#boundary_async_effects = [];
+	}
+
+	/**
+	 * Traverse the effect tree, executing effects or stashing
+	 * them for later execution as appropriate
+	 * @param {Effect} root
+	 */
+	#traverse_effect_tree(root) {
+		root.f ^= CLEAN;
+
+		var effect = root.first;
+
+		while (effect !== null) {
+			var flags = effect.f;
+			var is_branch = (flags & (BRANCH_EFFECT | ROOT_EFFECT)) !== 0;
+			var is_skippable_branch = is_branch && (flags & CLEAN) !== 0;
+
+			var skip = is_skippable_branch || (flags & INERT) !== 0 || this.skipped_effects.has(effect);
+
+			if (!skip && effect.fn !== null) {
+				if (is_branch) {
+					effect.f ^= CLEAN;
+				} else if ((flags & EFFECT) !== 0) {
+					this.#effects.push(effect);
+				} else if ((flags & CLEAN) === 0) {
+					if ((flags & ASYNC) !== 0) {
+						var effects = effect.b?.pending ? this.#boundary_async_effects : this.#async_effects;
+						effects.push(effect);
+					} else if (is_dirty(effect)) {
+						if ((effect.f & BLOCK_EFFECT) !== 0) this.#block_effects.push(effect);
+						update_effect(effect);
+					}
+				}
+
+				var child = effect.first;
+
+				if (child !== null) {
+					effect = child;
+					continue;
+				}
+			}
+
+			var parent = effect.parent;
+			effect = effect.next;
+
+			while (effect === null && parent !== null) {
+				effect = parent.next;
+				parent = parent.parent;
+			}
+		}
+	}
+
+	/**
+	 * @param {Effect[]} effects
+	 */
+	#defer_effects(effects) {
+		for (const e of effects) {
+			const target = (e.f & DIRTY) !== 0 ? this.#dirty_effects : this.#maybe_dirty_effects;
+			target.push(e);
+
+			// mark as clean so they get scheduled if they depend on pending async state
+			set_signal_status(e, CLEAN);
+		}
+
+		effects.length = 0;
+	}
+
+	/**
+	 * Associate a change to a given source with the current
+	 * batch, noting its previous and current values
+	 * @param {Source} source
+	 * @param {any} value
+	 */
+	capture(source, value) {
+		if (!this.#previous.has(source)) {
+			this.#previous.set(source, value);
+		}
+
+		this.current.set(source, source.v);
+	}
+
+	activate() {
+		current_batch = this;
+	}
+
+	deactivate() {
+		current_batch = null;
+		previous_batch = null;
+
+		for (const update of effect_pending_updates) {
+			effect_pending_updates.delete(update);
+			update();
+
+			if (current_batch !== null) {
+				// only do one at a time
+				break;
+			}
+		}
+	}
+
+	neuter() {
+		this.#neutered = true;
+	}
+
+	flush() {
+		if (queued_root_effects.length > 0) {
+			flush_effects();
+		} else {
+			this.#commit();
+		}
+
+		if (current_batch !== this) {
+			// this can happen if a `flushSync` occurred during `flush_effects()`,
+			// which is permitted in legacy mode despite being a terrible idea
+			return;
+		}
+
+		if (this.#pending === 0) {
+			batches.delete(this);
+		}
+
+		this.deactivate();
+	}
+
+	/**
+	 * Append and remove branches to/from the DOM
+	 */
+	#commit() {
+		if (!this.#neutered) {
+			for (const fn of this.#callbacks) {
+				fn();
+			}
+		}
+
+		this.#callbacks.clear();
+	}
+
+	increment() {
+		this.#pending += 1;
+	}
+
+	decrement() {
+		this.#pending -= 1;
+
+		if (this.#pending === 0) {
+			for (const e of this.#dirty_effects) {
+				set_signal_status(e, DIRTY);
+				schedule_effect(e);
+			}
+
+			for (const e of this.#maybe_dirty_effects) {
+				set_signal_status(e, MAYBE_DIRTY);
+				schedule_effect(e);
+			}
+
+			this.#render_effects = [];
+			this.#effects = [];
+
+			this.flush();
+		} else {
+			this.deactivate();
+		}
+	}
+
+	/** @param {() => void} fn */
+	add_callback(fn) {
+		this.#callbacks.add(fn);
+	}
+
+	settled() {
+		return (this.#deferred ??= deferred()).promise;
+	}
+
+	static ensure() {
+		if (current_batch === null) {
+			const batch = (current_batch = new Batch());
+			batches.add(current_batch);
+
+			if (!is_flushing_sync) {
+				Batch.enqueue(() => {
+					if (current_batch !== batch) {
+						// a flushSync happened in the meantime
+						return;
+					}
+
+					batch.flush();
+				});
+			}
+		}
+
+		return current_batch;
+	}
+
+	/** @param {() => void} task */
+	static enqueue(task) {
+		if (tasks.length === 0) {
+			queueMicrotask(dequeue);
+		}
+
+		tasks.unshift(task);
 	}
 }
 
 /**
- * `%rune%` can only be used inside an effect (e.g. during component initialisation)
- * @param {string} rune
- * @returns {never}
+ * Synchronously flush any pending updates.
+ * Returns void if no callback is provided, otherwise returns the result of calling the callback.
+ * @template [T=void]
+ * @param {(() => T) | undefined} [fn]
+ * @returns {T}
  */
-function effect_orphan(rune) {
-	if (DEV) {
-		const error = new Error(`effect_orphan\n\`${rune}\` can only be used inside an effect (e.g. during component initialisation)`);
+function flushSync(fn) {
 
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("effect_orphan");
+	var was_flushing_sync = is_flushing_sync;
+	is_flushing_sync = true;
+
+	try {
+		var result;
+
+		if (fn) ;
+
+		while (true) {
+			flush_tasks();
+
+			if (queued_root_effects.length === 0) {
+				current_batch?.flush();
+
+				// we need to check again, in case we just updated an `$effect.pending()`
+				if (queued_root_effects.length === 0) {
+					// this would be reset in `flush_effects()` but since we are early returning here,
+					// we need to reset it here as well in case the first time there's 0 queued root effects
+					last_scheduled_effect = null;
+
+					return /** @type {T} */ (result);
+				}
+			}
+
+			flush_effects();
+		}
+	} finally {
+		is_flushing_sync = was_flushing_sync;
 	}
+}
+
+function flush_effects() {
+	var was_updating_effect = is_updating_effect;
+	is_flushing = true;
+
+	try {
+		var flush_count = 0;
+		set_is_updating_effect(true);
+
+		while (queued_root_effects.length > 0) {
+			var batch = Batch.ensure();
+
+			if (flush_count++ > 1000) {
+				if (DEV) {
+					var updates = new Map();
+
+					for (const source of batch.current.keys()) {
+						for (const [stack, update] of source.updated ?? []) {
+							var entry = updates.get(stack);
+
+							if (!entry) {
+								entry = { error: update.error, count: 0 };
+								updates.set(stack, entry);
+							}
+
+							entry.count += update.count;
+						}
+					}
+
+					for (const update of updates.values()) {
+						// eslint-disable-next-line no-console
+						console.error(update.error);
+					}
+				}
+
+				infinite_loop_guard();
+			}
+
+			batch.process(queued_root_effects);
+			old_values.clear();
+		}
+	} finally {
+		is_flushing = false;
+		set_is_updating_effect(was_updating_effect);
+
+		last_scheduled_effect = null;
+	}
+}
+
+function infinite_loop_guard() {
+	try {
+		effect_update_depth_exceeded();
+	} catch (error) {
+		if (DEV) {
+			// stack contains no useful information, replace it
+			define_property(error, 'stack', { value: '' });
+		}
+
+		// Best effort: invoke the boundary nearest the most recent
+		// effect and hope that it's relevant to the infinite loop
+		invoke_error_boundary(error, last_scheduled_effect);
+	}
+}
+
+/** @type {Effect[] | null} */
+let eager_block_effects = null;
+
+/**
+ * @param {Array<Effect>} effects
+ * @returns {void}
+ */
+function flush_queued_effects(effects) {
+	var length = effects.length;
+	if (length === 0) return;
+
+	var i = 0;
+
+	while (i < length) {
+		var effect = effects[i++];
+
+		if ((effect.f & (DESTROYED | INERT)) === 0 && is_dirty(effect)) {
+			eager_block_effects = [];
+
+			update_effect(effect);
+
+			// Effects with no dependencies or teardown do not get added to the effect tree.
+			// Deferred effects (e.g. `$effect(...)`) _are_ added to the tree because we
+			// don't know if we need to keep them until they are executed. Doing the check
+			// here (rather than in `update_effect`) allows us to skip the work for
+			// immediate effects.
+			if (effect.deps === null && effect.first === null && effect.nodes_start === null) {
+				// if there's no teardown or abort controller we completely unlink
+				// the effect from the graph
+				if (effect.teardown === null && effect.ac === null) {
+					// remove this effect from the graph
+					unlink_effect(effect);
+				} else {
+					// keep the effect in the graph, but free up some memory
+					effect.fn = null;
+				}
+			}
+
+			// If update_effect() has a flushSync() in it, we may have flushed another flush_queued_effects(),
+			// which already handled this logic and did set eager_block_effects to null.
+			if (eager_block_effects?.length > 0) {
+				// TODO this feels incorrect! it gets the tests passing
+				old_values.clear();
+
+				for (const e of eager_block_effects) {
+					update_effect(e);
+				}
+
+				eager_block_effects = [];
+			}
+		}
+	}
+
+	eager_block_effects = null;
 }
 
 /**
- * Maximum update depth exceeded. This can happen when a reactive block or effect repeatedly sets a new value. Svelte limits the number of nested updates to prevent infinite loops
- * @returns {never}
+ * @param {Effect} signal
+ * @returns {void}
  */
-function effect_update_depth_exceeded() {
-	if (DEV) {
-		const error = new Error(`effect_update_depth_exceeded\nMaximum update depth exceeded. This can happen when a reactive block or effect repeatedly sets a new value. Svelte limits the number of nested updates to prevent infinite loops`);
+function schedule_effect(signal) {
+	var effect = (last_scheduled_effect = signal);
 
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("effect_update_depth_exceeded");
+	while (effect.parent !== null) {
+		effect = effect.parent;
+		var flags = effect.f;
+
+		// if the effect is being scheduled because a parent (each/await/etc) block
+		// updated an internal source, bail out or we'll cause a second flush
+		if (is_flushing && effect === active_effect && (flags & BLOCK_EFFECT) !== 0) {
+			return;
+		}
+
+		if ((flags & (ROOT_EFFECT | BRANCH_EFFECT)) !== 0) {
+			if ((flags & CLEAN) === 0) return;
+			effect.f ^= CLEAN;
+		}
 	}
+
+	queued_root_effects.push(effect);
 }
 
-/**
- * Could not `{@render}` snippet due to the expression being `null` or `undefined`. Consider using optional chaining `{@render snippet?.()}`
- * @returns {never}
- */
-function invalid_snippet() {
-	if (DEV) {
-		const error = new Error(`invalid_snippet\nCould not \`{@render}\` snippet due to the expression being \`null\` or \`undefined\`. Consider using optional chaining \`{@render snippet?.()}\``);
+/** @import { Derived, Effect, Source, Value } from '#client' */
 
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("invalid_snippet");
-	}
-}
-
-/**
- * Cannot do `bind:%key%={undefined}` when `%key%` has a fallback value
- * @param {string} key
- * @returns {never}
- */
-function props_invalid_value(key) {
-	if (DEV) {
-		const error = new Error(`props_invalid_value\nCannot do \`bind:${key}={undefined}\` when \`${key}\` has a fallback value`);
-
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("props_invalid_value");
-	}
-}
-
-/**
- * The `%rune%` rune is only available inside `.svelte` and `.svelte.js/ts` files
- * @param {string} rune
- * @returns {never}
- */
-function rune_outside_svelte(rune) {
-	if (DEV) {
-		const error = new Error(`rune_outside_svelte\nThe \`${rune}\` rune is only available inside \`.svelte\` and \`.svelte.js/ts\` files`);
-
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("rune_outside_svelte");
-	}
-}
-
-/**
- * Property descriptors defined on `$state` objects must contain `value` and always be `enumerable`, `configurable` and `writable`.
- * @returns {never}
- */
-function state_descriptors_fixed() {
-	if (DEV) {
-		const error = new Error(`state_descriptors_fixed\nProperty descriptors defined on \`$state\` objects must contain \`value\` and always be \`enumerable\`, \`configurable\` and \`writable\`.`);
-
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("state_descriptors_fixed");
-	}
-}
-
-/**
- * Cannot set prototype of `$state` object
- * @returns {never}
- */
-function state_prototype_fixed() {
-	if (DEV) {
-		const error = new Error(`state_prototype_fixed\nCannot set prototype of \`$state\` object`);
-
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("state_prototype_fixed");
-	}
-}
-
-/**
- * Reading state that was created inside the same derived is forbidden. Consider using `untrack` to read locally created state
- * @returns {never}
- */
-function state_unsafe_local_read() {
-	if (DEV) {
-		const error = new Error(`state_unsafe_local_read\nReading state that was created inside the same derived is forbidden. Consider using \`untrack\` to read locally created state`);
-
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("state_unsafe_local_read");
-	}
-}
-
-/**
- * Updating state inside a derived or a template expression is forbidden. If the value should not be reactive, declare it without `$state`
- * @returns {never}
- */
-function state_unsafe_mutation() {
-	if (DEV) {
-		const error = new Error(`state_unsafe_mutation\nUpdating state inside a derived or a template expression is forbidden. If the value should not be reactive, declare it without \`$state\``);
-
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("state_unsafe_mutation");
-	}
-}
-
-let legacy_mode_flag = false;
-
-/** @import { Derived, Effect, Reaction, Source, Value } from '#client' */
-
+/** @type {Set<any>} */
 let inspect_effects = new Set();
+
+/** @type {Map<Source, any>} */
+const old_values = new Map();
 
 /**
  * @param {Set<any>} v
@@ -23902,27 +25408,45 @@ function set_inspect_effects(v) {
 	inspect_effects = v;
 }
 
-/**
- * @template V
- * @param {V} v
- * @returns {Source<V>}
- */
-function source(v) {
-	return {
-		f: 0, // TODO ideally we could skip this altogether, but it causes type errors
-		v,
-		reactions: null,
-		equals,
-		version: 0
-	};
+let inspect_effects_deferred = false;
+
+function set_inspect_effects_deferred() {
+	inspect_effects_deferred = true;
 }
 
 /**
  * @template V
  * @param {V} v
+ * @param {Error | null} [stack]
+ * @returns {Source<V>}
  */
-function state(v) {
-	return push_derived_source(source(v));
+// TODO rename this to `state` throughout the codebase
+function source(v, stack) {
+	/** @type {Value} */
+	var signal = {
+		f: 0, // TODO ideally we could skip this altogether, but it causes type errors
+		v,
+		reactions: null,
+		equals,
+		rv: 0,
+		wv: 0
+	};
+
+	return signal;
+}
+
+/**
+ * @template V
+ * @param {V} v
+ * @param {Error | null} [stack]
+ */
+/*#__NO_SIDE_EFFECTS__*/
+function state(v, stack) {
+	const s = source(v);
+
+	push_reaction_value(s);
+
+	return s;
 }
 
 /**
@@ -23932,7 +25456,7 @@ function state(v) {
  * @returns {Source<V>}
  */
 /*#__NO_SIDE_EFFECTS__*/
-function mutable_source(initial_value, immutable = false) {
+function mutable_source(initial_value, immutable = false, trackable = true) {
 	const s = source(initial_value);
 	if (!immutable) {
 		s.equals = safe_equals;
@@ -23944,39 +25468,30 @@ function mutable_source(initial_value, immutable = false) {
 /**
  * @template V
  * @param {Source<V>} source
- */
-/*#__NO_SIDE_EFFECTS__*/
-function push_derived_source(source) {
-	if (active_reaction !== null && (active_reaction.f & DERIVED) !== 0) {
-		if (derived_sources === null) {
-			set_derived_sources([source]);
-		} else {
-			derived_sources.push(source);
-		}
-	}
-
-	return source;
-}
-
-/**
- * @template V
- * @param {Source<V>} source
  * @param {V} value
+ * @param {boolean} [should_proxy]
  * @returns {V}
  */
-function set(source, value) {
+function set(source, value, should_proxy = false) {
 	if (
 		active_reaction !== null &&
+		// since we are untracking the function inside `$inspect.with` we need to add this check
+		// to ensure we error if state is set inside an inspect effect
+		(!untracking || (active_reaction.f & INSPECT_EFFECT) !== 0) &&
 		is_runes() &&
-		(active_reaction.f & (DERIVED | BLOCK_EFFECT)) !== 0 &&
-		// If the source was created locally within the current derived, then
-		// we allow the mutation.
-		(derived_sources === null || !derived_sources.includes(source))
+		(active_reaction.f & (DERIVED | BLOCK_EFFECT | ASYNC | INSPECT_EFFECT)) !== 0 &&
+		!current_sources?.includes(source)
 	) {
 		state_unsafe_mutation();
 	}
 
-	return internal_set(source, value);
+	let new_value = should_proxy ? proxy(value) : value;
+
+	if (DEV) {
+		tag_proxy(new_value, /** @type {string} */ (source.label));
+	}
+
+	return internal_set(source, new_value);
 }
 
 /**
@@ -23987,56 +25502,103 @@ function set(source, value) {
  */
 function internal_set(source, value) {
 	if (!source.equals(value)) {
+		var old_value = source.v;
+
+		if (is_destroying_effect) {
+			old_values.set(source, value);
+		} else {
+			old_values.set(source, old_value);
+		}
+
 		source.v = value;
-		source.version = increment_version();
+
+		var batch = Batch.ensure();
+		batch.capture(source, old_value);
+
+		if (DEV) {
+			if (active_effect !== null) {
+				const error = get_stack('UpdatedAt');
+
+				if (error !== null) {
+					source.updated ??= new Map();
+					let entry = source.updated.get(error.stack);
+
+					if (!entry) {
+						entry = { error, count: 0 };
+						source.updated.set(error.stack, entry);
+					}
+
+					entry.count++;
+				}
+			}
+
+			if (active_effect !== null) {
+				source.set_during_effect = true;
+			}
+		}
+
+		if ((source.f & DERIVED) !== 0) {
+			// if we are assigning to a dirty derived we set it to clean/maybe dirty but we also eagerly execute it to track the dependencies
+			if ((source.f & DIRTY) !== 0) {
+				execute_derived(/** @type {Derived} */ (source));
+			}
+			set_signal_status(source, (source.f & UNOWNED) === 0 ? CLEAN : MAYBE_DIRTY);
+		}
+
+		source.wv = increment_write_version();
 
 		mark_reactions(source, DIRTY);
 
-		// If the current signal is running for the first time, it won't have any
-		// reactions as we only allocate and assign the reactions after the signal
-		// has fully executed. So in the case of ensuring it registers the reaction
+		// It's possible that the current reaction might not have up-to-date dependencies
+		// whilst it's actively running. So in the case of ensuring it registers the reaction
 		// properly for itself, we need to ensure the current effect actually gets
 		// scheduled. i.e: `$effect(() => x++)`
 		if (
 			active_effect !== null &&
 			(active_effect.f & CLEAN) !== 0 &&
-			(active_effect.f & BRANCH_EFFECT) === 0
+			(active_effect.f & (BRANCH_EFFECT | ROOT_EFFECT)) === 0
 		) {
-			if (new_deps !== null && new_deps.includes(source)) {
-				set_signal_status(active_effect, DIRTY);
-				schedule_effect(active_effect);
+			if (untracked_writes === null) {
+				set_untracked_writes([source]);
 			} else {
-				if (untracked_writes === null) {
-					set_untracked_writes([source]);
-				} else {
-					untracked_writes.push(source);
-				}
+				untracked_writes.push(source);
 			}
 		}
 
-		if (DEV && inspect_effects.size > 0) {
-			const inspects = Array.from(inspect_effects);
-			var previously_flushing_effect = is_flushing_effect;
-			set_is_flushing_effect(true);
-			try {
-				for (const effect of inspects) {
-					// Mark clean inspect-effects as maybe dirty and then check their dirtiness
-					// instead of just updating the effects - this way we avoid overfiring.
-					if ((effect.f & CLEAN) !== 0) {
-						set_signal_status(effect, MAYBE_DIRTY);
-					}
-					if (check_dirtiness(effect)) {
-						update_effect(effect);
-					}
-				}
-			} finally {
-				set_is_flushing_effect(previously_flushing_effect);
-			}
-			inspect_effects.clear();
+		if (DEV && inspect_effects.size > 0 && !inspect_effects_deferred) {
+			flush_inspect_effects();
 		}
 	}
 
 	return value;
+}
+
+function flush_inspect_effects() {
+	inspect_effects_deferred = false;
+
+	const inspects = Array.from(inspect_effects);
+
+	for (const effect of inspects) {
+		// Mark clean inspect-effects as maybe dirty and then check their dirtiness
+		// instead of just updating the effects - this way we avoid overfiring.
+		if ((effect.f & CLEAN) !== 0) {
+			set_signal_status(effect, MAYBE_DIRTY);
+		}
+
+		if (is_dirty(effect)) {
+			update_effect(effect);
+		}
+	}
+
+	inspect_effects.clear();
+}
+
+/**
+ * Silently (without using `get`) increment a source
+ * @param {Source<number>} source
+ */
+function increment(source) {
+	set(source, source.v + 1);
 }
 
 /**
@@ -24053,245 +25615,44 @@ function mark_reactions(signal, status) {
 		var reaction = reactions[i];
 		var flags = reaction.f;
 
-		// Skip any effects that are already dirty
-		if ((flags & DIRTY) !== 0) continue;
-
 		// Inspect effects need to run immediately, so that the stack trace makes sense
 		if (DEV && (flags & INSPECT_EFFECT) !== 0) {
 			inspect_effects.add(reaction);
 			continue;
 		}
 
-		set_signal_status(reaction, status);
+		var not_dirty = (flags & DIRTY) === 0;
 
-		// If the signal a) was previously clean or b) is an unowned derived, then mark it
-		if ((flags & (CLEAN | UNOWNED)) !== 0) {
-			if ((flags & DERIVED) !== 0) {
-				mark_reactions(/** @type {Derived} */ (reaction), MAYBE_DIRTY);
-			} else {
-				schedule_effect(/** @type {Effect} */ (reaction));
+		// don't set a DIRTY reaction to MAYBE_DIRTY
+		if (not_dirty) {
+			set_signal_status(reaction, status);
+		}
+
+		if ((flags & DERIVED) !== 0) {
+			mark_reactions(/** @type {Derived} */ (reaction), MAYBE_DIRTY);
+		} else if (not_dirty) {
+			if ((flags & BLOCK_EFFECT) !== 0) {
+				if (eager_block_effects !== null) {
+					eager_block_effects.push(/** @type {Effect} */ (reaction));
+				}
 			}
+
+			schedule_effect(/** @type {Effect} */ (reaction));
 		}
 	}
 }
 
-/* This file is generated by scripts/process-messages/index.js. Do not edit! */
+/** @import { Source } from '#client' */
 
-
-var bold = 'font-weight: bold';
-var normal = 'font-weight: normal';
-
-/**
- * Tried to unmount a component that was not mounted
- */
-function lifecycle_double_unmount() {
-	if (DEV) {
-		console.warn(`%c[svelte] lifecycle_double_unmount\n%cTried to unmount a component that was not mounted`, bold, normal);
-	} else {
-		// TODO print a link to the documentation
-		console.warn("lifecycle_double_unmount");
-	}
-}
-
-/**
- * %component% mutated a value owned by %owner%. This is strongly discouraged. Consider passing values to child components with `bind:`, or use a callback instead
- * @param {string | undefined | null} [component]
- * @param {string | undefined | null} [owner]
- */
-function ownership_invalid_mutation(component, owner) {
-	if (DEV) {
-		console.warn(`%c[svelte] ownership_invalid_mutation\n%c${component ? `${component} mutated a value owned by ${owner}. This is strongly discouraged. Consider passing values to child components with \`bind:\`, or use a callback instead` : "Mutating a value outside the component that created it is strongly discouraged. Consider passing values to child components with `bind:`, or use a callback instead"}`, bold, normal);
-	} else {
-		// TODO print a link to the documentation
-		console.warn("ownership_invalid_mutation");
-	}
-}
-
-/**
- * Reactive `$state(...)` proxies and the values they proxy have different identities. Because of this, comparisons with `%operator%` will produce unexpected results
- * @param {string} operator
- */
-function state_proxy_equality_mismatch(operator) {
-	if (DEV) {
-		console.warn(`%c[svelte] state_proxy_equality_mismatch\n%cReactive \`$state(...)\` proxies and the values they proxy have different identities. Because of this, comparisons with \`${operator}\` will produce unexpected results`, bold, normal);
-	} else {
-		// TODO print a link to the documentation
-		console.warn("state_proxy_equality_mismatch");
-	}
-}
-
-const EACH_ITEM_REACTIVE = 1;
-const EACH_INDEX_REACTIVE = 1 << 1;
-/** See EachBlock interface metadata.is_controlled for an explanation what this is */
-const EACH_IS_CONTROLLED = 1 << 2;
-const EACH_IS_ANIMATED = 1 << 3;
-const EACH_ITEM_IMMUTABLE = 1 << 4;
-const PROPS_IS_BINDABLE = 1 << 3;
-
-const TEMPLATE_FRAGMENT = 1;
-const TEMPLATE_USE_IMPORT_NODE = 1 << 1;
-
-const UNINITIALIZED = Symbol();
-
-// Dev-time component properties
-const FILENAME = Symbol('filename');
-
-/** @import { TemplateNode } from '#client' */
-
-
-/**
- * Use this variable to guard everything related to hydration code so it can be treeshaken out
- * if the user doesn't use the `hydrate` method and these code paths are therefore not needed.
- */
-let hydrating = false;
-
-/** @import { ProxyMetadata } from '#client' */
-/** @typedef {{ file: string, line: number, column: number }} Location */
-
-
-/** @type {Record<string, Array<{ start: Location, end: Location, component: Function }>>} */
-const boundaries = {};
-
-const chrome_pattern = /at (?:.+ \()?(.+):(\d+):(\d+)\)?$/;
-const firefox_pattern = /@(.+):(\d+):(\d+)$/;
-
-function get_stack() {
-	const stack = new Error().stack;
-	if (!stack) return null;
-
-	const entries = [];
-
-	for (const line of stack.split('\n')) {
-		let match = chrome_pattern.exec(line) ?? firefox_pattern.exec(line);
-
-		if (match) {
-			entries.push({
-				file: match[1],
-				line: +match[2],
-				column: +match[3]
-			});
-		}
-	}
-
-	return entries;
-}
-
-/**
- * Determines which `.svelte` component is responsible for a given state change
- * @returns {Function | null}
- */
-function get_component() {
-	// first 4 lines are svelte internals; adjust this number if we change the internal call stack
-	const stack = get_stack()?.slice(4);
-	if (!stack) return null;
-
-	for (let i = 0; i < stack.length; i++) {
-		const entry = stack[i];
-		const modules = boundaries[entry.file];
-		if (!modules) {
-			// If the first entry is not a component, that means the modification very likely happened
-			// within a .svelte.js file, possibly triggered by a component. Since these files are not part
-			// of the bondaries/component context heuristic, we need to bail in this case, else we would
-			// have false positives when the .svelte.ts file provides a state creator function, encapsulating
-			// the state and its mutations, and is being called from a component other than the one who
-			// called the state creator function.
-			if (i === 0) return null;
-			continue;
-		}
-
-		for (const module of modules) {
-			if (module.end == null) {
-				return null;
-			}
-			if (module.start.line < entry.line && module.end.line > entry.line) {
-				return module.component;
-			}
-		}
-	}
-
-	return null;
-}
-
-/**
- * @param {ProxyMetadata | null} from
- * @param {ProxyMetadata} to
- */
-function widen_ownership(from, to) {
-	if (to.owners === null) {
-		return;
-	}
-
-	while (from) {
-		if (from.owners === null) {
-			to.owners = null;
-			break;
-		}
-
-		for (const owner of from.owners) {
-			to.owners.add(owner);
-		}
-
-		from = from.parent;
-	}
-}
-
-/**
- * @param {ProxyMetadata} metadata
- * @param {Function} component
- * @returns {boolean}
- */
-function has_owner(metadata, component) {
-	if (metadata.owners === null) {
-		return true;
-	}
-
-	return (
-		metadata.owners.has(component) ||
-		(metadata.parent !== null && has_owner(metadata.parent, component))
-	);
-}
-
-/**
- * @param {ProxyMetadata} metadata
- * @returns {any}
- */
-function get_owner(metadata) {
-	return (
-		metadata?.owners?.values().next().value ??
-		get_owner(/** @type {ProxyMetadata} */ (metadata.parent))
-	);
-}
-
-/**
- * @param {ProxyMetadata} metadata
- */
-function check_ownership(metadata) {
-
-	const component = get_component();
-
-	if (component && !has_owner(metadata, component)) {
-		let original = get_owner(metadata);
-
-		// @ts-expect-error
-		if (original[FILENAME] !== component[FILENAME]) {
-			// @ts-expect-error
-			ownership_invalid_mutation(component[FILENAME], original[FILENAME]);
-		} else {
-			ownership_invalid_mutation();
-		}
-	}
-}
-
-/** @import { ProxyMetadata, ProxyStateObject, Source } from '#client' */
+// TODO move all regexes into shared module?
+const regex_is_valid_identifier = /^[a-zA-Z_$][a-zA-Z_$0-9]*$/;
 
 /**
  * @template T
  * @param {T} value
- * @param {ProxyMetadata | null} [parent]
- * @param {Source<T>} [prev] dev mode only
  * @returns {T}
  */
-function proxy(value, parent = null, prev) {
+function proxy(value) {
 	// if non-proxyable, or is already a proxy, return `value`
 	if (typeof value !== 'object' || value === null || STATE_SYMBOL in value) {
 		return value;
@@ -24306,31 +25667,60 @@ function proxy(value, parent = null, prev) {
 	/** @type {Map<any, Source<any>>} */
 	var sources = new Map();
 	var is_proxied_array = is_array(value);
-	var version = source(0);
+	var version = state(0);
+	var parent_version = update_version;
+
+	/**
+	 * Executes the proxy in the context of the reaction it was originally created in, if any
+	 * @template T
+	 * @param {() => T} fn
+	 */
+	var with_parent = (fn) => {
+		if (update_version === parent_version) {
+			return fn();
+		}
+
+		// child source is being created after the initial proxy —
+		// prevent it from being associated with the current reaction
+		var reaction = active_reaction;
+		var version = update_version;
+
+		set_active_reaction(null);
+		set_update_version(parent_version);
+
+		var result = fn();
+
+		set_active_reaction(reaction);
+		set_update_version(version);
+
+		return result;
+	};
 
 	if (is_proxied_array) {
 		// We need to create the length source eagerly to ensure that
 		// mutations to the array are properly synced with our proxy
-		sources.set('length', source(/** @type {any[]} */ (value).length));
+		sources.set('length', state(/** @type {any[]} */ (value).length));
+		if (DEV) {
+			value = /** @type {any} */ (inspectable_array(/** @type {any[]} */ (value)));
+		}
 	}
 
-	/** @type {ProxyMetadata} */
-	var metadata;
+	/** Used in dev for $inspect.trace() */
+	var path = '';
+	let updating = false;
+	/** @param {string} new_path */
+	function update_path(new_path) {
+		if (updating) return;
+		updating = true;
+		path = new_path;
 
-	if (DEV) {
-		metadata = {
-			parent,
-			owners: null
-		};
+		tag(version, `${path} version`);
 
-		{
-			metadata.owners =
-				parent === null
-					? component_context !== null
-						? new Set([component_context.function])
-						: null
-					: new Set();
+		// rename all child sources and child proxies
+		for (const [prop, source] of sources) {
+			tag(source, get_label(path, prop));
 		}
+		updating = false;
 	}
 
 	return new Proxy(/** @type {any} */ (value), {
@@ -24347,14 +25737,18 @@ function proxy(value, parent = null, prev) {
 				// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Proxy/Proxy/getOwnPropertyDescriptor#invariants
 				state_descriptors_fixed();
 			}
-
 			var s = sources.get(prop);
-
 			if (s === undefined) {
-				s = source(descriptor.value);
-				sources.set(prop, s);
+				s = with_parent(() => {
+					var s = state(descriptor.value);
+					sources.set(prop, s);
+					if (DEV && typeof prop === 'string') {
+						tag(s, get_label(path, prop));
+					}
+					return s;
+				});
 			} else {
-				set(s, proxy(descriptor.value, metadata));
+				set(s, descriptor.value, true);
 			}
 
 			return true;
@@ -24365,33 +25759,29 @@ function proxy(value, parent = null, prev) {
 
 			if (s === undefined) {
 				if (prop in target) {
-					sources.set(prop, source(UNINITIALIZED));
-				}
-			} else {
-				// When working with arrays, we need to also ensure we update the length when removing
-				// an indexed property
-				if (is_proxied_array && typeof prop === 'string') {
-					var ls = /** @type {Source<number>} */ (sources.get('length'));
-					var n = Number(prop);
+					const s = with_parent(() => state(UNINITIALIZED));
+					sources.set(prop, s);
+					increment(version);
 
-					if (Number.isInteger(n) && n < ls.v) {
-						set(ls, n);
+					if (DEV) {
+						tag(s, get_label(path, prop));
 					}
 				}
+			} else {
 				set(s, UNINITIALIZED);
-				update_version(version);
+				increment(version);
 			}
 
 			return true;
 		},
 
 		get(target, prop, receiver) {
-			if (DEV && prop === STATE_SYMBOL_METADATA) {
-				return metadata;
-			}
-
 			if (prop === STATE_SYMBOL) {
 				return value;
+			}
+
+			if (DEV && prop === PROXY_PATH_SYMBOL) {
+				return update_path;
 			}
 
 			var s = sources.get(prop);
@@ -24399,28 +25789,22 @@ function proxy(value, parent = null, prev) {
 
 			// create a source, but only if it's an own property and not a prototype property
 			if (s === undefined && (!exists || get_descriptor(target, prop)?.writable)) {
-				s = source(proxy(exists ? target[prop] : UNINITIALIZED, metadata));
+				s = with_parent(() => {
+					var p = proxy(exists ? target[prop] : UNINITIALIZED);
+					var s = state(p);
+
+					if (DEV) {
+						tag(s, get_label(path, prop));
+					}
+
+					return s;
+				});
+
 				sources.set(prop, s);
 			}
 
 			if (s !== undefined) {
 				var v = get(s);
-
-				// In case of something like `foo = bar.map(...)`, foo would have ownership
-				// of the array itself, while the individual items would have ownership
-				// of the component that created bar. That means if we later do `foo[0].baz = 42`,
-				// we could get a false-positive ownership violation, since the two proxies
-				// are not connected to each other via the parent metadata relationship.
-				// For this reason, we need to widen the ownership of the children
-				// upon access when we detect they are not connected.
-				if (DEV) {
-					/** @type {ProxyMetadata | undefined} */
-					var prop_metadata = v?.[STATE_SYMBOL_METADATA];
-					if (prop_metadata && prop_metadata?.parent !== metadata) {
-						widen_ownership(metadata, prop_metadata);
-					}
-				}
-
 				return v === UNINITIALIZED ? undefined : v;
 			}
 
@@ -24451,10 +25835,6 @@ function proxy(value, parent = null, prev) {
 		},
 
 		has(target, prop) {
-			if (DEV && prop === STATE_SYMBOL_METADATA) {
-				return true;
-			}
-
 			if (prop === STATE_SYMBOL) {
 				return true;
 			}
@@ -24467,7 +25847,17 @@ function proxy(value, parent = null, prev) {
 				(active_effect !== null && (!has || get_descriptor(target, prop)?.writable))
 			) {
 				if (s === undefined) {
-					s = source(has ? proxy(target[prop], metadata) : UNINITIALIZED);
+					s = with_parent(() => {
+						var p = has ? proxy(target[prop]) : UNINITIALIZED;
+						var s = state(p);
+
+						if (DEV) {
+							tag(s, get_label(path, prop));
+						}
+
+						return s;
+					});
+
 					sources.set(prop, s);
 				}
 
@@ -24494,8 +25884,12 @@ function proxy(value, parent = null, prev) {
 						// If the item exists in the original, we need to create a uninitialized source,
 						// else a later read of the property would result in a source being created with
 						// the value of the original item at that index.
-						other_s = source(UNINITIALIZED);
+						other_s = with_parent(() => state(UNINITIALIZED));
 						sources.set(i + '', other_s);
+
+						if (DEV) {
+							tag(other_s, get_label(path, i));
+						}
 					}
 				}
 			}
@@ -24506,22 +25900,20 @@ function proxy(value, parent = null, prev) {
 			// object property before writing to that property.
 			if (s === undefined) {
 				if (!has || get_descriptor(target, prop)?.writable) {
-					s = source(undefined);
-					set(s, proxy(value, metadata));
+					s = with_parent(() => state(undefined));
+
+					if (DEV) {
+						tag(s, get_label(path, prop));
+					}
+					set(s, proxy(value));
+
 					sources.set(prop, s);
 				}
 			} else {
 				has = s.v !== UNINITIALIZED;
-				set(s, proxy(value, metadata));
-			}
 
-			if (DEV) {
-				/** @type {ProxyMetadata | undefined} */
-				var prop_metadata = value?.[STATE_SYMBOL_METADATA];
-				if (prop_metadata && prop_metadata?.parent !== metadata) {
-					widen_ownership(metadata, prop_metadata);
-				}
-				check_ownership(metadata);
+				var p = with_parent(() => proxy(value));
+				set(s, p);
 			}
 
 			var descriptor = Reflect.getOwnPropertyDescriptor(target, prop);
@@ -24545,7 +25937,7 @@ function proxy(value, parent = null, prev) {
 					}
 				}
 
-				update_version(version);
+				increment(version);
 			}
 
 			return true;
@@ -24575,19 +25967,31 @@ function proxy(value, parent = null, prev) {
 }
 
 /**
- * @param {Source<number>} signal
- * @param {1 | -1} [d]
+ * @param {string} path
+ * @param {string | symbol} prop
  */
-function update_version(signal, d = 1) {
-	set(signal, signal.v + d);
+function get_label(path, prop) {
+	if (typeof prop === 'symbol') return `${path}[Symbol(${prop.description ?? ''})]`;
+	if (regex_is_valid_identifier.test(prop)) return `${path}.${prop}`;
+	return /^\d+$/.test(prop) ? `${path}[${prop}]` : `${path}['${prop}']`;
 }
 
 /**
  * @param {any} value
  */
 function get_proxied_value(value) {
-	if (value !== null && typeof value === 'object' && STATE_SYMBOL in value) {
-		return value[STATE_SYMBOL];
+	try {
+		if (value !== null && typeof value === 'object' && STATE_SYMBOL in value) {
+			return value[STATE_SYMBOL];
+		}
+	} catch {
+		// the above if check can throw an error if the value in question
+		// is the contentWindow of an iframe on another domain, in which
+		// case we want to just return the value (because it's definitely
+		// not a proxied value) so we don't break any JavaScript interacting
+		// with that iframe (such as various payment companies client side
+		// JavaScript libraries interacting with their iframes on the same
+		// domain)
 	}
 
 	return value;
@@ -24599,6 +26003,45 @@ function get_proxied_value(value) {
  */
 function is(a, b) {
 	return Object.is(get_proxied_value(a), get_proxied_value(b));
+}
+
+const ARRAY_MUTATING_METHODS = new Set([
+	'copyWithin',
+	'fill',
+	'pop',
+	'push',
+	'reverse',
+	'shift',
+	'sort',
+	'splice',
+	'unshift'
+]);
+
+/**
+ * Wrap array mutating methods so $inspect is triggered only once and
+ * to prevent logging an array in intermediate state (e.g. with an empty slot)
+ * @param {any[]} array
+ */
+function inspectable_array(array) {
+	return new Proxy(array, {
+		get(target, prop, receiver) {
+			var value = Reflect.get(target, prop, receiver);
+			if (!ARRAY_MUTATING_METHODS.has(/** @type {string} */ (prop))) {
+				return value;
+			}
+
+			/**
+			 * @this {any[]}
+			 * @param {any[]} args
+			 */
+			return function (...args) {
+				set_inspect_effects_deferred();
+				var result = value.apply(this, args);
+				flush_inspect_effects();
+				return result;
+			};
+		}
+	});
 }
 
 function init_array_prototype_warnings() {
@@ -24617,10 +26060,11 @@ function init_array_prototype_warnings() {
 		const index = indexOf.call(this, item, from_index);
 
 		if (index === -1) {
-			const test = indexOf.call(get_proxied_value(this), get_proxied_value(item), from_index);
-
-			if (test !== -1) {
-				state_proxy_equality_mismatch('array.indexOf(...)');
+			for (let i = from_index ?? 0; i < this.length; i += 1) {
+				if (get_proxied_value(this[i]) === item) {
+					state_proxy_equality_mismatch('array.indexOf(...)');
+					break;
+				}
 			}
 		}
 
@@ -24633,16 +26077,11 @@ function init_array_prototype_warnings() {
 		const index = lastIndexOf.call(this, item, from_index ?? this.length - 1);
 
 		if (index === -1) {
-			// we need to specify this.length - 1 because it's probably using something like
-			// `arguments` inside so passing undefined is different from not passing anything
-			const test = lastIndexOf.call(
-				get_proxied_value(this),
-				get_proxied_value(item),
-				from_index ?? this.length - 1
-			);
-
-			if (test !== -1) {
-				state_proxy_equality_mismatch('array.lastIndexOf(...)');
+			for (let i = 0; i <= (from_index ?? this.length - 1); i += 1) {
+				if (get_proxied_value(this[i]) === item) {
+					state_proxy_equality_mismatch('array.lastIndexOf(...)');
+					break;
+				}
 			}
 		}
 
@@ -24653,10 +26092,11 @@ function init_array_prototype_warnings() {
 		const has = includes.call(this, item, from_index);
 
 		if (!has) {
-			const test = includes.call(get_proxied_value(this), get_proxied_value(item), from_index);
-
-			if (test) {
-				state_proxy_equality_mismatch('array.includes(...)');
+			for (let i = 0; i < this.length; i += 1) {
+				if (get_proxied_value(this[i]) === item) {
+					state_proxy_equality_mismatch('array.includes(...)');
+					break;
+				}
 			}
 		}
 
@@ -24671,11 +26111,14 @@ function init_array_prototype_warnings() {
 	};
 }
 
-/** @import { TemplateNode } from '#client' */
+/** @import { Effect, TemplateNode } from '#client' */
 
 // export these for reference in the compiled code, making global name deduplication unnecessary
 /** @type {Window} */
 var $window;
+
+/** @type {boolean} */
+var is_firefox;
 
 /** @type {() => Node | null} */
 var first_child_getter;
@@ -24692,29 +26135,35 @@ function init_operations() {
 	}
 
 	$window = window;
+	is_firefox = /Firefox/.test(navigator.userAgent);
 
 	var element_prototype = Element.prototype;
 	var node_prototype = Node.prototype;
+	var text_prototype = Text.prototype;
 
 	// @ts-ignore
 	first_child_getter = get_descriptor(node_prototype, 'firstChild').get;
 	// @ts-ignore
 	next_sibling_getter = get_descriptor(node_prototype, 'nextSibling').get;
 
-	// the following assignments improve perf of lookups on DOM nodes
-	// @ts-expect-error
-	element_prototype.__click = undefined;
-	// @ts-expect-error
-	element_prototype.__className = '';
-	// @ts-expect-error
-	element_prototype.__attributes = null;
-	// @ts-expect-error
-	element_prototype.__styles = null;
-	// @ts-expect-error
-	element_prototype.__e = undefined;
+	if (is_extensible(element_prototype)) {
+		// the following assignments improve perf of lookups on DOM nodes
+		// @ts-expect-error
+		element_prototype.__click = undefined;
+		// @ts-expect-error
+		element_prototype.__className = undefined;
+		// @ts-expect-error
+		element_prototype.__attributes = null;
+		// @ts-expect-error
+		element_prototype.__style = undefined;
+		// @ts-expect-error
+		element_prototype.__e = undefined;
+	}
 
-	// @ts-expect-error
-	Text.prototype.__t = undefined;
+	if (is_extensible(text_prototype)) {
+		// @ts-expect-error
+		text_prototype.__t = undefined;
+	}
 
 	if (DEV) {
 		// @ts-expect-error
@@ -24811,164 +26260,86 @@ function clear_text_content(node) {
 	node.textContent = '';
 }
 
-/** @import { Derived, Effect } from '#client' */
-
 /**
- * @template V
- * @param {() => V} fn
- * @returns {Derived<V>}
+ * Returns `true` if we're updating the current block, for example `condition` in
+ * an `{#if condition}` block just changed. In this case, the branch should be
+ * appended (or removed) at the same time as other updates within the
+ * current `<svelte:boundary>`
  */
-/*#__NO_SIDE_EFFECTS__*/
-function derived(fn) {
-	var flags = DERIVED | DIRTY;
-
-	if (active_effect === null) {
-		flags |= UNOWNED;
-	} else {
-		// Since deriveds are evaluated lazily, any effects created inside them are
-		// created too late to ensure that the parent effect is added to the tree
-		active_effect.f |= EFFECT_HAS_DERIVED;
-	}
-
-	var parent_derived =
-		active_reaction !== null && (active_reaction.f & DERIVED) !== 0
-			? /** @type {Derived} */ (active_reaction)
-			: null;
-
-	/** @type {Derived<V>} */
-	const signal = {
-		children: null,
-		ctx: component_context,
-		deps: null,
-		equals,
-		f: flags,
-		fn,
-		reactions: null,
-		v: /** @type {V} */ (null),
-		version: 0,
-		parent: parent_derived ?? active_effect
-	};
-
-	if (parent_derived !== null) {
-		(parent_derived.children ??= []).push(signal);
-	}
-
-	return signal;
+function should_defer_append() {
+	return false;
 }
 
-/**
- * @param {Derived} derived
- * @returns {void}
- */
-function destroy_derived_children(derived) {
-	var children = derived.children;
+let listening_to_form_reset = false;
 
-	if (children !== null) {
-		derived.children = null;
-
-		for (var i = 0; i < children.length; i += 1) {
-			var child = children[i];
-			if ((child.f & DERIVED) !== 0) {
-				destroy_derived(/** @type {Derived} */ (child));
-			} else {
-				destroy_effect(/** @type {Effect} */ (child));
-			}
-		}
+function add_form_reset_listener() {
+	if (!listening_to_form_reset) {
+		listening_to_form_reset = true;
+		document.addEventListener(
+			'reset',
+			(evt) => {
+				// Needs to happen one tick later or else the dom properties of the form
+				// elements have not updated to their reset values yet
+				Promise.resolve().then(() => {
+					if (!evt.defaultPrevented) {
+						for (const e of /**@type {HTMLFormElement} */ (evt.target).elements) {
+							// @ts-expect-error
+							e.__on_r?.();
+						}
+					}
+				});
+			},
+			// In the capture phase to guarantee we get noticed of it (no possiblity of stopPropagation)
+			{ capture: true }
+		);
 	}
-}
-
-/**
- * The currently updating deriveds, used to detect infinite recursion
- * in dev mode and provide a nicer error than 'too much recursion'
- * @type {Derived[]}
- */
-let stack = [];
-
-/**
- * @param {Derived} derived
- * @returns {Effect | null}
- */
-function get_derived_parent_effect(derived) {
-	var parent = derived.parent;
-	while (parent !== null) {
-		if ((parent.f & DERIVED) === 0) {
-			return /** @type {Effect} */ (parent);
-		}
-		parent = parent.parent;
-	}
-	return null;
 }
 
 /**
  * @template T
- * @param {Derived} derived
- * @returns {T}
+ * @param {() => T} fn
  */
-function execute_derived(derived) {
-	var value;
-	var prev_active_effect = active_effect;
+function without_reactive_context(fn) {
+	var previous_reaction = active_reaction;
+	var previous_effect = active_effect;
+	set_active_reaction(null);
+	set_active_effect(null);
+	try {
+		return fn();
+	} finally {
+		set_active_reaction(previous_reaction);
+		set_active_effect(previous_effect);
+	}
+}
 
-	set_active_effect(get_derived_parent_effect(derived));
-
-	if (DEV) {
-		let prev_inspect_effects = inspect_effects;
-		set_inspect_effects(new Set());
-		try {
-			if (stack.includes(derived)) {
-				derived_references_self();
-			}
-
-			stack.push(derived);
-
-			destroy_derived_children(derived);
-			value = update_reaction(derived);
-		} finally {
-			set_active_effect(prev_active_effect);
-			set_inspect_effects(prev_inspect_effects);
-			stack.pop();
-		}
+/**
+ * Listen to the given event, and then instantiate a global form reset listener if not already done,
+ * to notify all bindings when the form is reset
+ * @param {HTMLElement} element
+ * @param {string} event
+ * @param {(is_reset?: true) => void} handler
+ * @param {(is_reset?: true) => void} [on_reset]
+ */
+function listen_to_event_and_reset_event(element, event, handler, on_reset = handler) {
+	element.addEventListener(event, () => without_reactive_context(handler));
+	// @ts-expect-error
+	const prev = element.__on_r;
+	if (prev) {
+		// special case for checkbox that can have multiple binds (group & checked)
+		// @ts-expect-error
+		element.__on_r = () => {
+			prev();
+			on_reset(true);
+		};
 	} else {
-		try {
-			destroy_derived_children(derived);
-			value = update_reaction(derived);
-		} finally {
-			set_active_effect(prev_active_effect);
-		}
+		// @ts-expect-error
+		element.__on_r = () => on_reset(true);
 	}
 
-	return value;
+	add_form_reset_listener();
 }
 
-/**
- * @param {Derived} derived
- * @returns {void}
- */
-function update_derived(derived) {
-	var value = execute_derived(derived);
-	var status =
-		(skip_reaction || (derived.f & UNOWNED) !== 0) && derived.deps !== null ? MAYBE_DIRTY : CLEAN;
-
-	set_signal_status(derived, status);
-
-	if (!derived.equals(value)) {
-		derived.v = value;
-		derived.version = increment_version();
-	}
-}
-
-/**
- * @param {Derived} derived
- * @returns {void}
- */
-function destroy_derived(derived) {
-	destroy_derived_children(derived);
-	remove_reactions(derived, 0);
-	set_signal_status(derived, DESTROYED);
-
-	derived.v = derived.children = derived.deps = derived.ctx = derived.reactions = null;
-}
-
-/** @import { ComponentContext, ComponentContextLegacy, Derived, Effect, Reaction, TemplateNode, TransitionManager } from '#client' */
+/** @import { ComponentContext, ComponentContextLegacy, Derived, Effect, TemplateNode, TransitionManager } from '#client' */
 
 /**
  * @param {'$effect' | '$effect.pre' | '$inspect'} rune
@@ -24978,7 +26349,7 @@ function validate_effect(rune) {
 		effect_orphan(rune);
 	}
 
-	if (active_reaction !== null && (active_reaction.f & UNOWNED) !== 0) {
+	if (active_reaction !== null && (active_reaction.f & UNOWNED) !== 0 && active_effect === null) {
 		effect_in_unowned_derived();
 	}
 
@@ -25010,21 +26381,23 @@ function push_effect(effect, parent_effect) {
  * @returns {Effect}
  */
 function create_effect(type, fn, sync, push = true) {
-	var is_root = (type & ROOT_EFFECT) !== 0;
-	var parent_effect = active_effect;
+	var parent = active_effect;
 
 	if (DEV) {
 		// Ensure the parent is never an inspect effect
-		while (parent_effect !== null && (parent_effect.f & INSPECT_EFFECT) !== 0) {
-			parent_effect = parent_effect.parent;
+		while (parent !== null && (parent.f & INSPECT_EFFECT) !== 0) {
+			parent = parent.parent;
 		}
+	}
+
+	if (parent !== null && (parent.f & INERT) !== 0) {
+		type |= INERT;
 	}
 
 	/** @type {Effect} */
 	var effect = {
 		ctx: component_context,
 		deps: null,
-		deriveds: null,
 		nodes_start: null,
 		nodes_end: null,
 		f: type | DIRTY,
@@ -25032,11 +26405,13 @@ function create_effect(type, fn, sync, push = true) {
 		fn,
 		last: null,
 		next: null,
-		parent: is_root ? null : parent_effect,
+		parent,
+		b: parent && parent.b,
 		prev: null,
 		teardown: null,
 		transitions: null,
-		version: 0
+		wv: 0,
+		ac: null
 	};
 
 	if (DEV) {
@@ -25044,41 +26419,51 @@ function create_effect(type, fn, sync, push = true) {
 	}
 
 	if (sync) {
-		var previously_flushing_effect = is_flushing_effect;
-
 		try {
-			set_is_flushing_effect(true);
 			update_effect(effect);
 			effect.f |= EFFECT_RAN;
 		} catch (e) {
 			destroy_effect(effect);
 			throw e;
-		} finally {
-			set_is_flushing_effect(previously_flushing_effect);
 		}
 	} else if (fn !== null) {
 		schedule_effect(effect);
 	}
 
-	// if an effect has no dependencies, no DOM and no teardown function,
-	// don't bother adding it to the effect tree
-	var inert =
-		sync &&
-		effect.deps === null &&
-		effect.first === null &&
-		effect.nodes_start === null &&
-		effect.teardown === null &&
-		(effect.f & EFFECT_HAS_DERIVED) === 0;
+	if (push) {
+		/** @type {Effect | null} */
+		var e = effect;
 
-	if (!inert && !is_root && push) {
-		if (parent_effect !== null) {
-			push_effect(effect, parent_effect);
+		// if an effect has already ran and doesn't need to be kept in the tree
+		// (because it won't re-run, has no DOM, and has no teardown etc)
+		// then we skip it and go to its child (if any)
+		if (
+			sync &&
+			e.deps === null &&
+			e.teardown === null &&
+			e.nodes_start === null &&
+			e.first === e.last && // either `null`, or a singular child
+			(e.f & EFFECT_PRESERVED) === 0
+		) {
+			e = e.first;
 		}
 
-		// if we're in a derived, add the effect there too
-		if (active_reaction !== null && (active_reaction.f & DERIVED) !== 0) {
-			var derived = /** @type {Derived} */ (active_reaction);
-			(derived.children ??= []).push(effect);
+		if (e !== null) {
+			e.parent = parent;
+
+			if (parent !== null) {
+				push_effect(e, parent);
+			}
+
+			// if we're in a derived, add the effect there too
+			if (
+				active_reaction !== null &&
+				(active_reaction.f & DERIVED) !== 0 &&
+				(type & ROOT_EFFECT) === 0
+			) {
+				var derived = /** @type {Derived} */ (active_reaction);
+				(derived.effects ??= []).push(e);
+			}
 		}
 	}
 
@@ -25102,42 +26487,55 @@ function teardown(fn) {
 function user_effect(fn) {
 	validate_effect('$effect');
 
-	// Non-nested `$effect(...)` in a component should be deferred
-	// until the component is mounted
-	var defer =
-		active_effect !== null &&
-		(active_effect.f & BRANCH_EFFECT) !== 0 &&
-		component_context !== null &&
-		!component_context.m;
-
 	if (DEV) {
 		define_property(fn, 'name', {
 			value: '$effect'
 		});
 	}
 
+	// Non-nested `$effect(...)` in a component should be deferred
+	// until the component is mounted
+	var flags = /** @type {Effect} */ (active_effect).f;
+	var defer = !active_reaction && (flags & BRANCH_EFFECT) !== 0 && (flags & EFFECT_RAN) === 0;
+
 	if (defer) {
+		// Top-level `$effect(...)` in an unmounted component — defer until mount
 		var context = /** @type {ComponentContext} */ (component_context);
-		(context.e ??= []).push({
-			fn,
-			effect: active_effect,
-			reaction: active_reaction
-		});
+		(context.e ??= []).push(fn);
 	} else {
-		var signal = effect$3(fn);
-		return signal;
+		// Everything else — create immediately
+		return create_user_effect(fn);
 	}
 }
 
 /**
- * Internal representation of `$effect.root(...)`
  * @param {() => void | (() => void)} fn
- * @returns {() => void}
  */
-function effect_root(fn) {
-	const effect = create_effect(ROOT_EFFECT, fn, true);
-	return () => {
-		destroy_effect(effect);
+function create_user_effect(fn) {
+	return create_effect(EFFECT | USER_EFFECT, fn, false);
+}
+
+/**
+ * An effect root whose children can transition out
+ * @param {() => void} fn
+ * @returns {(options?: { outro?: boolean }) => Promise<void>}
+ */
+function component_root(fn) {
+	Batch.ensure();
+	const effect = create_effect(ROOT_EFFECT | EFFECT_PRESERVED, fn, true);
+
+	return (options = {}) => {
+		return new Promise((fulfil) => {
+			if (options.outro) {
+				pause_effect(effect, () => {
+					destroy_effect(effect);
+					fulfil(undefined);
+				});
+			} else {
+				destroy_effect(effect);
+				fulfil(undefined);
+			}
+		});
 	};
 }
 
@@ -25153,21 +26551,27 @@ function effect$3(fn) {
  * @param {() => void | (() => void)} fn
  * @returns {Effect}
  */
-function render_effect(fn) {
-	return create_effect(RENDER_EFFECT, fn, true);
+function async_effect(fn) {
+	return create_effect(ASYNC | EFFECT_PRESERVED, fn, true);
 }
 
 /**
  * @param {() => void | (() => void)} fn
  * @returns {Effect}
  */
-function template_effect(fn) {
-	if (DEV) {
-		define_property(fn, 'name', {
-			value: '{expression}'
-		});
-	}
-	return block(fn);
+function render_effect(fn, flags = 0) {
+	return create_effect(RENDER_EFFECT | flags, fn, true);
+}
+
+/**
+ * @param {(...expressions: any) => void | (() => void)} fn
+ * @param {Array<() => any>} sync
+ * @param {Array<() => Promise<any>>} async
+ */
+function template_effect(fn, sync = [], async = []) {
+	flatten(sync, async, (values) => {
+		create_effect(RENDER_EFFECT, () => fn(...values.map(get)), true);
+	});
 }
 
 /**
@@ -25175,7 +26579,11 @@ function template_effect(fn) {
  * @param {number} flags
  */
 function block(fn, flags = 0) {
-	return create_effect(RENDER_EFFECT | BLOCK_EFFECT | flags, fn, true);
+	var effect = create_effect(BLOCK_EFFECT | flags, fn, true);
+	if (DEV) {
+		effect.dev_stack = dev_stack;
+	}
+	return effect;
 }
 
 /**
@@ -25183,7 +26591,7 @@ function block(fn, flags = 0) {
  * @param {boolean} [push]
  */
 function branch(fn, push = true) {
-	return create_effect(RENDER_EFFECT | BRANCH_EFFECT, fn, true, push);
+	return create_effect(BRANCH_EFFECT | EFFECT_PRESERVED, fn, true, push);
 }
 
 /**
@@ -25207,22 +26615,6 @@ function execute_effect_teardown(effect) {
 
 /**
  * @param {Effect} signal
- * @returns {void}
- */
-function destroy_effect_deriveds(signal) {
-	var deriveds = signal.deriveds;
-
-	if (deriveds !== null) {
-		signal.deriveds = null;
-
-		for (var i = 0; i < deriveds.length; i += 1) {
-			destroy_derived(deriveds[i]);
-		}
-	}
-}
-
-/**
- * @param {Effect} signal
  * @param {boolean} remove_dom
  * @returns {void}
  */
@@ -25231,8 +26623,23 @@ function destroy_effect_children(signal, remove_dom = false) {
 	signal.first = signal.last = null;
 
 	while (effect !== null) {
+		const controller = effect.ac;
+
+		if (controller !== null) {
+			without_reactive_context(() => {
+				controller.abort(STALE_REACTION);
+			});
+		}
+
 		var next = effect.next;
-		destroy_effect(effect, remove_dom);
+
+		if ((effect.f & ROOT_EFFECT) !== 0) {
+			// this is now an independent root
+			effect.parent = null;
+		} else {
+			destroy_effect(effect, remove_dom);
+		}
+
 		effect = next;
 	}
 }
@@ -25261,24 +26668,16 @@ function destroy_block_effect_children(signal) {
 function destroy_effect(effect, remove_dom = true) {
 	var removed = false;
 
-	if ((remove_dom || (effect.f & HEAD_EFFECT) !== 0) && effect.nodes_start !== null) {
-		/** @type {TemplateNode | null} */
-		var node = effect.nodes_start;
-		var end = effect.nodes_end;
-
-		while (node !== null) {
-			/** @type {TemplateNode | null} */
-			var next = node === end ? null : /** @type {TemplateNode} */ (get_next_sibling(node));
-
-			node.remove();
-			node = next;
-		}
-
+	if (
+		(remove_dom || (effect.f & HEAD_EFFECT) !== 0) &&
+		effect.nodes_start !== null &&
+		effect.nodes_end !== null
+	) {
+		remove_effect_dom(effect.nodes_start, /** @type {TemplateNode} */ (effect.nodes_end));
 		removed = true;
 	}
 
 	destroy_effect_children(effect, remove_dom && !removed);
-	destroy_effect_deriveds(effect);
 	remove_reactions(effect, 0);
 	set_signal_status(effect, DESTROYED);
 
@@ -25313,7 +26712,23 @@ function destroy_effect(effect, remove_dom = true) {
 		effect.fn =
 		effect.nodes_start =
 		effect.nodes_end =
+		effect.ac =
 			null;
+}
+
+/**
+ *
+ * @param {TemplateNode | null} node
+ * @param {TemplateNode} end
+ */
+function remove_effect_dom(node, end) {
+	while (node !== null) {
+		/** @type {TemplateNode | null} */
+		var next = node === end ? null : /** @type {TemplateNode} */ (get_next_sibling(node));
+
+		node.remove();
+		node = next;
+	}
 }
 
 /**
@@ -25417,16 +26832,16 @@ function resume_effect(effect) {
  */
 function resume_children(effect, local) {
 	if ((effect.f & INERT) === 0) return;
+	effect.f ^= INERT;
 
 	// If a dependency of this effect changed while it was paused,
-	// apply the change now
-	if (check_dirtiness(effect)) {
-		update_effect(effect);
+	// schedule the effect to update. we don't use `is_dirty`
+	// here because we don't want to eagerly recompute a derived like
+	// `{#if foo}{foo.bar()}{/if}` if `foo` is now `undefined
+	if ((effect.f & CLEAN) === 0) {
+		set_signal_status(effect, DIRTY);
+		schedule_effect(effect);
 	}
-
-	// Ensure we toggle the flag after possibly updating the effect so that
-	// each block logic can correctly operate on inert items
-	effect.f ^= INERT;
 
 	var child = effect.first;
 
@@ -25449,85 +26864,26 @@ function resume_children(effect, local) {
 	}
 }
 
-let is_micro_task_queued$1 = false;
+/** @import { Derived, Effect, Reaction, Signal, Source, Value } from '#client' */
 
-/** @type {Array<() => void>} */
-let current_queued_micro_tasks = [];
-
-function process_micro_tasks() {
-	is_micro_task_queued$1 = false;
-	const tasks = current_queued_micro_tasks.slice();
-	current_queued_micro_tasks = [];
-	run_all(tasks);
-}
-
-/**
- * @param {() => void} fn
- */
-function queue_micro_task(fn) {
-	if (!is_micro_task_queued$1) {
-		is_micro_task_queued$1 = true;
-		queueMicrotask(process_micro_tasks);
-	}
-	current_queued_micro_tasks.push(fn);
-}
-
-/* This file is generated by scripts/process-messages/index.js. Do not edit! */
-
-
-/**
- * `%name%(...)` can only be used during component initialisation
- * @param {string} name
- * @returns {never}
- */
-function lifecycle_outside_component(name) {
-	if (DEV) {
-		const error = new Error(`lifecycle_outside_component\n\`${name}(...)\` can only be used during component initialisation`);
-
-		error.name = 'Svelte error';
-		throw error;
-	} else {
-		// TODO print a link to the documentation
-		throw new Error("lifecycle_outside_component");
-	}
-}
-
-/** @import { ComponentContext, Derived, Effect, Reaction, Signal, Source, Value } from '#client' */
-// Used for DEV time error handling
-/** @param {WeakSet<Error>} value */
-const handled_errors = new WeakSet();
-let is_throwing_error = false;
-// Used for handling scheduling
-let is_micro_task_queued = false;
-
-/** @type {Effect | null} */
-let last_scheduled_effect = null;
-
-let is_flushing_effect = false;
-let is_destroying_effect = false;
+let is_updating_effect = false;
 
 /** @param {boolean} value */
-function set_is_flushing_effect(value) {
-	is_flushing_effect = value;
+function set_is_updating_effect(value) {
+	is_updating_effect = value;
 }
+
+let is_destroying_effect = false;
 
 /** @param {boolean} value */
 function set_is_destroying_effect(value) {
 	is_destroying_effect = value;
 }
 
-// Handle effect queues
-
-/** @type {Effect[]} */
-let queued_root_effects = [];
-
-let flush_count = 0;
-/** @type {Effect[]} Stack of effects, dev only */
-let dev_effect_stack = [];
-// Handle signal reactivity tree dependencies and reactions
-
 /** @type {null | Reaction} */
 let active_reaction = null;
+
+let untracking = false;
 
 /** @param {null | Reaction} reaction */
 function set_active_reaction(reaction) {
@@ -25543,17 +26899,21 @@ function set_active_effect(effect) {
 }
 
 /**
- * When sources are created within a derived, we record them so that we can safely allow
- * local mutations to these sources without the side-effect error being invoked unnecessarily.
+ * When sources are created within a reaction, reading and writing
+ * them within that reaction should not cause a re-run
  * @type {null | Source[]}
  */
-let derived_sources = null;
+let current_sources = null;
 
-/**
- * @param {Source[] | null} sources
- */
-function set_derived_sources(sources) {
-	derived_sources = sources;
+/** @param {Value} value */
+function push_reaction_value(value) {
+	if (active_reaction !== null && (true)) {
+		if (current_sources === null) {
+			current_sources = [value];
+		} else {
+			current_sources.push(value);
+		}
+	}
 }
 
 /**
@@ -25578,36 +26938,28 @@ function set_untracked_writes(value) {
 	untracked_writes = value;
 }
 
-/** @type {number} Used by sources and deriveds for handling updates to unowned deriveds */
-let current_version = 0;
+/**
+ * @type {number} Used by sources and deriveds for handling updates.
+ * Version starts from 1 so that unowned deriveds differentiate between a created effect and a run one for tracing
+ **/
+let write_version = 1;
+
+/** @type {number} Used to version each read of a source of derived to avoid duplicating depedencies inside a reaction */
+let read_version = 0;
+
+let update_version = read_version;
+
+/** @param {number} value */
+function set_update_version(value) {
+	update_version = value;
+}
 
 // If we are working with a get() chain that has no active container,
 // to prevent memory leaks, we skip adding the reaction.
 let skip_reaction = false;
 
-// Handling runtime component context
-/** @type {ComponentContext | null} */
-let component_context = null;
-
-/**
- * The current component function. Different from current component context:
- * ```html
- * <!-- App.svelte -->
- * <Foo>
- *   <Bar /> <!-- context == Foo.svelte, function == App.svelte -->
- * </Foo>
- * ```
- * @type {ComponentContext['function']}
- */
-let dev_current_component_function = null;
-
-function increment_version() {
-	return ++current_version;
-}
-
-/** @returns {boolean} */
-function is_runes() {
-	return !legacy_mode_flag;
+function increment_write_version() {
+	return ++write_version;
 }
 
 /**
@@ -25616,7 +26968,7 @@ function is_runes() {
  * @param {Reaction} reaction
  * @returns {boolean}
  */
-function check_dirtiness(reaction) {
+function is_dirty(reaction) {
 	var flags = reaction.f;
 
 	if ((flags & DIRTY) !== 0) {
@@ -25629,42 +26981,59 @@ function check_dirtiness(reaction) {
 
 		if (dependencies !== null) {
 			var i;
+			var dependency;
+			var is_disconnected = (flags & DISCONNECTED) !== 0;
+			var is_unowned_connected = is_unowned && active_effect !== null && !skip_reaction;
+			var length = dependencies.length;
 
-			if ((flags & DISCONNECTED) !== 0) {
-				for (i = 0; i < dependencies.length; i++) {
-					(dependencies[i].reactions ??= []).push(reaction);
+			// If we are working with a disconnected or an unowned signal that is now connected (due to an active effect)
+			// then we need to re-connect the reaction to the dependency, unless the effect has already been destroyed
+			// (which can happen if the derived is read by an async derived)
+			if (
+				(is_disconnected || is_unowned_connected) &&
+				(active_effect === null || (active_effect.f & DESTROYED) === 0)
+			) {
+				var derived = /** @type {Derived} */ (reaction);
+				var parent = derived.parent;
+
+				for (i = 0; i < length; i++) {
+					dependency = dependencies[i];
+
+					// We always re-add all reactions (even duplicates) if the derived was
+					// previously disconnected, however we don't if it was unowned as we
+					// de-duplicate dependencies in that case
+					if (is_disconnected || !dependency?.reactions?.includes(derived)) {
+						(dependency.reactions ??= []).push(derived);
+					}
 				}
 
-				reaction.f ^= DISCONNECTED;
+				if (is_disconnected) {
+					derived.f ^= DISCONNECTED;
+				}
+				// If the unowned derived is now fully connected to the graph again (it's unowned and reconnected, has a parent
+				// and the parent is not unowned), then we can mark it as connected again, removing the need for the unowned
+				// flag
+				if (is_unowned_connected && parent !== null && (parent.f & UNOWNED) === 0) {
+					derived.f ^= UNOWNED;
+				}
 			}
 
-			for (i = 0; i < dependencies.length; i++) {
-				var dependency = dependencies[i];
+			for (i = 0; i < length; i++) {
+				dependency = dependencies[i];
 
-				if (check_dirtiness(/** @type {Derived} */ (dependency))) {
+				if (is_dirty(/** @type {Derived} */ (dependency))) {
 					update_derived(/** @type {Derived} */ (dependency));
 				}
 
-				// If we are working with an unowned signal as part of an effect (due to !skip_reaction)
-				// and the version hasn't changed, we still need to check that this reaction
-				// is linked to the dependency source – otherwise future updates will not be caught.
-				if (
-					is_unowned &&
-					active_effect !== null &&
-					!skip_reaction &&
-					!dependency?.reactions?.includes(reaction)
-				) {
-					(dependency.reactions ??= []).push(reaction);
-				}
-
-				if (dependency.version > reaction.version) {
+				if (dependency.wv > reaction.wv) {
 					return true;
 				}
 			}
 		}
 
-		// Unowned signals should never be marked as clean.
-		if (!is_unowned) {
+		// Unowned signals should never be marked as clean unless they
+		// are used within an active_effect without skip_reaction
+		if (!is_unowned || (active_effect !== null && !skip_reaction)) {
 			set_signal_status(reaction, CLEAN);
 		}
 	}
@@ -25673,160 +27042,72 @@ function check_dirtiness(reaction) {
 }
 
 /**
- * @param {unknown} error
+ * @param {Value} signal
  * @param {Effect} effect
+ * @param {boolean} [root]
  */
-function propagate_error(error, effect) {
-	/** @type {Effect | null} */
-	var current = effect;
+function schedule_possible_effect_self_invalidation(signal, effect, root = true) {
+	var reactions = signal.reactions;
+	if (reactions === null) return;
 
-	while (current !== null) {
-		if ((current.f & BOUNDARY_EFFECT) !== 0) {
-			try {
-				// @ts-expect-error
-				current.fn(error);
-				return;
-			} catch {
-				// Remove boundary flag from effect
-				current.f ^= BOUNDARY_EFFECT;
-			}
-		}
-
-		current = current.parent;
-	}
-
-	is_throwing_error = false;
-	throw error;
-}
-
-/**
- * @param {Effect} effect
- */
-function should_rethrow_error(effect) {
-	return (
-		(effect.f & DESTROYED) === 0 &&
-		(effect.parent === null || (effect.parent.f & BOUNDARY_EFFECT) === 0)
-	);
-}
-
-/**
- * @param {unknown} error
- * @param {Effect} effect
- * @param {Effect | null} previous_effect
- * @param {ComponentContext | null} component_context
- */
-function handle_error(error, effect, previous_effect, component_context) {
-	if (is_throwing_error) {
-		if (previous_effect === null) {
-			is_throwing_error = false;
-		}
-
-		if (should_rethrow_error(effect)) {
-			throw error;
-		}
-
+	if (current_sources?.includes(signal)) {
 		return;
 	}
 
-	if (previous_effect !== null) {
-		is_throwing_error = true;
-	}
+	for (var i = 0; i < reactions.length; i++) {
+		var reaction = reactions[i];
 
-	if (
-		!DEV ||
-		component_context === null ||
-		!(error instanceof Error) ||
-		handled_errors.has(error)
-	) {
-		propagate_error(error, effect);
-		return;
-	}
-
-	handled_errors.add(error);
-
-	const component_stack = [];
-
-	const effect_name = effect.fn?.name;
-
-	if (effect_name) {
-		component_stack.push(effect_name);
-	}
-
-	/** @type {ComponentContext | null} */
-	let current_context = component_context;
-
-	while (current_context !== null) {
-		if (DEV) {
-			/** @type {string} */
-			var filename = current_context.function?.[FILENAME];
-
-			if (filename) {
-				const file = filename.split('/').pop();
-				component_stack.push(file);
+		if ((reaction.f & DERIVED) !== 0) {
+			schedule_possible_effect_self_invalidation(/** @type {Derived} */ (reaction), effect, false);
+		} else if (effect === reaction) {
+			if (root) {
+				set_signal_status(reaction, DIRTY);
+			} else if ((reaction.f & CLEAN) !== 0) {
+				set_signal_status(reaction, MAYBE_DIRTY);
 			}
+			schedule_effect(/** @type {Effect} */ (reaction));
 		}
-
-		current_context = current_context.p;
-	}
-
-	const indent = /Firefox/.test(navigator.userAgent) ? '  ' : '\t';
-	define_property(error, 'message', {
-		value: error.message + `\n${component_stack.map((name) => `\n${indent}in ${name}`).join('')}\n`
-	});
-	define_property(error, 'component_stack', {
-		value: component_stack
-	});
-
-	const stack = error.stack;
-
-	// Filter out internal files from callstack
-	if (stack) {
-		const lines = stack.split('\n');
-		const new_lines = [];
-		for (let i = 0; i < lines.length; i++) {
-			const line = lines[i];
-			if (line.includes('svelte/src/internal')) {
-				continue;
-			}
-			new_lines.push(line);
-		}
-		define_property(error, 'stack', {
-			value: error.stack + new_lines.join('\n')
-		});
-	}
-
-	propagate_error(error, effect);
-
-	if (should_rethrow_error(effect)) {
-		throw error;
 	}
 }
 
-/**
- * @template V
- * @param {Reaction} reaction
- * @returns {V}
- */
+/** @param {Reaction} reaction */
 function update_reaction(reaction) {
 	var previous_deps = new_deps;
 	var previous_skipped_deps = skipped_deps;
 	var previous_untracked_writes = untracked_writes;
 	var previous_reaction = active_reaction;
 	var previous_skip_reaction = skip_reaction;
-	var prev_derived_sources = derived_sources;
+	var previous_sources = current_sources;
 	var previous_component_context = component_context;
+	var previous_untracking = untracking;
+	var previous_update_version = update_version;
+
 	var flags = reaction.f;
 
 	new_deps = /** @type {null | Value[]} */ (null);
 	skipped_deps = 0;
 	untracked_writes = null;
+	skip_reaction =
+		(flags & UNOWNED) !== 0 && (untracking || !is_updating_effect || active_reaction === null);
 	active_reaction = (flags & (BRANCH_EFFECT | ROOT_EFFECT)) === 0 ? reaction : null;
-	skip_reaction = !is_flushing_effect && (flags & UNOWNED) !== 0;
-	derived_sources = null;
-	component_context = reaction.ctx;
+
+	current_sources = null;
+	set_component_context(reaction.ctx);
+	untracking = false;
+	update_version = ++read_version;
+
+	if (reaction.ac !== null) {
+		without_reactive_context(() => {
+			/** @type {AbortController} */ (reaction.ac).abort(STALE_REACTION);
+		});
+
+		reaction.ac = null;
+	}
 
 	try {
-		var result = /** @type {Function} */ (0, reaction.fn)();
+		reaction.f |= REACTION_IS_UPDATING;
+		var fn = /** @type {Function} */ (reaction.fn);
+		var result = fn();
 		var deps = reaction.deps;
 
 		if (new_deps !== null) {
@@ -25843,7 +27124,12 @@ function update_reaction(reaction) {
 				reaction.deps = deps = new_deps;
 			}
 
-			if (!skip_reaction) {
+			if (
+				!skip_reaction ||
+				// Deriveds that already have reactions can cleanup, so we still add them as reactions
+				((flags & DERIVED) !== 0 &&
+					/** @type {import('#client').Derived} */ (reaction).reactions !== null)
+			) {
 				for (i = skipped_deps; i < deps.length; i++) {
 					(deps[i].reactions ??= []).push(reaction);
 				}
@@ -25853,15 +27139,58 @@ function update_reaction(reaction) {
 			deps.length = skipped_deps;
 		}
 
+		// If we're inside an effect and we have untracked writes, then we need to
+		// ensure that if any of those untracked writes result in re-invalidation
+		// of the current effect, then that happens accordingly
+		if (
+			is_runes() &&
+			untracked_writes !== null &&
+			!untracking &&
+			deps !== null &&
+			(reaction.f & (DERIVED | MAYBE_DIRTY | DIRTY)) === 0
+		) {
+			for (i = 0; i < /** @type {Source[]} */ (untracked_writes).length; i++) {
+				schedule_possible_effect_self_invalidation(
+					untracked_writes[i],
+					/** @type {Effect} */ (reaction)
+				);
+			}
+		}
+
+		// If we are returning to an previous reaction then
+		// we need to increment the read version to ensure that
+		// any dependencies in this reaction aren't marked with
+		// the same version
+		if (previous_reaction !== null && previous_reaction !== reaction) {
+			read_version++;
+
+			if (untracked_writes !== null) {
+				if (previous_untracked_writes === null) {
+					previous_untracked_writes = untracked_writes;
+				} else {
+					previous_untracked_writes.push(.../** @type {Source[]} */ (untracked_writes));
+				}
+			}
+		}
+
+		if ((reaction.f & ERROR_VALUE) !== 0) {
+			reaction.f ^= ERROR_VALUE;
+		}
+
 		return result;
+	} catch (error) {
+		return handle_error(error);
 	} finally {
+		reaction.f ^= REACTION_IS_UPDATING;
 		new_deps = previous_deps;
 		skipped_deps = previous_skipped_deps;
 		untracked_writes = previous_untracked_writes;
 		active_reaction = previous_reaction;
 		skip_reaction = previous_skip_reaction;
-		derived_sources = prev_derived_sources;
-		component_context = previous_component_context;
+		current_sources = previous_sources;
+		set_component_context(previous_component_context);
+		untracking = previous_untracking;
+		update_version = previous_update_version;
 	}
 }
 
@@ -25874,7 +27203,7 @@ function update_reaction(reaction) {
 function remove_reaction(signal, dependency) {
 	let reactions = dependency.reactions;
 	if (reactions !== null) {
-		var index = reactions.indexOf(signal);
+		var index = index_of.call(reactions, signal);
 		if (index !== -1) {
 			var new_length = reactions.length - 1;
 			if (new_length === 0) {
@@ -25886,6 +27215,7 @@ function remove_reaction(signal, dependency) {
 			}
 		}
 	}
+
 	// If the derived has no reactions, then we can disconnect it from the graph,
 	// allowing it to either reconnect in the future, or be GC'd by the VM.
 	if (
@@ -25902,6 +27232,8 @@ function remove_reaction(signal, dependency) {
 		if ((dependency.f & (UNOWNED | DISCONNECTED)) === 0) {
 			dependency.f ^= DISCONNECTED;
 		}
+		// Disconnect any reactions owned by this reaction
+		destroy_derived_effects(/** @type {Derived} **/ (dependency));
 		remove_reactions(/** @type {Derived} **/ (dependency), 0);
 	}
 }
@@ -25934,13 +27266,17 @@ function update_effect(effect) {
 	set_signal_status(effect, CLEAN);
 
 	var previous_effect = active_effect;
-	var previous_component_context = component_context;
+	var was_updating_effect = is_updating_effect;
 
 	active_effect = effect;
+	is_updating_effect = true;
 
 	if (DEV) {
 		var previous_component_fn = dev_current_component_function;
-		dev_current_component_function = effect.component_function;
+		set_dev_current_component_function(effect.component_function);
+		var previous_stack = /** @type {any} */ (dev_stack);
+		// only block effects have a dev stack, keep the current one otherwise
+		set_dev_stack(effect.dev_stack ?? dev_stack);
 	}
 
 	try {
@@ -25949,263 +27285,37 @@ function update_effect(effect) {
 		} else {
 			destroy_effect_children(effect);
 		}
-		destroy_effect_deriveds(effect);
 
 		execute_effect_teardown(effect);
 		var teardown = update_reaction(effect);
 		effect.teardown = typeof teardown === 'function' ? teardown : null;
-		effect.version = current_version;
+		effect.wv = write_version;
 
-		if (DEV) {
-			dev_effect_stack.push(effect);
-		}
-	} catch (error) {
-		handle_error(error, effect, previous_effect, previous_component_context || effect.ctx);
+		// In DEV, increment versions of any sources that were written to during the effect,
+		// so that they are correctly marked as dirty when the effect re-runs
+		var dep; if (DEV && tracing_mode_flag && (effect.f & DIRTY) !== 0 && effect.deps !== null) ;
 	} finally {
+		is_updating_effect = was_updating_effect;
 		active_effect = previous_effect;
 
 		if (DEV) {
-			dev_current_component_function = previous_component_fn;
-		}
-	}
-}
-
-function log_effect_stack() {
-	// eslint-disable-next-line no-console
-	console.error(
-		'Last ten effects were: ',
-		dev_effect_stack.slice(-10).map((d) => d.fn)
-	);
-	dev_effect_stack = [];
-}
-
-function infinite_loop_guard() {
-	if (flush_count > 1000) {
-		flush_count = 0;
-		try {
-			effect_update_depth_exceeded();
-		} catch (error) {
-			if (DEV) {
-				// stack is garbage, ignore. Instead add a console.error message.
-				define_property(error, 'stack', {
-					value: ''
-				});
-			}
-			// Try and handle the error so it can be caught at a boundary, that's
-			// if there's an effect available from when it was last scheduled
-			if (last_scheduled_effect !== null) {
-				if (DEV) {
-					try {
-						handle_error(error, last_scheduled_effect, null, null);
-					} catch (e) {
-						// Only log the effect stack if the error is re-thrown
-						log_effect_stack();
-						throw e;
-					}
-				} else {
-					handle_error(error, last_scheduled_effect, null, null);
-				}
-			} else {
-				if (DEV) {
-					log_effect_stack();
-				}
-				throw error;
-			}
-		}
-	}
-	flush_count++;
-}
-
-/**
- * @param {Array<Effect>} root_effects
- * @returns {void}
- */
-function flush_queued_root_effects(root_effects) {
-	var length = root_effects.length;
-	if (length === 0) {
-		return;
-	}
-	infinite_loop_guard();
-
-	var previously_flushing_effect = is_flushing_effect;
-	is_flushing_effect = true;
-
-	try {
-		for (var i = 0; i < length; i++) {
-			var effect = root_effects[i];
-
-			if ((effect.f & CLEAN) === 0) {
-				effect.f ^= CLEAN;
-			}
-
-			/** @type {Effect[]} */
-			var collected_effects = [];
-
-			process_effects(effect, collected_effects);
-			flush_queued_effects(collected_effects);
-		}
-	} finally {
-		is_flushing_effect = previously_flushing_effect;
-	}
-}
-
-/**
- * @param {Array<Effect>} effects
- * @returns {void}
- */
-function flush_queued_effects(effects) {
-	var length = effects.length;
-	if (length === 0) return;
-
-	for (var i = 0; i < length; i++) {
-		var effect = effects[i];
-
-		if ((effect.f & (DESTROYED | INERT)) === 0) {
-			try {
-				if (check_dirtiness(effect)) {
-					update_effect(effect);
-
-					// Effects with no dependencies or teardown do not get added to the effect tree.
-					// Deferred effects (e.g. `$effect(...)`) _are_ added to the tree because we
-					// don't know if we need to keep them until they are executed. Doing the check
-					// here (rather than in `update_effect`) allows us to skip the work for
-					// immediate effects.
-					if (effect.deps === null && effect.first === null && effect.nodes_start === null) {
-						if (effect.teardown === null) {
-							// remove this effect from the graph
-							unlink_effect(effect);
-						} else {
-							// keep the effect in the graph, but free up some memory
-							effect.fn = null;
-						}
-					}
-				}
-			} catch (error) {
-				handle_error(error, effect, null, effect.ctx);
-			}
-		}
-	}
-}
-
-function process_deferred() {
-	is_micro_task_queued = false;
-	if (flush_count > 1001) {
-		return;
-	}
-	const previous_queued_root_effects = queued_root_effects;
-	queued_root_effects = [];
-	flush_queued_root_effects(previous_queued_root_effects);
-
-	if (!is_micro_task_queued) {
-		flush_count = 0;
-		last_scheduled_effect = null;
-		if (DEV) {
-			dev_effect_stack = [];
+			set_dev_current_component_function(previous_component_fn);
+			set_dev_stack(previous_stack);
 		}
 	}
 }
 
 /**
- * @param {Effect} signal
- * @returns {void}
+ * Returns a promise that resolves once any pending state changes have been applied.
+ * @returns {Promise<void>}
  */
-function schedule_effect(signal) {
-	{
-		if (!is_micro_task_queued) {
-			is_micro_task_queued = true;
-			queueMicrotask(process_deferred);
-		}
-	}
+async function tick() {
 
-	last_scheduled_effect = signal;
+	await Promise.resolve();
 
-	var effect = signal;
-
-	while (effect.parent !== null) {
-		effect = effect.parent;
-		var flags = effect.f;
-
-		if ((flags & (ROOT_EFFECT | BRANCH_EFFECT)) !== 0) {
-			if ((flags & CLEAN) === 0) return;
-			effect.f ^= CLEAN;
-		}
-	}
-
-	queued_root_effects.push(effect);
-}
-
-/**
- *
- * This function both runs render effects and collects user effects in topological order
- * from the starting effect passed in. Effects will be collected when they match the filtered
- * bitwise flag passed in only. The collected effects array will be populated with all the user
- * effects to be flushed.
- *
- * @param {Effect} effect
- * @param {Effect[]} collected_effects
- * @returns {void}
- */
-function process_effects(effect, collected_effects) {
-	var current_effect = effect.first;
-	var effects = [];
-
-	main_loop: while (current_effect !== null) {
-		var flags = current_effect.f;
-		var is_branch = (flags & BRANCH_EFFECT) !== 0;
-		var is_skippable_branch = is_branch && (flags & CLEAN) !== 0;
-		var sibling = current_effect.next;
-
-		if (!is_skippable_branch && (flags & INERT) === 0) {
-			if ((flags & RENDER_EFFECT) !== 0) {
-				if (is_branch) {
-					current_effect.f ^= CLEAN;
-				} else {
-					try {
-						if (check_dirtiness(current_effect)) {
-							update_effect(current_effect);
-						}
-					} catch (error) {
-						handle_error(error, current_effect, null, current_effect.ctx);
-					}
-				}
-
-				var child = current_effect.first;
-
-				if (child !== null) {
-					current_effect = child;
-					continue;
-				}
-			} else if ((flags & EFFECT) !== 0) {
-				effects.push(current_effect);
-			}
-		}
-
-		if (sibling === null) {
-			let parent = current_effect.parent;
-
-			while (parent !== null) {
-				if (effect === parent) {
-					break main_loop;
-				}
-				var parent_sibling = parent.next;
-				if (parent_sibling !== null) {
-					current_effect = parent_sibling;
-					continue main_loop;
-				}
-				parent = parent.parent;
-			}
-		}
-
-		current_effect = sibling;
-	}
-
-	// We might be dealing with many effects here, far more than can be spread into
-	// an array push call (callstack overflow). So let's deal with each effect in a loop.
-	for (var i = 0; i < effects.length; i++) {
-		child = effects[i];
-		collected_effects.push(child);
-		process_effects(child, collected_effects);
-	}
+	// By calling flushSync we guarantee that any pending state changes are applied after one tick.
+	// TODO look into whether we can make flushing subsequent updates synchronously in the future.
+	flushSync();
 }
 
 /**
@@ -26217,76 +27327,136 @@ function get(signal) {
 	var flags = signal.f;
 	var is_derived = (flags & DERIVED) !== 0;
 
-	// If the derived is destroyed, just execute it again without retaining
-	// its memoisation properties as the derived is stale
-	if (is_derived && (flags & DESTROYED) !== 0) {
-		var value = execute_derived(/** @type {Derived} */ (signal));
-		// Ensure the derived remains destroyed
-		destroy_derived(/** @type {Derived} */ (signal));
-		return value;
-	}
-
 	// Register the dependency on the current reaction signal.
-	if (active_reaction !== null) {
-		if (derived_sources !== null && derived_sources.includes(signal)) {
-			state_unsafe_local_read();
-		}
-		var deps = active_reaction.deps;
+	if (active_reaction !== null && !untracking) {
+		// if we're in a derived that is being read inside an _async_ derived,
+		// it's possible that the effect was already destroyed. In this case,
+		// we don't add the dependency, because that would create a memory leak
+		var destroyed = active_effect !== null && (active_effect.f & DESTROYED) !== 0;
 
-		// If the signal is accessing the same dependencies in the same
-		// order as it did last time, increment `skipped_deps`
-		// rather than updating `new_deps`, which creates GC cost
-		if (new_deps === null && deps !== null && deps[skipped_deps] === signal) {
-			skipped_deps++;
-		} else if (new_deps === null) {
-			new_deps = [signal];
-		} else {
-			new_deps.push(signal);
-		}
+		if (!destroyed && !current_sources?.includes(signal)) {
+			var deps = active_reaction.deps;
 
-		if (
-			untracked_writes !== null &&
-			active_effect !== null &&
-			(active_effect.f & CLEAN) !== 0 &&
-			(active_effect.f & BRANCH_EFFECT) === 0 &&
-			untracked_writes.includes(signal)
-		) {
-			set_signal_status(active_effect, DIRTY);
-			schedule_effect(active_effect);
-		}
-	} else if (is_derived && /** @type {Derived} */ (signal).deps === null) {
-		var derived = /** @type {Derived} */ (signal);
-		var parent = derived.parent;
-		var target = derived;
+			if ((active_reaction.f & REACTION_IS_UPDATING) !== 0) {
+				// we're in the effect init/update cycle
+				if (signal.rv < read_version) {
+					signal.rv = read_version;
 
-		while (parent !== null) {
-			// Attach the derived to the nearest parent effect, if there are deriveds
-			// in between then we also need to attach them too
-			if ((parent.f & DERIVED) !== 0) {
-				var parent_derived = /** @type {Derived} */ (parent);
-
-				target = parent_derived;
-				parent = parent_derived.parent;
-			} else {
-				var parent_effect = /** @type {Effect} */ (parent);
-
-				if (!parent_effect.deriveds?.includes(target)) {
-					(parent_effect.deriveds ??= []).push(target);
+					// If the signal is accessing the same dependencies in the same
+					// order as it did last time, increment `skipped_deps`
+					// rather than updating `new_deps`, which creates GC cost
+					if (new_deps === null && deps !== null && deps[skipped_deps] === signal) {
+						skipped_deps++;
+					} else if (new_deps === null) {
+						new_deps = [signal];
+					} else if (!skip_reaction || !new_deps.includes(signal)) {
+						// Normally we can push duplicated dependencies to `new_deps`, but if we're inside
+						// an unowned derived because skip_reaction is true, then we need to ensure that
+						// we don't have duplicates
+						new_deps.push(signal);
+					}
 				}
-				break;
+			} else {
+				// we're adding a dependency outside the init/update cycle
+				// (i.e. after an `await`)
+				(active_reaction.deps ??= []).push(signal);
+
+				var reactions = signal.reactions;
+
+				if (reactions === null) {
+					signal.reactions = [active_reaction];
+				} else if (!reactions.includes(active_reaction)) {
+					reactions.push(active_reaction);
+				}
 			}
 		}
+	} else if (
+		is_derived &&
+		/** @type {Derived} */ (signal).deps === null &&
+		/** @type {Derived} */ (signal).effects === null
+	) {
+		var derived = /** @type {Derived} */ (signal);
+		var parent = derived.parent;
+
+		if (parent !== null && (parent.f & UNOWNED) === 0) {
+			// If the derived is owned by another derived then mark it as unowned
+			// as the derived value might have been referenced in a different context
+			// since and thus its parent might not be its true owner anymore
+			derived.f ^= UNOWNED;
+		}
 	}
 
-	if (is_derived) {
+	if (DEV) {
+		if (current_async_effect) {
+			var tracking = (current_async_effect.f & REACTION_IS_UPDATING) !== 0;
+			var was_read = current_async_effect.deps?.includes(signal);
+
+			if (!tracking && !untracking && !was_read) {
+				await_reactivity_loss(/** @type {string} */ (signal.label));
+
+				var trace = get_stack('TracedAt');
+				// eslint-disable-next-line no-console
+				if (trace) console.warn(trace);
+			}
+		}
+
+		recent_async_deriveds.delete(signal);
+	}
+
+	if (is_destroying_effect) {
+		if (old_values.has(signal)) {
+			return old_values.get(signal);
+		}
+
+		if (is_derived) {
+			derived = /** @type {Derived} */ (signal);
+
+			var value = derived.v;
+
+			// if the derived is dirty and has reactions, or depends on the values that just changed, re-execute
+			// (a derived can be maybe_dirty due to the effect destroy removing its last reaction)
+			if (
+				((derived.f & CLEAN) === 0 && derived.reactions !== null) ||
+				depends_on_old_values(derived)
+			) {
+				value = execute_derived(derived);
+			}
+
+			old_values.set(derived, value);
+
+			return value;
+		}
+	} else if (is_derived) {
 		derived = /** @type {Derived} */ (signal);
 
-		if (check_dirtiness(derived)) {
+		if (is_dirty(derived)) {
 			update_derived(derived);
 		}
 	}
 
+	if ((signal.f & ERROR_VALUE) !== 0) {
+		throw signal.v;
+	}
+
 	return signal.v;
+}
+
+/** @param {Derived} derived */
+function depends_on_old_values(derived) {
+	if (derived.v === UNINITIALIZED) return true; // we don't know, so assume the worst
+	if (derived.deps === null) return false;
+
+	for (const dep of derived.deps) {
+		if (old_values.has(dep)) {
+			return true;
+		}
+
+		if ((dep.f & DERIVED) !== 0 && depends_on_old_values(/** @type {Derived} */ (dep))) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /**
@@ -26306,16 +27476,16 @@ function get(signal) {
  * @returns {T}
  */
 function untrack(fn) {
-	const previous_reaction = active_reaction;
+	var previous_untracking = untracking;
 	try {
-		active_reaction = null;
+		untracking = true;
 		return fn();
 	} finally {
-		active_reaction = previous_reaction;
+		untracking = previous_untracking;
 	}
 }
 
-const STATUS_MASK = ~(DIRTY | MAYBE_DIRTY | CLEAN);
+const STATUS_MASK = -7169;
 
 /**
  * @param {Signal} signal
@@ -26327,172 +27497,23 @@ function set_signal_status(signal, status) {
 }
 
 /**
- * @param {Record<string, unknown>} props
- * @param {any} runes
- * @param {Function} [fn]
- * @returns {void}
+ * Subset of delegated events which should be passive by default.
+ * These two are already passive via browser defaults on window, document and body.
+ * But since
+ * - we're delegating them
+ * - they happen often
+ * - they apply to mobile which is generally less performant
+ * we're marking them as passive by default for other elements, too.
  */
-function push(props, runes = false, fn) {
-	component_context = {
-		p: component_context,
-		c: null,
-		e: null,
-		m: false,
-		s: props,
-		x: null,
-		l: null
-	};
-
-	if (DEV) {
-		// component function
-		component_context.function = fn;
-		dev_current_component_function = fn;
-	}
-}
+const PASSIVE_EVENTS = ['touchstart', 'touchmove'];
 
 /**
- * @template {Record<string, any>} T
- * @param {T} [component]
- * @returns {T}
+ * Returns `true` if `name` is a passive event
+ * @param {string} name
  */
-function pop(component) {
-	const context_stack_item = component_context;
-	if (context_stack_item !== null) {
-		if (component !== undefined) {
-			context_stack_item.x = component;
-		}
-		const component_effects = context_stack_item.e;
-		if (component_effects !== null) {
-			var previous_effect = active_effect;
-			var previous_reaction = active_reaction;
-			context_stack_item.e = null;
-			try {
-				for (var i = 0; i < component_effects.length; i++) {
-					var component_effect = component_effects[i];
-					set_active_effect(component_effect.effect);
-					set_active_reaction(component_effect.reaction);
-					effect$3(component_effect.fn);
-				}
-			} finally {
-				set_active_effect(previous_effect);
-				set_active_reaction(previous_reaction);
-			}
-		}
-		component_context = context_stack_item.p;
-		if (DEV) {
-			dev_current_component_function = context_stack_item.p?.function ?? null;
-		}
-		context_stack_item.m = true;
-	}
-	// Micro-optimization: Don't set .a above to the empty object
-	// so it can be garbage-collected when the return here is unused
-	return component || /** @type {T} */ ({});
+function is_passive_event(name) {
+	return PASSIVE_EVENTS.includes(name);
 }
-
-if (DEV) {
-	/**
-	 * @param {string} rune
-	 */
-	function throw_rune_error(rune) {
-		if (!(rune in globalThis)) {
-			// TODO if people start adjusting the "this can contain runes" config through v-p-s more, adjust this message
-			/** @type {any} */
-			let value; // let's hope noone modifies this global, but belts and braces
-			Object.defineProperty(globalThis, rune, {
-				configurable: true,
-				// eslint-disable-next-line getter-return
-				get: () => {
-					if (value !== undefined) {
-						return value;
-					}
-
-					rune_outside_svelte(rune);
-				},
-				set: (v) => {
-					value = v;
-				}
-			});
-		}
-	}
-
-	throw_rune_error('$state');
-	throw_rune_error('$effect');
-	throw_rune_error('$derived');
-	throw_rune_error('$inspect');
-	throw_rune_error('$props');
-	throw_rune_error('$bindable');
-}
-
-let listening_to_form_reset = false;
-
-function add_form_reset_listener() {
-	if (!listening_to_form_reset) {
-		listening_to_form_reset = true;
-		document.addEventListener(
-			'reset',
-			(evt) => {
-				// Needs to happen one tick later or else the dom properties of the form
-				// elements have not updated to their reset values yet
-				Promise.resolve().then(() => {
-					if (!evt.defaultPrevented) {
-						for (const e of /**@type {HTMLFormElement} */ (evt.target).elements) {
-							// @ts-expect-error
-							e.__on_r?.();
-						}
-					}
-				});
-			},
-			// In the capture phase to guarantee we get noticed of it (no possiblity of stopPropagation)
-			{ capture: true }
-		);
-	}
-}
-
-/**
- * @template T
- * @param {() => T} fn
- */
-function without_reactive_context(fn) {
-	var previous_reaction = active_reaction;
-	var previous_effect = active_effect;
-	set_active_reaction(null);
-	set_active_effect(null);
-	try {
-		return fn();
-	} finally {
-		set_active_reaction(previous_reaction);
-		set_active_effect(previous_effect);
-	}
-}
-
-/**
- * Listen to the given event, and then instantiate a global form reset listener if not already done,
- * to notify all bindings when the form is reset
- * @param {HTMLElement} element
- * @param {string} event
- * @param {(is_reset?: true) => void} handler
- * @param {(is_reset?: true) => void} [on_reset]
- */
-function listen_to_event_and_reset_event(element, event, handler, on_reset = handler) {
-	element.addEventListener(event, () => without_reactive_context(handler));
-	// @ts-expect-error
-	const prev = element.__on_r;
-	if (prev) {
-		// special case for checkbox that can have multiple binds (group & checked)
-		// @ts-expect-error
-		element.__on_r = () => {
-			prev();
-			on_reset(true);
-		};
-	} else {
-		// @ts-expect-error
-		element.__on_r = () => on_reset(true);
-	}
-
-	add_form_reset_listener();
-}
-
-/** @import { Location } from 'locate-character' */
 
 /** @type {Set<string>} */
 const all_registered_events = new Set();
@@ -26503,10 +27524,10 @@ const root_event_handles = new Set();
 /**
  * @param {string} event_name
  * @param {EventTarget} dom
- * @param {EventListener} handler
- * @param {AddEventListenerOptions} options
+ * @param {EventListener} [handler]
+ * @param {AddEventListenerOptions} [options]
  */
-function create_event(event_name, dom, handler, options) {
+function create_event(event_name, dom, handler, options = {}) {
 	/**
 	 * @this {EventTarget}
 	 */
@@ -26517,7 +27538,7 @@ function create_event(event_name, dom, handler, options) {
 		}
 		if (!event.cancelBubble) {
 			return without_reactive_context(() => {
-				return handler.call(this, event);
+				return handler?.call(this, event);
 			});
 		}
 	}
@@ -26544,8 +27565,8 @@ function create_event(event_name, dom, handler, options) {
 /**
  * @param {string} event_name
  * @param {Element} dom
- * @param {EventListener} handler
- * @param {boolean} capture
+ * @param {EventListener} [handler]
+ * @param {boolean} [capture]
  * @param {boolean} [passive]
  * @returns {void}
  */
@@ -26553,8 +27574,15 @@ function event(event_name, dom, handler, capture, passive) {
 	var options = { capture, passive };
 	var target_handler = create_event(event_name, dom, handler, options);
 
-	// @ts-ignore
-	if (dom === document.body || dom === window || dom === document) {
+	if (
+		dom === document.body ||
+		// @ts-ignore
+		dom === window ||
+		// @ts-ignore
+		dom === document ||
+		// Firefox has quirky behavior, it can happen that we still get "canplay" events when the element is already removed
+		dom instanceof HTMLMediaElement
+	) {
 		teardown(() => {
 			dom.removeEventListener(event_name, target_handler, options);
 		});
@@ -26575,6 +27603,13 @@ function delegate(events) {
 	}
 }
 
+// used to store the reference to the currently propagated event
+// to prevent garbage collection between microtasks in Firefox
+// If the event object is GCed too early, the expando __root property
+// set on the event object is lost, causing the event delegation
+// to process the event twice
+let last_propagated_event = null;
+
 /**
  * @this {EventTarget}
  * @param {Event} event
@@ -26587,14 +27622,19 @@ function handle_event_propagation(event) {
 	var path = event.composedPath?.() || [];
 	var current_target = /** @type {null | Element} */ (path[0] || event.target);
 
+	last_propagated_event = event;
+
 	// composedPath contains list of nodes the event has propagated through.
 	// We check __root to skip all nodes below it in case this is a
 	// parent of the __root node, which indicates that there's nested
 	// mounted apps. In this case we don't want to trigger events multiple times.
 	var path_idx = 0;
 
+	// the `last_propagated_event === event` check is redundant, but
+	// without it the variable will be DCE'd and things will
+	// fail mysteriously in Firefox
 	// @ts-expect-error is added below
-	var handled_at = event.__root;
+	var handled_at = last_propagated_event === event && event.__root;
 
 	if (handled_at) {
 		var at_idx = path.indexOf(handled_at);
@@ -26673,7 +27713,13 @@ function handle_event_propagation(event) {
 				// @ts-expect-error
 				var delegated = current_target['__' + event_name];
 
-				if (delegated !== undefined && !(/** @type {any} */ (current_target).disabled)) {
+				if (
+					delegated != null &&
+					(!(/** @type {any} */ (current_target).disabled) ||
+						// DOM could've been updated already by the time this is reached, so we check this as well
+						// -> the target could not have been disabled because it emits the event in the first place
+						event.target === current_target)
+				) {
 					if (is_array(delegated)) {
 						var [fn, ...data] = delegated;
 						fn.apply(current_target, [event, ...data]);
@@ -26716,11 +27762,12 @@ function handle_event_propagation(event) {
 /** @param {string} html */
 function create_fragment_from_html(html) {
 	var elem = document.createElement('template');
-	elem.innerHTML = html;
+	elem.innerHTML = html.replaceAll('<!>', '<!---->'); // XHTML compliance
 	return elem.content;
 }
 
 /** @import { Effect, TemplateNode } from '#client' */
+/** @import { TemplateStructure } from './types' */
 
 /**
  * @param {TemplateNode} start
@@ -26740,7 +27787,7 @@ function assign_nodes(start, end) {
  * @returns {() => Node | Node[]}
  */
 /*#__NO_SIDE_EFFECTS__*/
-function template(content, flags) {
+function from_html(content, flags) {
 	var is_fragment = (flags & TEMPLATE_FRAGMENT) !== 0;
 	var use_import_node = (flags & TEMPLATE_USE_IMPORT_NODE) !== 0;
 
@@ -26761,7 +27808,7 @@ function template(content, flags) {
 		}
 
 		var clone = /** @type {TemplateNode} */ (
-			use_import_node ? document.importNode(node, true) : node.cloneNode(true)
+			use_import_node || is_firefox ? document.importNode(node, true) : node.cloneNode(true)
 		);
 
 		if (is_fragment) {
@@ -26817,25 +27864,6 @@ function append(anchor, dom) {
 	anchor.before(/** @type {Node} */ (dom));
 }
 
-/**
- * Subset of delegated events which should be passive by default.
- * These two are already passive via browser defaults on window, document and body.
- * But since
- * - we're delegating them
- * - they happen often
- * - they apply to mobile which is generally less performant
- * we're marking them as passive by default for other elements, too.
- */
-const PASSIVE_EVENTS = ['touchstart', 'touchmove'];
-
-/**
- * Returns `true` if `name` is a passive event
- * @param {string} name
- */
-function is_passive_event(name) {
-	return PASSIVE_EVENTS.includes(name);
-}
-
 /** @import { ComponentContext, Effect, TemplateNode } from '#client' */
 /** @import { Component, ComponentType, SvelteComponent, MountOptions } from '../../index.js' */
 
@@ -26851,7 +27879,7 @@ function set_text(text, value) {
 	if (str !== (text.__t ??= text.nodeValue)) {
 		// @ts-expect-error
 		text.__t = str;
-		text.nodeValue = str == null ? '' : str + '';
+		text.nodeValue = str + '';
 	}
 }
 
@@ -26881,6 +27909,7 @@ const document_listeners = new Map();
 function _mount(Component, { target, anchor, props = {}, events, context, intro = true }) {
 	init_operations();
 
+	/** @type {Set<string>} */
 	var registered_events = new Set();
 
 	/** @param {Array<string>} events */
@@ -26918,7 +27947,7 @@ function _mount(Component, { target, anchor, props = {}, events, context, intro 
 	// @ts-expect-error will be defined because the render effect runs synchronously
 	var component = undefined;
 
-	var unmount = effect_root(() => {
+	var unmount = component_root(() => {
 		var anchor_node = anchor ?? target.appendChild(create_text());
 
 		branch(() => {
@@ -26955,7 +27984,7 @@ function _mount(Component, { target, anchor, props = {}, events, context, intro 
 			}
 
 			root_event_handles.delete(event_handle);
-			mounted_components.delete(component);
+
 			if (anchor_node !== anchor) {
 				anchor_node.parentNode?.removeChild(anchor_node);
 			}
@@ -26974,19 +28003,43 @@ let mounted_components = new WeakMap();
 
 /**
  * Unmounts a component that was previously mounted using `mount` or `hydrate`.
+ *
+ * Since 5.13.0, if `options.outro` is `true`, [transitions](https://svelte.dev/docs/svelte/transition) will play before the component is removed from the DOM.
+ *
+ * Returns a `Promise` that resolves after transitions have completed if `options.outro` is true, or immediately otherwise (prior to 5.13.0, returns `void`).
+ *
+ * ```js
+ * import { mount, unmount } from 'svelte';
+ * import App from './App.svelte';
+ *
+ * const app = mount(App, { target: document.body });
+ *
+ * // later...
+ * unmount(app, { outro: true });
+ * ```
  * @param {Record<string, any>} component
+ * @param {{ outro?: boolean }} [options]
+ * @returns {Promise<void>}
  */
-function unmount(component) {
+function unmount(component, options) {
 	const fn = mounted_components.get(component);
 
 	if (fn) {
-		fn();
-	} else if (DEV) {
+		mounted_components.delete(component);
+		return fn(options);
+	}
+
+	if (DEV) {
 		lifecycle_double_unmount();
 	}
+
+	return Promise.resolve();
 }
 
 /** @import { Effect, TemplateNode } from '#client' */
+/** @import { Batch } from '../../reactivity/batch.js'; */
+
+// TODO reinstate https://github.com/sveltejs/svelte/pull/15250
 
 /**
  * @param {TemplateNode} node
@@ -27004,8 +28057,8 @@ function if_block(node, fn, elseif = false) {
 	/** @type {Effect | null} */
 	var alternate_effect = null;
 
-	/** @type {boolean | null} */
-	var condition = null;
+	/** @type {typeof UNINITIALIZED | boolean | null} */
+	var condition = UNINITIALIZED;
 
 	var flags = elseif ? EFFECT_TRANSPARENT : 0;
 
@@ -27016,36 +28069,68 @@ function if_block(node, fn, elseif = false) {
 		update_branch(flag, fn);
 	};
 
+	/** @type {DocumentFragment | null} */
+	var offscreen_fragment = null;
+
+	function commit() {
+		if (offscreen_fragment !== null) {
+			// remove the anchor
+			/** @type {Text} */ (offscreen_fragment.lastChild).remove();
+
+			anchor.before(offscreen_fragment);
+			offscreen_fragment = null;
+		}
+
+		var active = condition ? consequent_effect : alternate_effect;
+		var inactive = condition ? alternate_effect : consequent_effect;
+
+		if (active) {
+			resume_effect(active);
+		}
+
+		if (inactive) {
+			pause_effect(inactive, () => {
+				if (condition) {
+					alternate_effect = null;
+				} else {
+					consequent_effect = null;
+				}
+			});
+		}
+	}
+
 	const update_branch = (
 		/** @type {boolean | null} */ new_condition,
 		/** @type {null | ((anchor: Node) => void)} */ fn
 	) => {
 		if (condition === (condition = new_condition)) return;
 
+		var defer = should_defer_append();
+		var target = anchor;
+
+		if (defer) {
+			offscreen_fragment = document.createDocumentFragment();
+			offscreen_fragment.append((target = create_text()));
+		}
+
 		if (condition) {
-			if (consequent_effect) {
-				resume_effect(consequent_effect);
-			} else if (fn) {
-				consequent_effect = branch(() => fn(anchor));
-			}
-
-			if (alternate_effect) {
-				pause_effect(alternate_effect, () => {
-					alternate_effect = null;
-				});
-			}
+			consequent_effect ??= fn && branch(() => fn(target));
 		} else {
-			if (alternate_effect) {
-				resume_effect(alternate_effect);
-			} else if (fn) {
-				alternate_effect = branch(() => fn(anchor));
-			}
+			alternate_effect ??= fn && branch(() => fn(target));
+		}
 
-			if (consequent_effect) {
-				pause_effect(consequent_effect, () => {
-					consequent_effect = null;
-				});
-			}
+		if (defer) {
+			var batch = /** @type {Batch} */ (current_batch);
+
+			var active = condition ? consequent_effect : alternate_effect;
+			var inactive = condition ? alternate_effect : consequent_effect;
+
+			if (active) batch.skipped_effects.delete(active);
+			if (inactive) batch.skipped_effects.add(inactive);
+
+			batch.add_callback(commit);
+		} else {
+			commit();
 		}
 	};
 
@@ -27059,6 +28144,7 @@ function if_block(node, fn, elseif = false) {
 }
 
 /** @import { EachItem, EachState, Effect, MaybeSource, Source, TemplateNode, TransitionManager, Value } from '#client' */
+/** @import { Batch } from '../../reactivity/batch.js'; */
 
 /**
  * @param {any} _
@@ -27074,9 +28160,10 @@ function index(_, i) {
  * @param {EachState} state
  * @param {EachItem[]} items
  * @param {null | Node} controlled_anchor
- * @param {Map<any, EachItem>} items_map
  */
-function pause_effects(state, items, controlled_anchor, items_map) {
+function pause_effects(state, items, controlled_anchor) {
+	var items_map = state.items;
+
 	/** @type {TransitionManager[]} */
 	var transitions = [];
 	var length = items.length;
@@ -27139,31 +28226,39 @@ function each(node, flags, get_collection, get_key, render_fn, fallback_fn = nul
 
 	var was_empty = false;
 
-	block(() => {
+	/** @type {Map<any, EachItem>} */
+	var offscreen_items = new Map();
+
+	// TODO: ideally we could use derived for runes mode but because of the ability
+	// to use a store which can be mutated, we can't do that here as mutating a store
+	// will still result in the collection array being the same from the store
+	var each_array = derived_safe_equal(() => {
 		var collection = get_collection();
 
-		var array = is_array(collection)
-			? collection
-			: collection == null
-				? []
-				: array_from(collection);
+		return is_array(collection) ? collection : collection == null ? [] : array_from(collection);
+	});
 
-		var length = array.length;
+	/** @type {V[]} */
+	var array;
 
-		if (was_empty && length === 0) {
-			// ignore updates if the array is empty,
-			// and it already was empty on previous run
-			return;
-		}
-		was_empty = length === 0;
+	/** @type {Effect} */
+	var each_effect;
 
-		{
-			var effect = /** @type {Effect} */ (active_reaction);
-			reconcile(array, state, anchor, render_fn, flags, (effect.f & INERT) !== 0, get_key);
-		}
+	function commit() {
+		reconcile(
+			each_effect,
+			array,
+			state,
+			offscreen_items,
+			anchor,
+			render_fn,
+			flags,
+			get_key,
+			get_collection
+		);
 
 		if (fallback_fn !== null) {
-			if (length === 0) {
+			if (array.length === 0) {
 				if (fallback) {
 					resume_effect(fallback);
 				} else {
@@ -27175,6 +28270,73 @@ function each(node, flags, get_collection, get_key, render_fn, fallback_fn = nul
 				});
 			}
 		}
+	}
+
+	block(() => {
+		// store a reference to the effect so that we can update the start/end nodes in reconciliation
+		each_effect ??= /** @type {Effect} */ (active_effect);
+
+		array = /** @type {V[]} */ (get(each_array));
+		var length = array.length;
+
+		if (was_empty && length === 0) {
+			// ignore updates if the array is empty,
+			// and it already was empty on previous run
+			return;
+		}
+		was_empty = length === 0;
+
+		// this is separate to the previous block because `hydrating` might change
+		var item, i, value, key; 
+
+		{
+			if (should_defer_append()) {
+				var keys = new Set();
+				var batch = /** @type {Batch} */ (current_batch);
+
+				for (i = 0; i < length; i += 1) {
+					value = array[i];
+					key = get_key(value, i);
+
+					var existing = state.items.get(key) ?? offscreen_items.get(key);
+
+					if (existing) {
+						// update before reconciliation, to trigger any async updates
+						if ((flags & (EACH_ITEM_REACTIVE | EACH_INDEX_REACTIVE)) !== 0) {
+							update_item(existing, value, i, flags);
+						}
+					} else {
+						item = create_item(
+							null,
+							state,
+							null,
+							null,
+							value,
+							key,
+							i,
+							render_fn,
+							flags,
+							get_collection,
+							true
+						);
+
+						offscreen_items.set(key, item);
+					}
+
+					keys.add(key);
+				}
+
+				for (const [key, item] of state.items) {
+					if (!keys.has(key)) {
+						batch.skipped_effects.add(item.e);
+					}
+				}
+
+				batch.add_callback(commit);
+			} else {
+				commit();
+			}
+		}
 
 		// When we mount the each block for the first time, the collection won't be
 		// connected to this effect as the effect hasn't finished running yet and its deps
@@ -27182,23 +28344,35 @@ function each(node, flags, get_collection, get_key, render_fn, fallback_fn = nul
 		// that a mutation occurred and it's made the collection MAYBE_DIRTY, so reading the
 		// collection again can provide consistency to the reactive graph again as the deriveds
 		// will now be `CLEAN`.
-		get_collection();
+		get(each_array);
 	});
 }
 
 /**
  * Add, remove, or reorder items output by an each block as its input changes
  * @template V
+ * @param {Effect} each_effect
  * @param {Array<V>} array
  * @param {EachState} state
+ * @param {Map<any, EachItem>} offscreen_items
  * @param {Element | Comment | Text} anchor
- * @param {(anchor: Node, item: MaybeSource<V>, index: number | Source<number>) => void} render_fn
+ * @param {(anchor: Node, item: MaybeSource<V>, index: number | Source<number>, collection: () => V[]) => void} render_fn
  * @param {number} flags
- * @param {boolean} is_inert
  * @param {(value: V, index: number) => any} get_key
+ * @param {() => V[]} get_collection
  * @returns {void}
  */
-function reconcile(array, state, anchor, render_fn, flags, is_inert, get_key) {
+function reconcile(
+	each_effect,
+	array,
+	state,
+	offscreen_items,
+	anchor,
+	render_fn,
+	flags,
+	get_key,
+	get_collection
+) {
 	var is_animated = (flags & EACH_IS_ANIMATED) !== 0;
 	var should_update = (flags & (EACH_ITEM_REACTIVE | EACH_INDEX_REACTIVE)) !== 0;
 
@@ -27250,22 +28424,39 @@ function reconcile(array, state, anchor, render_fn, flags, is_inert, get_key) {
 	for (i = 0; i < length; i += 1) {
 		value = array[i];
 		key = get_key(value, i);
+
 		item = items.get(key);
 
 		if (item === undefined) {
-			var child_anchor = current ? /** @type {TemplateNode} */ (current.e.nodes_start) : anchor;
+			var pending = offscreen_items.get(key);
 
-			prev = create_item(
-				child_anchor,
-				state,
-				prev,
-				prev === null ? state.first : prev.next,
-				value,
-				key,
-				i,
-				render_fn,
-				flags
-			);
+			if (pending !== undefined) {
+				offscreen_items.delete(key);
+				items.set(key, pending);
+
+				var next = prev ? prev.next : current;
+
+				link(state, prev, pending);
+				link(state, pending, next);
+
+				move(pending, next, anchor);
+				prev = pending;
+			} else {
+				var child_anchor = current ? /** @type {TemplateNode} */ (current.e.nodes_start) : anchor;
+
+				prev = create_item(
+					child_anchor,
+					state,
+					prev,
+					prev === null ? state.first : prev.next,
+					value,
+					key,
+					i,
+					render_fn,
+					flags,
+					get_collection
+				);
+			}
 
 			items.set(key, prev);
 
@@ -27339,7 +28530,7 @@ function reconcile(array, state, anchor, render_fn, flags, is_inert, get_key) {
 			while (current !== null && current.k !== key) {
 				// If the each block isn't inert and an item has an effect that is already inert,
 				// skip over adding it to our seen Set as the item is already being handled
-				if (is_inert || (current.e.f & INERT) === 0) {
+				if ((current.e.f & INERT) === 0) {
 					(seen ??= new Set()).add(current);
 				}
 				stashed.push(current);
@@ -27363,7 +28554,7 @@ function reconcile(array, state, anchor, render_fn, flags, is_inert, get_key) {
 
 		while (current !== null) {
 			// If the each block isn't inert, then inert effects are currently outroing and will be removed once the transition is finished
-			if (is_inert || (current.e.f & INERT) === 0) {
+			if ((current.e.f & INERT) === 0) {
 				to_destroy.push(current);
 			}
 			current = current.next;
@@ -27384,7 +28575,7 @@ function reconcile(array, state, anchor, render_fn, flags, is_inert, get_key) {
 				}
 			}
 
-			pause_effects(state, to_destroy, controlled_anchor, items);
+			pause_effects(state, to_destroy, controlled_anchor);
 		}
 	}
 
@@ -27397,8 +28588,14 @@ function reconcile(array, state, anchor, render_fn, flags, is_inert, get_key) {
 		});
 	}
 
-	/** @type {Effect} */ (active_effect).first = state.first && state.first.e;
-	/** @type {Effect} */ (active_effect).last = prev && prev.e;
+	each_effect.first = state.first && state.first.e;
+	each_effect.last = prev && prev.e;
+
+	for (var unused of offscreen_items.values()) {
+		destroy_effect(unused.e);
+	}
+
+	offscreen_items.clear();
 }
 
 /**
@@ -27422,23 +28619,47 @@ function update_item(item, value, index, type) {
 
 /**
  * @template V
- * @param {Node} anchor
+ * @param {Node | null} anchor
  * @param {EachState} state
  * @param {EachItem | null} prev
  * @param {EachItem | null} next
  * @param {V} value
  * @param {unknown} key
  * @param {number} index
- * @param {(anchor: Node, item: V | Source<V>, index: number | Value<number>) => void} render_fn
+ * @param {(anchor: Node, item: V | Source<V>, index: number | Value<number>, collection: () => V[]) => void} render_fn
  * @param {number} flags
+ * @param {() => V[]} get_collection
+ * @param {boolean} [deferred]
  * @returns {EachItem}
  */
-function create_item(anchor, state, prev, next, value, key, index, render_fn, flags) {
+function create_item(
+	anchor,
+	state,
+	prev,
+	next,
+	value,
+	key,
+	index,
+	render_fn,
+	flags,
+	get_collection,
+	deferred
+) {
 	var reactive = (flags & EACH_ITEM_REACTIVE) !== 0;
 	var mutable = (flags & EACH_ITEM_IMMUTABLE) === 0;
 
-	var v = reactive ? (mutable ? mutable_source(value) : source(value)) : value;
+	var v = reactive ? (mutable ? mutable_source(value, false, false) : source(value)) : value;
 	var i = (flags & EACH_INDEX_REACTIVE) === 0 ? index : source(index);
+
+	if (DEV && reactive) {
+		// For tracing purposes, we need to link the source signal we create with the
+		// collection + index so that tracing works as intended
+		/** @type {Value} */ (v).trace = () => {
+			var collection_index = typeof i === 'number' ? index : i.v;
+			// eslint-disable-next-line @typescript-eslint/no-unused-expressions
+			get_collection()[collection_index];
+		};
+	}
 
 	/** @type {EachItem} */
 	var item = {
@@ -27453,13 +28674,20 @@ function create_item(anchor, state, prev, next, value, key, index, render_fn, fl
 	};
 
 	try {
-		item.e = branch(() => render_fn(anchor, v, i), hydrating);
+		if (anchor === null) {
+			var fragment = document.createDocumentFragment();
+			fragment.append((anchor = create_text()));
+		}
+
+		item.e = branch(() => render_fn(/** @type {Node} */ (anchor), v, i, get_collection), hydrating);
 
 		item.e.prev = prev && prev.e;
 		item.e.next = next && next.e;
 
 		if (prev === null) {
-			state.first = item;
+			if (!deferred) {
+				state.first = item;
+			}
 		} else {
 			prev.next = item;
 			prev.e.next = item.e;
@@ -27486,7 +28714,7 @@ function move(item, next, anchor) {
 	var dest = next ? /** @type {TemplateNode} */ (next.e.nodes_start) : anchor;
 	var node = /** @type {TemplateNode} */ (item.e.nodes_start);
 
-	while (node !== end) {
+	while (node !== null && node !== end) {
 		var next_node = /** @type {TemplateNode} */ (get_next_sibling(node));
 		dest.before(node);
 		node = next_node;
@@ -27517,49 +28745,55 @@ function link(state, prev, next) {
 /**
  * @param {Element | Text | Comment} node
  * @param {() => string} get_value
- * @param {boolean} svg
- * @param {boolean} mathml
+ * @param {boolean} [svg]
+ * @param {boolean} [mathml]
  * @param {boolean} [skip_warning]
  * @returns {void}
  */
-function html(node, get_value, svg, mathml, skip_warning) {
+function html(node, get_value, svg = false, mathml = false, skip_warning = false) {
 	var anchor = node;
 
 	var value = '';
 
-	/** @type {Effect | undefined} */
-	var effect;
+	template_effect(() => {
+		var effect = /** @type {Effect} */ (active_effect);
 
-	block(() => {
 		if (value === (value = get_value() ?? '')) {
 			return;
 		}
 
-		if (effect !== undefined) {
-			destroy_effect(effect);
-			effect = undefined;
+		if (effect.nodes_start !== null) {
+			remove_effect_dom(effect.nodes_start, /** @type {TemplateNode} */ (effect.nodes_end));
+			effect.nodes_start = effect.nodes_end = null;
 		}
 
 		if (value === '') return;
 
-		effect = branch(() => {
+		var html = value + '';
+		if (svg) html = `<svg>${html}</svg>`;
+		else if (mathml) html = `<math>${html}</math>`;
 
-			var html = value + '';
+		// Don't use create_fragment_with_script_from_html here because that would mean script tags are executed.
+		// @html is basically `.innerHTML = ...` and that doesn't execute scripts either due to security reasons.
+		/** @type {DocumentFragment | Element} */
+		var node = create_fragment_from_html(html);
 
-			// Don't use create_fragment_with_script_from_html here because that would mean script tags are executed.
-			// @html is basically `.innerHTML = ...` and that doesn't execute scripts either due to security reasons.
-			/** @type {DocumentFragment | Element} */
-			var node = create_fragment_from_html(html);
+		if (svg || mathml) {
+			node = /** @type {Element} */ (get_first_child(node));
+		}
 
-			assign_nodes(
-				/** @type {TemplateNode} */ (get_first_child(node)),
-				/** @type {TemplateNode} */ (node.lastChild)
-			);
+		assign_nodes(
+			/** @type {TemplateNode} */ (get_first_child(node)),
+			/** @type {TemplateNode} */ (node.lastChild)
+		);
 
-			{
-				anchor.before(node);
+		if (svg || mathml) {
+			while (get_first_child(node)) {
+				anchor.before(/** @type {Node} */ (get_first_child(node)));
 			}
-		});
+		} else {
+			anchor.before(node);
+		}
 	});
 }
 
@@ -27600,15 +28834,244 @@ function snippet(node, get_snippet, ...args) {
 	}, EFFECT_TRANSPARENT);
 }
 
+const whitespace = [...' \t\n\r\f\u00a0\u000b\ufeff'];
+
+/**
+ * @param {any} value
+ * @param {string | null} [hash]
+ * @param {Record<string, boolean>} [directives]
+ * @returns {string | null}
+ */
+function to_class(value, hash, directives) {
+	var classname = value == null ? '' : '' + value;
+
+	if (directives) {
+		for (var key in directives) {
+			if (directives[key]) {
+				classname = classname ? classname + ' ' + key : key;
+			} else if (classname.length) {
+				var len = key.length;
+				var a = 0;
+
+				while ((a = classname.indexOf(key, a)) >= 0) {
+					var b = a + len;
+
+					if (
+						(a === 0 || whitespace.includes(classname[a - 1])) &&
+						(b === classname.length || whitespace.includes(classname[b]))
+					) {
+						classname = (a === 0 ? '' : classname.substring(0, a)) + classname.substring(b + 1);
+					} else {
+						a = b;
+					}
+				}
+			}
+		}
+	}
+
+	return classname === '' ? null : classname;
+}
+
+/**
+ * @param {Element} dom
+ * @param {boolean | number} is_html
+ * @param {string | null} value
+ * @param {string} [hash]
+ * @param {Record<string, any>} [prev_classes]
+ * @param {Record<string, any>} [next_classes]
+ * @returns {Record<string, boolean> | undefined}
+ */
+function set_class(dom, is_html, value, hash, prev_classes, next_classes) {
+	// @ts-expect-error need to add __className to patched prototype
+	var prev = dom.__className;
+
+	if (
+		prev !== value ||
+		prev === undefined // for edge case of `class={undefined}`
+	) {
+		var next_class_name = to_class(value, hash, next_classes);
+
+		{
+			// Removing the attribute when the value is only an empty string causes
+			// performance issues vs simply making the className an empty string. So
+			// we should only remove the class if the value is nullish
+			// and there no hash/directives :
+			if (next_class_name == null) {
+				dom.removeAttribute('class');
+			} else {
+				dom.className = next_class_name;
+			}
+		}
+
+		// @ts-expect-error need to add __className to patched prototype
+		dom.__className = value;
+	} else if (next_classes && prev_classes !== next_classes) {
+		for (var key in next_classes) {
+			var is_present = !!next_classes[key];
+
+			if (prev_classes == null || is_present !== !!prev_classes[key]) {
+				dom.classList.toggle(key, is_present);
+			}
+		}
+	}
+
+	return next_classes;
+}
+
+/**
+ * Selects the correct option(s) (depending on whether this is a multiple select)
+ * @template V
+ * @param {HTMLSelectElement} select
+ * @param {V} value
+ * @param {boolean} mounting
+ */
+function select_option(select, value, mounting = false) {
+	if (select.multiple) {
+		// If value is null or undefined, keep the selection as is
+		if (value == undefined) {
+			return;
+		}
+
+		// If not an array, warn and keep the selection as is
+		if (!is_array(value)) {
+			return select_multiple_invalid_value();
+		}
+
+		// Otherwise, update the selection
+		for (var option of select.options) {
+			option.selected = value.includes(get_option_value(option));
+		}
+
+		return;
+	}
+
+	for (option of select.options) {
+		var option_value = get_option_value(option);
+		if (is(option_value, value)) {
+			option.selected = true;
+			return;
+		}
+	}
+
+	if (!mounting || value !== undefined) {
+		select.selectedIndex = -1; // no option should be selected
+	}
+}
+
+/**
+ * Selects the correct option(s) if `value` is given,
+ * and then sets up a mutation observer to sync the
+ * current selection to the dom when it changes. Such
+ * changes could for example occur when options are
+ * inside an `#each` block.
+ * @param {HTMLSelectElement} select
+ */
+function init_select(select) {
+	var observer = new MutationObserver(() => {
+		// @ts-ignore
+		select_option(select, select.__value);
+		// Deliberately don't update the potential binding value,
+		// the model should be preserved unless explicitly changed
+	});
+
+	observer.observe(select, {
+		// Listen to option element changes
+		childList: true,
+		subtree: true, // because of <optgroup>
+		// Listen to option element value attribute changes
+		// (doesn't get notified of select value changes,
+		// because that property is not reflected as an attribute)
+		attributes: true,
+		attributeFilter: ['value']
+	});
+
+	teardown(() => {
+		observer.disconnect();
+	});
+}
+
+/**
+ * @param {HTMLSelectElement} select
+ * @param {() => unknown} get
+ * @param {(value: unknown) => void} set
+ * @returns {void}
+ */
+function bind_select_value(select, get, set = get) {
+	var mounting = true;
+
+	listen_to_event_and_reset_event(select, 'change', (is_reset) => {
+		var query = is_reset ? '[selected]' : ':checked';
+		/** @type {unknown} */
+		var value;
+
+		if (select.multiple) {
+			value = [].map.call(select.querySelectorAll(query), get_option_value);
+		} else {
+			/** @type {HTMLOptionElement | null} */
+			var selected_option =
+				select.querySelector(query) ??
+				// will fall back to first non-disabled option if no option is selected
+				select.querySelector('option:not([disabled])');
+			value = selected_option && get_option_value(selected_option);
+		}
+
+		set(value);
+	});
+
+	// Needs to be an effect, not a render_effect, so that in case of each loops the logic runs after the each block has updated
+	effect$3(() => {
+		var value = get();
+		select_option(select, value, mounting);
+
+		// Mounting and value undefined -> take selection from dom
+		if (mounting && value === undefined) {
+			/** @type {HTMLOptionElement | null} */
+			var selected_option = select.querySelector(':checked');
+			if (selected_option !== null) {
+				value = get_option_value(selected_option);
+				set(value);
+			}
+		}
+
+		// @ts-ignore
+		select.__value = value;
+		mounting = false;
+	});
+
+	init_select(select);
+}
+
+/** @param {HTMLOptionElement} option */
+function get_option_value(option) {
+	// __value only exists if the <option> has a value attribute
+	if ('__value' in option) {
+		return option.__value;
+	} else {
+		return option.value;
+	}
+}
+
+/** @import { Effect } from '#client' */
+
+const IS_CUSTOM_ELEMENT = Symbol('is custom element');
+const IS_HTML = Symbol('is html');
+
 /**
  * @param {Element} element
  * @param {boolean} checked
  */
 function set_checked(element, checked) {
-	// @ts-expect-error
-	var attributes = (element.__attributes ??= {});
+	var attributes = get_attributes(element);
 
-	if (attributes.checked === (attributes.checked = checked)) return;
+	if (
+		attributes.checked ===
+		(attributes.checked =
+			// treat null and undefined the same for the initial value
+			checked ?? undefined)
+	) {
+		return;
+	}
+
 	// @ts-expect-error
 	element.checked = checked;
 }
@@ -27620,15 +29083,9 @@ function set_checked(element, checked) {
  * @param {boolean} [skip_warning]
  */
 function set_attribute(element, attribute, value, skip_warning) {
-	// @ts-expect-error
-	var attributes = (element.__attributes ??= {});
+	var attributes = get_attributes(element);
 
 	if (attributes[attribute] === (attributes[attribute] = value)) return;
-
-	if (attribute === 'style' && '__styles' in element) {
-		// reset styles to force style: directive to update
-		element.__styles = {};
-	}
 
 	if (attribute === 'loading') {
 		// @ts-expect-error
@@ -27645,16 +29102,32 @@ function set_attribute(element, attribute, value, skip_warning) {
 	}
 }
 
+/**
+ *
+ * @param {Element} element
+ */
+function get_attributes(element) {
+	return /** @type {Record<string | symbol, unknown>} **/ (
+		// @ts-expect-error
+		element.__attributes ??= {
+			[IS_CUSTOM_ELEMENT]: element.nodeName.includes('-'),
+			[IS_HTML]: element.namespaceURI === NAMESPACE_HTML
+		}
+	);
+}
+
 /** @type {Map<string, string[]>} */
 var setters_cache = new Map();
 
 /** @param {Element} element */
 function get_setters(element) {
-	var setters = setters_cache.get(element.nodeName);
+	var cache_key = element.getAttribute('is') || element.nodeName;
+	var setters = setters_cache.get(cache_key);
 	if (setters) return setters;
-	setters_cache.set(element.nodeName, (setters = []));
+	setters_cache.set(cache_key, (setters = []));
+
 	var descriptors;
-	var proto = get_prototype_of(element);
+	var proto = element; // In the case of custom elements there might be setters on the instance
 	var element_proto = Element.prototype;
 
 	// Stop at Element, from there on there's only unnecessary setters we're not interested in
@@ -27674,21 +29147,7 @@ function get_setters(element) {
 	return setters;
 }
 
-/**
- * @param {Element} dom
- * @param {string} class_name
- * @param {boolean} value
- * @returns {void}
- */
-function toggle_class(dom, class_name, value) {
-	if (value) {
-		if (dom.classList.contains(class_name)) return;
-		dom.classList.add(class_name);
-	} else {
-		if (!dom.classList.contains(class_name)) return;
-		dom.classList.remove(class_name);
-	}
-}
+/** @import { Batch } from '../../../reactivity/batch.js' */
 
 /**
  * @param {HTMLInputElement} input
@@ -27697,8 +29156,9 @@ function toggle_class(dom, class_name, value) {
  * @returns {void}
  */
 function bind_value(input, get, set = get) {
+	var batches = new WeakSet();
 
-	listen_to_event_and_reset_event(input, 'input', (is_reset) => {
+	listen_to_event_and_reset_event(input, 'input', async (is_reset) => {
 		if (DEV && input.type === 'checkbox') {
 			// TODO should this happen in prod too?
 			bind_invalid_checkbox_value();
@@ -27709,11 +29169,28 @@ function bind_value(input, get, set = get) {
 		value = is_numberlike_input(input) ? to_number(value) : value;
 		set(value);
 
-		// In runes mode, respect any validation in accessors (doesn't apply in legacy mode,
-		// because we use mutable state which ensures the render effect always runs)
+		if (current_batch !== null) {
+			batches.add(current_batch);
+		}
+
+		// Because `{#each ...}` blocks work by updating sources inside the flush,
+		// we need to wait a tick before checking to see if we should forcibly
+		// update the input and reset the selection state
+		await tick();
+
+		// Respect any validation in accessors
 		if (value !== (value = get())) {
+			var start = input.selectionStart;
+			var end = input.selectionEnd;
+
 			// the value is coerced on assignment
 			input.value = value ?? '';
+
+			// Restore selection
+			if (end !== null) {
+				input.selectionStart = start;
+				input.selectionEnd = Math.min(end, input.value.length);
+			}
 		}
 	});
 
@@ -27725,6 +29202,10 @@ function bind_value(input, get, set = get) {
 		(untrack(get) == null && input.value)
 	) {
 		set(is_numberlike_input(input) ? to_number(input.value) : input.value);
+
+		if (current_batch !== null) {
+			batches.add(current_batch);
+		}
 	}
 
 	render_effect(() => {
@@ -27734,6 +29215,20 @@ function bind_value(input, get, set = get) {
 		}
 
 		var value = get();
+
+		if (input === document.activeElement) {
+			// we need both, because in non-async mode, render effects run before previous_batch is set
+			var batch = /** @type {Batch} */ (previous_batch ?? current_batch);
+
+			// Never rewrite the contents of a focused input. We can get here if, for example,
+			// an update is deferred because of async work depending on the input:
+			//
+			// <input bind:value={query}>
+			// <p>{await find(query)}</p>
+			if (batches.has(batch)) {
+				return;
+			}
+		}
 
 		if (is_numberlike_input(input) && value === to_number(input.value)) {
 			// handles 0 vs 00 case (see https://github.com/sveltejs/svelte/issues/9959)
@@ -27798,148 +29293,6 @@ function to_number(value) {
 }
 
 /**
- * Selects the correct option(s) (depending on whether this is a multiple select)
- * @template V
- * @param {HTMLSelectElement} select
- * @param {V} value
- * @param {boolean} [mounting]
- */
-function select_option(select, value, mounting) {
-	if (select.multiple) {
-		return select_options(select, value);
-	}
-
-	for (var option of select.options) {
-		var option_value = get_option_value(option);
-		if (is(option_value, value)) {
-			option.selected = true;
-			return;
-		}
-	}
-
-	if (!mounting || value !== undefined) {
-		select.selectedIndex = -1; // no option should be selected
-	}
-}
-
-/**
- * Selects the correct option(s) if `value` is given,
- * and then sets up a mutation observer to sync the
- * current selection to the dom when it changes. Such
- * changes could for example occur when options are
- * inside an `#each` block.
- * @template V
- * @param {HTMLSelectElement} select
- * @param {() => V} [get_value]
- */
-function init_select(select, get_value) {
-	let mounting = true;
-	effect$3(() => {
-		if (get_value) {
-			select_option(select, untrack(get_value), mounting);
-		}
-		mounting = false;
-
-		var observer = new MutationObserver(() => {
-			// @ts-ignore
-			var value = select.__value;
-			select_option(select, value);
-			// Deliberately don't update the potential binding value,
-			// the model should be preserved unless explicitly changed
-		});
-
-		observer.observe(select, {
-			// Listen to option element changes
-			childList: true,
-			subtree: true, // because of <optgroup>
-			// Listen to option element value attribute changes
-			// (doesn't get notified of select value changes,
-			// because that property is not reflected as an attribute)
-			attributes: true,
-			attributeFilter: ['value']
-		});
-
-		return () => {
-			observer.disconnect();
-		};
-	});
-}
-
-/**
- * @param {HTMLSelectElement} select
- * @param {() => unknown} get
- * @param {(value: unknown) => void} set
- * @returns {void}
- */
-function bind_select_value(select, get, set = get) {
-	var mounting = true;
-
-	listen_to_event_and_reset_event(select, 'change', (is_reset) => {
-		var query = is_reset ? '[selected]' : ':checked';
-		/** @type {unknown} */
-		var value;
-
-		if (select.multiple) {
-			value = [].map.call(select.querySelectorAll(query), get_option_value);
-		} else {
-			/** @type {HTMLOptionElement | null} */
-			var selected_option =
-				select.querySelector(query) ??
-				// will fall back to first non-disabled option if no option is selected
-				select.querySelector('option:not([disabled])');
-			value = selected_option && get_option_value(selected_option);
-		}
-
-		set(value);
-	});
-
-	// Needs to be an effect, not a render_effect, so that in case of each loops the logic runs after the each block has updated
-	effect$3(() => {
-		var value = get();
-		select_option(select, value, mounting);
-
-		// Mounting and value undefined -> take selection from dom
-		if (mounting && value === undefined) {
-			/** @type {HTMLOptionElement | null} */
-			var selected_option = select.querySelector(':checked');
-			if (selected_option !== null) {
-				value = get_option_value(selected_option);
-				set(value);
-			}
-		}
-
-		// @ts-ignore
-		select.__value = value;
-		mounting = false;
-	});
-
-	// don't pass get_value, we already initialize it in the effect above
-	init_select(select);
-}
-
-/**
- * @template V
- * @param {HTMLSelectElement} select
- * @param {V} value
- */
-function select_options(select, value) {
-	for (var option of select.options) {
-		// @ts-ignore
-		option.selected = ~value.indexOf(get_option_value(option));
-	}
-}
-
-/** @param {HTMLOptionElement} option */
-function get_option_value(option) {
-	// __value only exists if the <option> has a value attribute
-	if ('__value' in option) {
-		return option.__value;
-	} else {
-		return option.value;
-	}
-}
-
-/**
  * @param {any} bound_value
  * @param {Element} element_or_component
  * @returns {boolean}
@@ -27996,27 +29349,7 @@ function bind_this(element_or_component = {}, update, get_value, get_parts) {
 	return element_or_component;
 }
 
-/** @import { Source } from './types.js' */
-
-/**
- * @template T
- * @param {() => T} fn
- * @returns {T}
- */
-function with_parent_branch(fn) {
-	var effect = active_effect;
-	var previous_effect = active_effect;
-
-	while (effect !== null && (effect.f & (BRANCH_EFFECT | ROOT_EFFECT)) === 0) {
-		effect = effect.parent;
-	}
-	try {
-		set_active_effect(effect);
-		return fn();
-	} finally {
-		set_active_effect(previous_effect);
-	}
-}
+/** @import { Effect, Source } from './types.js' */
 
 /**
  * This function is responsible for synchronizing a possibly bound prop with the inner component state.
@@ -28029,139 +29362,129 @@ function with_parent_branch(fn) {
  * @returns {(() => V | ((arg: V) => V) | ((arg: V, mutation: boolean) => V))}
  */
 function prop(props, key, flags, fallback) {
-	var runes = !legacy_mode_flag;
-	var bindable = (flags & PROPS_IS_BINDABLE) !== 0;
-	var is_store_sub = false;
-	var prop_value;
-
-	{
-		prop_value = /** @type {V} */ (props[key]);
-	}
-
-	// Can be the case when someone does `mount(Component, props)` with `let props = $state({...})`
-	// or `createClassComponent(Component, props)`
-	var is_entry_props = STATE_SYMBOL in props || LEGACY_PROPS in props;
-
-	var setter =
-		get_descriptor(props, key)?.set ??
-		(is_entry_props && bindable && key in props ? (v) => (props[key] = v) : undefined);
 
 	var fallback_value = /** @type {V} */ (fallback);
 	var fallback_dirty = true;
-	var fallback_used = false;
 
 	var get_fallback = () => {
-		fallback_used = true;
 		if (fallback_dirty) {
 			fallback_dirty = false;
-			{
-				fallback_value = /** @type {V} */ (fallback);
-			}
+
+			fallback_value = /** @type {V} */ (fallback);
 		}
 
 		return fallback_value;
 	};
 
-	if (prop_value === undefined && fallback !== undefined) {
-		if (setter && runes) {
-			props_invalid_value(key);
-		}
-
-		prop_value = get_fallback();
-		if (setter) setter(prop_value);
+	{
+		/** @type {V} */ (props[key]);
 	}
 
 	/** @type {() => V} */
 	var getter;
+
 	{
 		getter = () => {
 			var value = /** @type {V} */ (props[key]);
 			if (value === undefined) return get_fallback();
 			fallback_dirty = true;
-			fallback_used = false;
 			return value;
 		};
 	}
 
-	// intermediate mode — prop is written to, but the parent component had
-	// `bind:foo` which means we can just call `$$props.foo = value` directly
-	if (setter) {
-		var legacy_parent = props.$$legacy;
-		return function (/** @type {any} */ value, /** @type {boolean} */ mutation) {
-			if (arguments.length > 0) {
-				// We don't want to notify if the value was mutated and the parent is in runes mode.
-				// In that case the state proxy (if it exists) should take care of the notification.
-				// If the parent is not in runes mode, we need to notify on mutation, too, that the prop
-				// has changed because the parent will not be able to detect the change otherwise.
-				if (!mutation || legacy_parent || is_store_sub) {
-					/** @type {Function} */ (setter)(mutation ? getter() : value);
-				}
-				return value;
-			} else {
-				return getter();
-			}
-		};
+	// Either prop is written to, but there's no binding, which means we
+	// create a derived that we can write to locally.
+	// Or we are in legacy mode where we always create a derived to replicate that
+	// Svelte 4 did not trigger updates when a primitive value was updated to the same value.
+	var overridden = false;
+
+	var d = (derived )(() => {
+		overridden = false;
+		return getter();
+	});
+
+	if (DEV) {
+		d.label = key;
 	}
 
-	// hard mode. this is where it gets ugly — the value in the child should
-	// synchronize with the parent, but it should also be possible to temporarily
-	// set the value to something else locally.
-	var from_child = false;
-	var was_from_child = false;
+	var parent_effect = /** @type {Effect} */ (active_effect);
 
-	// The derived returns the current value. The underlying mutable
-	// source is written to from various places to persist this value.
-	var inner_current_value = mutable_source(prop_value);
-	var current_value = with_parent_branch(() =>
-		derived(() => {
-			var parent_value = getter();
-			var child_value = get(inner_current_value);
+	return /** @type {() => V} */ (
+		function (/** @type {any} */ value, /** @type {boolean} */ mutation) {
+			if (arguments.length > 0) {
+				const new_value = mutation ? get(d) : value;
 
-			if (from_child) {
-				from_child = false;
-				was_from_child = true;
-				return child_value;
-			}
+				set(d, new_value);
+				overridden = true;
 
-			was_from_child = false;
-			return (inner_current_value.v = parent_value);
-		})
-	);
-
-	return function (/** @type {any} */ value, /** @type {boolean} */ mutation) {
-
-		if (arguments.length > 0) {
-			const new_value = mutation ? get(current_value) : value;
-
-			if (!current_value.equals(new_value)) {
-				from_child = true;
-				set(inner_current_value, new_value);
-				// To ensure the fallback value is consistent when used with proxies, we
-				// update the local fallback_value, but only if the fallback is actively used
-				if (fallback_used && fallback_value !== undefined) {
+				if (fallback_value !== undefined) {
 					fallback_value = new_value;
 				}
-				untrack(() => get(current_value)); // force a synchronisation immediately
+
+				return value;
 			}
 
-			return value;
+			// special case — avoid recalculating the derived if we're in a
+			// teardown function and the prop was overridden locally, or the
+			// component was already destroyed (this latter part is necessary
+			// because `bind:this` can read props after the component has
+			// been destroyed. TODO simplify `bind:this`
+			if ((is_destroying_effect && overridden) || (parent_effect.f & DESTROYED) !== 0) {
+				return d.v;
+			}
+
+			return get(d);
 		}
-		return get(current_value);
-	};
+	);
 }
 
 /** @import { ComponentContext, ComponentContextLegacy } from '#client' */
 /** @import { EventDispatcher } from './index.js' */
 /** @import { NotFunction } from './internal/types.js' */
 
+if (DEV) {
+	/**
+	 * @param {string} rune
+	 */
+	function throw_rune_error(rune) {
+		if (!(rune in globalThis)) {
+			// TODO if people start adjusting the "this can contain runes" config through v-p-s more, adjust this message
+			/** @type {any} */
+			let value; // let's hope noone modifies this global, but belts and braces
+			Object.defineProperty(globalThis, rune, {
+				configurable: true,
+				// eslint-disable-next-line getter-return
+				get: () => {
+					if (value !== undefined) {
+						return value;
+					}
+
+					rune_outside_svelte(rune);
+				},
+				set: (v) => {
+					value = v;
+				}
+			});
+		}
+	}
+
+	throw_rune_error('$state');
+	throw_rune_error('$effect');
+	throw_rune_error('$derived');
+	throw_rune_error('$inspect');
+	throw_rune_error('$props');
+	throw_rune_error('$bindable');
+}
+
 /**
- * The `onMount` function schedules a callback to run as soon as the component has been mounted to the DOM.
- * It must be called during the component's initialisation (but doesn't need to live *inside* the component;
- * it can be called from an external module).
+ * `onMount`, like [`$effect`](https://svelte.dev/docs/svelte/$effect), schedules a function to run as soon as the component has been mounted to the DOM.
+ * Unlike `$effect`, the provided function only runs once.
  *
- * If a function is returned _synchronously_ from `onMount`, it will be called when the component is unmounted.
+ * It must be called during the component's initialisation (but doesn't need to live _inside_ the component;
+ * it can be called from an external module). If a function is returned _synchronously_ from `onMount`,
+ * it will be called when the component is unmounted.
  *
- * `onMount` does not run inside [server-side components](https://svelte.dev/docs/svelte/svelte-server#render).
+ * `onMount` functions do not run during [server-side rendering](https://svelte.dev/docs/svelte/svelte-server#render).
  *
  * @template T
  * @param {() => NotFunction<T> | Promise<NotFunction<T>> | (() => any)} fn
@@ -28357,7 +29680,7 @@ var css_248z$6 = "/*!\n * leaflet-extra-markers\n * Custom Markers for Leaflet J
 styleInject(css_248z$6);
 
 /*!
- * Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com
+ * Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com
  * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
  * Copyright 2024 Fonticons, Inc.
  */
@@ -37905,7 +39228,7 @@ var icons$2 = {
 };
 
 /*!
- * Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com
+ * Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com
  * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
  * Copyright 2024 Fonticons, Inc.
  */
@@ -39079,7 +40402,7 @@ var icons$1 = {
 };
 
 /*!
- * Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com
+ * Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com
  * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
  * Copyright 2024 Fonticons, Inc.
  */
@@ -40296,7 +41619,7 @@ const faVine = {
 const faSignalMessenger = {
   prefix: 'fab',
   iconName: 'signal-messenger',
-  icon: [512, 512, [], "e663", "M194.6 7.5l5.8 23.3C177.7 36.3 156 45.3 136 57.4L123.7 36.8c22-13.3 45.9-23.2 70.9-29.3zm122.9 0l-5.8 23.3C334.3 36.3 356 45.3 376 57.4l12.4-20.6c-22-13.3-46-23.2-71-29.3zM36.8 123.7c-13.3 22-23.2 45.9-29.3 70.9l23.3 5.8C36.3 177.7 45.3 156 57.4 136L36.8 123.7zM24 256c0-11.6 .9-23.3 2.6-34.8L2.9 217.6c-3.8 25.4-3.8 51.3 0 76.7l23.7-3.6C24.9 279.3 24 267.6 24 256zM388.3 475.2L376 454.6c-20 12.1-41.6 21-64.2 26.6l5.8 23.3c24.9-6.2 48.8-16 70.8-29.3zM488 256c0 11.6-.9 23.3-2.6 34.8l23.7 3.6c3.8-25.4 3.8-51.3 0-76.7l-23.7 3.6c1.7 11.5 2.6 23.1 2.6 34.8zm16.5 61.4l-23.3-5.8c-5.6 22.7-14.5 44.3-26.6 64.3l20.6 12.4c13.3-22 23.2-46 29.3-71zm-213.8 168c-23 3.5-46.5 3.5-69.5 0l-3.6 23.7c25.4 3.8 51.3 3.8 76.7 0l-3.6-23.7zm152-91.8c-13.8 18.7-30.4 35.3-49.2 49.1l14.2 19.3c20.7-15.2 39-33.4 54.2-54.1l-19.3-14.4zM393.6 69.2c18.8 13.8 35.3 30.4 49.2 49.2L462.1 104C446.9 83.4 428.6 65.1 408 49.9L393.6 69.2zM69.2 118.4c13.8-18.8 30.4-35.3 49.2-49.2L104 49.9C83.4 65.1 65.1 83.4 49.9 104l19.3 14.4zm406 5.3L454.6 136c12.1 20 21 41.6 26.6 64.2l23.3-5.8c-6.2-24.9-16-48.8-29.3-70.8zm-254-97.1c23-3.5 46.5-3.5 69.5 0l3.6-23.7C268.9-1 243.1-1 217.6 2.9l3.6 23.7zM81.6 468.4L32 480l11.6-49.6L20.2 425 8.6 474.5c-.9 4-.8 8.1 .3 12.1s3.2 7.5 6.1 10.4s6.5 5 10.4 6.1s8.1 1.2 12.1 .3L87 492l-5.4-23.6zM25.2 403.6L48.6 409l8-34.4c-11.7-19.6-20.4-40.8-25.8-63L7.5 317.4c5.2 21.2 13.2 41.7 23.6 60.8l-5.9 25.3zm112 52l-34.4 8 5.4 23.4 25.3-5.9c19.2 10.4 39.6 18.4 60.8 23.6l5.8-23.3c-22.1-5.5-43.3-14.3-62.8-26l-.2 .2zM256 48c-37.2 0-73.6 10-105.6 28.9s-58.4 46-76.3 78.6s-26.9 69.3-25.8 106.4s12 73.3 31.8 104.8L60 452l85.3-20c27.3 17.2 58.2 27.8 90.3 31s64.5-1.1 94.6-12.6s57.2-29.8 79-53.6s37.8-52.2 46.8-83.2s10.5-63.6 4.7-95.3s-19-61.6-38.4-87.4s-44.5-46.7-73.4-61S288.3 48 256 48z"]
+  icon: [512, 512, [], "e663", "M256 0c13.3 0 26.3 1 39.1 3l-3.7 23.7C279.9 24.9 268 24 256 24s-23.9 .9-35.4 2.7L216.9 3C229.7 1 242.7 0 256 0zm60.8 7.3l-5.7 23.3c23.4 5.7 45.4 14.9 65.4 27.1l12.5-20.5c-22.1-13.4-46.4-23.6-72.2-29.9zm90.5 42.2L393.1 68.8c19.1 14 36 30.9 50.1 50.1l19.4-14.2C447 83.6 428.4 65 407.3 49.5zm67.5 73.6l-20.5 12.5c12.2 20 21.4 42 27.1 65.4l23.3-5.7c-6.3-25.8-16.5-50.1-29.9-72.2zM509 216.9l-23.7 3.7c1.8 11.5 2.7 23.4 2.7 35.4s-.9 23.9-2.7 35.4l23.7 3.7c1.9-12.7 3-25.8 3-39.1s-1-26.3-3-39.1zM454.3 376.5c12.2-20 21.4-42 27.1-65.4l23.3 5.7c-6.3 25.8-16.5 50.1-29.9 72.2l-20.5-12.5zm-11.1 16.6l19.4 14.2c-15.5 21.1-34.1 39.8-55.2 55.2l-14.2-19.4c19.1-14 36-30.9 50.1-50.1zm-66.7 61.2l12.5 20.5c-22.1 13.4-46.4 23.6-72.2 29.9l-5.7-23.3c23.4-5.7 45.4-14.9 65.4-27.1zm-85.1 31l3.7 23.7c-12.7 1.9-25.8 3-39.1 3s-26.3-1-39.1-3l3.7-23.7c11.5 1.8 23.4 2.7 35.4 2.7s23.9-.9 35.4-2.7zm-90.5-3.9l-5.7 23.3c-19.4-4.7-37.9-11.6-55.3-20.5l-24.3 5.7-5.5-23.4 32.8-7.7 7.8 4c15.7 8 32.5 14.3 50.1 18.6zM90 471.3l5.5 23.4-41.6 9.7C26 510.8 1.2 486 7.6 458.2l9.7-41.6L40.7 422 31 463.7c-2.4 10.4 6.9 19.7 17.3 17.3L90 471.3zM45.5 401.8l-23.4-5.5L27.8 372C18.9 354.7 12 336.1 7.3 316.7l23.3-5.7c4.3 17.6 10.6 34.4 18.6 50.1l4 7.8-7.7 32.8zM26.7 291.4L3 295.1C1 282.3 0 269.3 0 256s1-26.3 3-39.1l23.7 3.7C24.9 232.1 24 244 24 256s.9 23.9 2.7 35.4zm3.9-90.5L7.3 195.2c6.3-25.8 16.5-50.1 29.9-72.2l20.5 12.5c-12.2 20-21.4 42-27.1 65.4zm38.3-82.1L49.5 104.7C65 83.6 83.6 65 104.7 49.5l14.2 19.4c-19.1 14-36 30.9-50.1 50.1zm66.7-61.2L123.1 37.2c22.1-13.4 46.4-23.6 72.2-29.9l5.7 23.3c-23.4 5.7-45.4 14.9-65.4 27.1zM464 256c0 114.9-93.1 208-208 208c-36.4 0-70.7-9.4-100.5-25.8c-2.9-1.6-6.2-2.1-9.4-1.4L53.6 458.4l21.6-92.5c.7-3.2 .2-6.5-1.4-9.4C57.4 326.7 48 292.4 48 256C48 141.1 141.1 48 256 48s208 93.1 208 208z"]
 };
 const faPaypal = {
   prefix: 'fab',
@@ -42127,16 +43450,16 @@ var icons = {
 };
 
 /*!
- * Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com
+ * Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com
  * License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License)
  * Copyright 2024 Fonticons, Inc.
  */
 function _defineProperty(e, r, t) {
   return (r = _toPropertyKey(r)) in e ? Object.defineProperty(e, r, {
     value: t,
-    enumerable: !0,
-    configurable: !0,
-    writable: !0
+    enumerable: true,
+    configurable: true,
+    writable: true
   }) : e[r] = t, e;
 }
 function ownKeys(e, r) {
@@ -42152,7 +43475,7 @@ function ownKeys(e, r) {
 function _objectSpread2(e) {
   for (var r = 1; r < arguments.length; r++) {
     var t = null != arguments[r] ? arguments[r] : {};
-    r % 2 ? ownKeys(Object(t), !0).forEach(function (r) {
+    r % 2 ? ownKeys(Object(t), true).forEach(function (r) {
       _defineProperty(e, r, t[r]);
     }) : Object.getOwnPropertyDescriptors ? Object.defineProperties(e, Object.getOwnPropertyDescriptors(t)) : ownKeys(Object(t)).forEach(function (r) {
       Object.defineProperty(e, r, Object.getOwnPropertyDescriptor(t, r));
@@ -42164,7 +43487,7 @@ function _toPrimitive(t, r) {
   if ("object" != typeof t || !t) return t;
   var e = t[Symbol.toPrimitive];
   if (void 0 !== e) {
-    var i = e.call(t, r || "default");
+    var i = e.call(t, r);
     if ("object" != typeof i) return i;
     throw new TypeError("@@toPrimitive must return a primitive value.");
   }
@@ -42253,7 +43576,6 @@ var S = {
   },
   A = {
     GROUP: "duotone-group",
-    SWAP_OPACITY: "swap-opacity",
     PRIMARY: "primary",
     SECONDARY: "secondary"
   },
@@ -42395,20 +43717,12 @@ var Ft = ["fak", "fa-kit", "fakd", "fa-kit-duotone"],
 var Ct = {
   kit: {
     "fa-kit": "fak"
-  },
-  "kit-duotone": {
-    "fa-kit-duotone": "fakd"
-  }
-};
+  }};
 var Lt = ["fak", "fakd"],
   Wt = {
     kit: {
       fak: "fa-kit"
-    },
-    "kit-duotone": {
-      fakd: "fa-kit-duotone"
-    }
-  };
+    }};
 var Et = {
     kit: {
       kit: "fak"
@@ -42436,7 +43750,7 @@ var Yt = {
       normal: "fakd"
     }
   };
-var po = {
+var ua = {
     classic: {
       "fa-brands": "fab",
       "fa-duotone": "fad",
@@ -42469,7 +43783,7 @@ var po = {
     sharp: ["fass", "fasr", "fasl", "fast"],
     "sharp-duotone": ["fasds", "fasdr", "fasdl", "fasdt"]
   },
-  co = {
+  ga = {
     classic: {
       fab: "fa-brands",
       fad: "fa-duotone",
@@ -42497,12 +43811,12 @@ var po = {
     }
   },
   x = ["fa-solid", "fa-regular", "fa-light", "fa-thin", "fa-duotone", "fa-brands"],
-  xo = ["fa", "fas", "far", "fal", "fat", "fad", "fadr", "fadl", "fadt", "fab", "fass", "fasr", "fasl", "fast", "fasds", "fasdr", "fasdl", "fasdt", ...r$1, ...x],
+  Ia = ["fa", "fas", "far", "fal", "fat", "fad", "fadr", "fadl", "fadt", "fab", "fass", "fasr", "fasl", "fast", "fasds", "fasdr", "fasdl", "fasdt", ...r$1, ...x],
   m$1 = ["solid", "regular", "light", "thin", "duotone", "brands"],
   c$1 = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
   F$1 = c$1.concat([11, 12, 13, 14, 15, 16, 17, 18, 19, 20]),
-  Fo = [...Object.keys(I$1), ...m$1, "2xs", "xs", "sm", "lg", "xl", "2xl", "beat", "border", "fade", "beat-fade", "bounce", "flip-both", "flip-horizontal", "flip-vertical", "flip", "fw", "inverse", "layers-counter", "layers-text", "layers", "li", "pull-left", "pull-right", "pulse", "rotate-180", "rotate-270", "rotate-90", "rotate-by", "shake", "spin-pulse", "spin-reverse", "spin", "stack-1x", "stack-2x", "stack", "ul", t$1.GROUP, t$1.SWAP_OPACITY, t$1.PRIMARY, t$1.SECONDARY].concat(c$1.map(o => "".concat(o, "x"))).concat(F$1.map(o => "w-".concat(o)));
-var ko = {
+  ma = [...Object.keys(I$1), ...m$1, "2xs", "xs", "sm", "lg", "xl", "2xl", "beat", "border", "fade", "beat-fade", "bounce", "flip-both", "flip-horizontal", "flip-vertical", "flip", "fw", "inverse", "layers-counter", "layers-text", "layers", "li", "pull-left", "pull-right", "pulse", "rotate-180", "rotate-270", "rotate-90", "rotate-by", "shake", "spin-pulse", "spin-reverse", "spin", "stack-1x", "stack-2x", "stack", "ul", t$1.GROUP, t$1.SWAP_OPACITY, t$1.PRIMARY, t$1.SECONDARY].concat(c$1.map(a => "".concat(a, "x"))).concat(F$1.map(a => "w-".concat(a)));
+var wa = {
     "Font Awesome 5 Free": {
       900: "fas",
       400: "far"
@@ -42566,10 +43880,10 @@ _STYLE_TO_PREFIX[s] = _objectSpread2(_objectSpread2(_objectSpread2(_objectSpread
   duotone: 'fad'
 }), _STYLE_TO_PREFIX[s]), Et['kit']), Et['kit-duotone']);
 const STYLE_TO_PREFIX = familyProxy(_STYLE_TO_PREFIX);
-const _PREFIX_TO_LONG_STYLE = _objectSpread2({}, co);
+const _PREFIX_TO_LONG_STYLE = _objectSpread2({}, ga);
 _PREFIX_TO_LONG_STYLE[s] = _objectSpread2(_objectSpread2({}, _PREFIX_TO_LONG_STYLE[s]), Wt['kit']);
 const PREFIX_TO_LONG_STYLE = familyProxy(_PREFIX_TO_LONG_STYLE);
-const _LONG_STYLE_TO_PREFIX = _objectSpread2({}, po);
+const _LONG_STYLE_TO_PREFIX = _objectSpread2({}, ua);
 _LONG_STYLE_TO_PREFIX[s] = _objectSpread2(_objectSpread2({}, _LONG_STYLE_TO_PREFIX[s]), Ct['kit']);
 familyProxy(_LONG_STYLE_TO_PREFIX);
 const ICON_SELECTION_SYNTAX_PATTERN = p; // eslint-disable-line no-useless-escape
@@ -42580,7 +43894,7 @@ const _FONT_WEIGHT_TO_PREFIX = _objectSpread2({}, G);
 familyProxy(_FONT_WEIGHT_TO_PREFIX);
 const ATTRIBUTES_WATCHED_FOR_MUTATION = ['class', 'data-prefix', 'data-icon', 'data-fa-transform', 'data-fa-mask'];
 const DUOTONE_CLASSES = A;
-const RESERVED_CLASSES = [...At, ...Fo];
+const RESERVED_CLASSES = [...At, ...ma];
 
 const initial = WINDOW.FontAwesomeConfig || {};
 function getAttrConfig(attr) {
@@ -43195,9 +44509,9 @@ function getCanonicalIcon(values) {
     skipLookups = false
   } = params;
   let givenPrefix = null;
-  const faCombinedClasses = xo.concat(bt$1);
+  const faCombinedClasses = Ia.concat(bt$1);
   const faStyleOrFamilyClasses = sortedUniqueValues(values.filter(cls => faCombinedClasses.includes(cls)));
-  const nonStyleOrFamilyClasses = sortedUniqueValues(values.filter(cls => !xo.includes(cls)));
+  const nonStyleOrFamilyClasses = sortedUniqueValues(values.filter(cls => !Ia.includes(cls)));
   const faStyles = faStyleOrFamilyClasses.filter(cls => {
     givenPrefix = cls;
     return !P.includes(cls);
@@ -43246,7 +44560,7 @@ function applyShimAndAlias(skipLookups, givenPrefix, canonical) {
 const newCanonicalFamilies = L$1.filter(familyId => {
   return familyId !== s || familyId !== t;
 });
-const newCanonicalStyles = Object.keys(co).filter(key => key !== s).map(key => Object.keys(co[key])).flat();
+const newCanonicalStyles = Object.keys(ga).filter(key => key !== s).map(key => Object.keys(ga[key])).flat();
 function getDefaultCanonicalPrefix(prefixOptions) {
   const {
     values,
@@ -43817,7 +45131,7 @@ const p$2 = config.measurePerformance && PERFORMANCE && PERFORMANCE.mark && PERF
   mark: noop$1,
   measure: noop$1
 };
-const preamble = "FA \"6.7.1\"";
+const preamble = "FA \"6.7.2\"";
 const begin = name => {
   p$2.mark("".concat(preamble, " ").concat(name, " begins"));
   return () => end$1(name);
@@ -43962,7 +45276,7 @@ function disableObservation() {
 function enableObservation() {
   disabled = false;
 }
-let mo$1 = null;
+let mo = null;
 function observe(options) {
   if (!MUTATION_OBSERVER) {
     return;
@@ -43976,7 +45290,7 @@ function observe(options) {
     pseudoElementsCallback = noop$2,
     observeMutationsRoot = DOCUMENT
   } = options;
-  mo$1 = new MUTATION_OBSERVER(objects => {
+  mo = new MUTATION_OBSERVER(objects => {
     if (disabled) return;
     const defaultPrefix = getDefaultUsablePrefix();
     toArray(objects).forEach(mutationRecord => {
@@ -44004,7 +45318,7 @@ function observe(options) {
     });
   });
   if (!IS_DOM) return;
-  mo$1.observe(observeMutationsRoot, {
+  mo.observe(observeMutationsRoot, {
     childList: true,
     attributes: true,
     characterData: true,
@@ -44012,8 +45326,8 @@ function observe(options) {
   });
 }
 function disconnect() {
-  if (!mo$1) return;
-  mo$1.disconnect();
+  if (!mo) return;
+  mo.disconnect();
 }
 
 function styleParser (node) {
@@ -44145,7 +45459,7 @@ function generateMutation(node) {
   }
 }
 function getKnownPrefixes() {
-  return [...Ft, ...xo];
+  return [...Ft, ...Ia];
 }
 function onTree(root) {
   let callback = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : null;
@@ -44518,7 +45832,7 @@ const _FONT_FAMILY_WEIGHT_TO_PREFIX = _objectSpread2(_objectSpread2(_objectSprea
     normal: 'fas',
     400: 'fas'
   }
-}), lt), ko), Yt);
+}), lt), wa), Yt);
 const FONT_FAMILY_WEIGHT_TO_PREFIX = Object.keys(_FONT_FAMILY_WEIGHT_TO_PREFIX).reduce((acc, key) => {
   acc[key.toLowerCase()] = _FONT_FAMILY_WEIGHT_TO_PREFIX[key];
   return acc;
@@ -49821,7 +51135,7 @@ function requireMoment () {
 		    }
 
 		    function localeErasConvertYear(era, year) {
-		        var dir = era.since <= era.until ? +1 : -1;
+		        var dir = era.since <= era.until ? 1 : -1;
 		        if (year === undefined) {
 		            return hooks(era.since).year();
 		        } else {
@@ -49896,7 +51210,7 @@ function requireMoment () {
 		            val,
 		            eras = this.localeData().eras();
 		        for (i = 0, l = eras.length; i < l; ++i) {
-		            dir = eras[i].since <= eras[i].until ? +1 : -1;
+		            dir = eras[i].since <= eras[i].until ? 1 : -1;
 
 		            // truncate time
 		            val = this.clone().startOf('day').valueOf();
@@ -51074,18 +52388,19 @@ class SvelteModal extends obsidian.Modal {
 
 const PUBLIC_VERSION = '5';
 
-if (typeof window !== 'undefined')
-	// @ts-ignore
-	(window.__svelte ||= { v: new Set() }).v.add(PUBLIC_VERSION);
+if (typeof window !== 'undefined') {
+	// @ts-expect-error
+	((window.__svelte ??= {}).v ??= new Set()).add(PUBLIC_VERSION);
+}
 
 var css_248z$5 = "\n    .slider-container.svelte-uryj08 {\n        display: flex;\n        align-items: center;\n        gap: var(--size-4-2);\n    }\n\n    .loading-container.svelte-uryj08 {\n        display: flex;\n        align-items: center;\n        gap: var(--size-4-2);\n    }\n\n    .loading-spinner.svelte-uryj08 {\n        width: 16px;\n        height: 16px;\n        border: 2px solid var(--background-modifier-border);\n        border-top-color: var(--interactive-accent);\n        border-radius: 50%;\n        animation: svelte-uryj08-loading-spinner 0.8s linear infinite;\n    }\n\n    @keyframes svelte-uryj08-loading-spinner {\n        to {\n            transform: rotate(360deg);\n        }\n    }\n\n    .tiles-info-container.svelte-uryj08 {\n        position: relative;\n        min-height: 100px;\n    }\n\n    .loading-overlay.svelte-uryj08 {\n        position: absolute;\n        top: 0;\n        left: 0;\n        right: 0;\n        bottom: 0;\n        background-color: var(--background-primary);\n        display: flex;\n        align-items: center;\n        justify-content: center;\n    }\n";
 styleInject(css_248z$5);
 
 var on_click$3 = (_, skipExisting) => set(skipExisting, !get(skipExisting));
-var root_1$3 = template(`<p><b>This is the maximal number of tiles to download at one job.</b> To download more, complete this job and start a new one with "Skip Existing Tiles" turned on.</p>`);
-var root_3$2 = template(`<br>("Skip Existing Tiles" takes longer to calculate)`, 1);
-var root_2$1 = template(`<div class="loading-overlay svelte-uryj08"><div class="loading-container svelte-uryj08"><div class="loading-spinner svelte-uryj08"></div> <span><b>Calculating tiles to download...</b> <!></span></div></div>`);
-var root$6 = template(`<div class="offline-new-job"><div class="setting-item"><div class="setting-item-info"><div class="setting-item-name"><b>Download Tiles for Offline Usage</b></div> <div class="setting-item-description"><p>Add a download job for the map tiles based on the current view, with a zoom range of your choice.</p> <p>Use responsibly and make sure you are not violating the terms of your tiles provider.</p></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Minimum Zoom Level</div> <div class="setting-item-description">The closest zoom level to download</div></div> <div class="setting-item-control"><div class="slider-container svelte-uryj08"><input type="range" class="slider"> <div class="slider-value"> </div></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Current Zoom Level</div> <div class="setting-item-description">The zoom level currently displayed in the map.</div></div> <div class="setting-item-control"><div class="slider-value"><b> </b></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Maximum Zoom Level</div> <div class="setting-item-description">The furthest zoom level to download</div></div> <div class="setting-item-control"><div class="slider-container svelte-uryj08"><input type="range" class="slider"> <div class="slider-value"> </div></div></div></div> <div class="setting-item mod-toggle"><div class="setting-item-info"><div class="setting-item-name">Skip Existing Tiles</div> <div class="setting-item-description">Only download tiles that aren't already in the cache.<br> Use this to continue previous downloads or turn it off to refresh old tiles.<br> (When this is on, calculating the tiles to download takes longer due to DB lookups.)</div></div> <div class="setting-item-control"><div class="checkbox-container"><input type="checkbox"></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Max Requests per Second</div> <div class="setting-item-description">Limit the rate of tile downloads</div></div> <div class="setting-item-control"><input type="number" min="1" max="50" class="text-input-inline"></div></div> <div class="setting-item tiles-info-container svelte-uryj08"><div class="setting-item-info"><div class="setting-item-name"><b> </b></div> <div class="setting-item-description"><!> <p>Before starting the download, make sure this is within the account quota of the tiles provider.</p> <p> </p></div></div> <!></div> <div class="setting-item modal-button-container"><button class="mod-cta">Start Download</button> <button class="mod-warning">Cancel</button></div></div>`);
+var root_1$3 = from_html(`<p><b>This is the maximal number of tiles to download at one job.</b> To download more, complete this job and start a new one with "Skip Existing Tiles" turned on.</p>`);
+var root_3$2 = from_html(`<br/>("Skip Existing Tiles" takes longer to calculate)`, 1);
+var root_2$1 = from_html(`<div class="loading-overlay svelte-uryj08"><div class="loading-container svelte-uryj08"><div class="loading-spinner svelte-uryj08"></div> <span><b>Calculating tiles to download...</b> <!></span></div></div>`);
+var root$6 = from_html(`<div class="offline-new-job"><div class="setting-item"><div class="setting-item-info"><div class="setting-item-name"><b>Download Tiles for Offline Usage</b></div> <div class="setting-item-description"><p>Add a download job for the map tiles based on the current view, with a zoom range of your choice.</p> <p>Use responsibly and make sure you are not violating the terms of your tiles provider.</p></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Minimum Zoom Level</div> <div class="setting-item-description">The closest zoom level to download</div></div> <div class="setting-item-control"><div class="slider-container svelte-uryj08"><input type="range" class="slider"/> <div class="slider-value"> </div></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Current Zoom Level</div> <div class="setting-item-description">The zoom level currently displayed in the map.</div></div> <div class="setting-item-control"><div class="slider-value"><b> </b></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Maximum Zoom Level</div> <div class="setting-item-description">The furthest zoom level to download</div></div> <div class="setting-item-control"><div class="slider-container svelte-uryj08"><input type="range" class="slider"/> <div class="slider-value"> </div></div></div></div> <div class="setting-item mod-toggle"><div class="setting-item-info"><div class="setting-item-name">Skip Existing Tiles</div> <div class="setting-item-description">Only download tiles that aren't already in the cache.<br/> Use this to continue previous downloads or turn it off to refresh old tiles.<br/> (When this is on, calculating the tiles to download takes longer due to DB lookups.)</div></div> <div class="setting-item-control"><div><input type="checkbox"/></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Max Requests per Second</div> <div class="setting-item-description">Limit the rate of tile downloads</div></div> <div class="setting-item-control"><input type="number" min="1" max="50" class="text-input-inline"/></div></div> <div class="setting-item tiles-info-container svelte-uryj08"><div class="setting-item-info"><div class="setting-item-name"><b> </b></div> <div class="setting-item-description"><!> <p>Before starting the download, make sure this is within the account quota of the tiles provider.</p> <p> </p></div></div> <!></div> <div class="setting-item modal-button-container"><button class="mod-cta">Start Download</button> <button class="mod-warning">Cancel</button></div></div>`);
 
 function OfflineNewJobDialog($$anchor, $$props) {
 	push($$props, true);
@@ -51114,11 +52429,14 @@ function OfflineNewJobDialog($$anchor, $$props) {
 			try {
 				// Abort previous calculation if it is running
 				tileCountCalculation === null || tileCountCalculation === void 0 ? void 0 : tileCountCalculation.abort();
+
 				tileCountCalculation = new AbortController();
+
 				// untrack is used here and below to avoid a recursive effect update
 				set(estimationRunning, untrack(() => get(estimationRunning)) + 1);
+
 				tileList = await calculateTilesToDownload($$props.map, $$props.tileLayer, get(minZoom), get(maxZoom), get(skipExisting), MAX_TILES_TO_DOWNLOAD, tileCountCalculation.signal);
-				set(numTilesToDownload, proxy(tileList.length));
+				set(numTilesToDownload, tileList.length, true);
 			} finally {
 				set(estimationRunning, untrack(() => get(estimationRunning)) - 1);
 			}
@@ -51132,7 +52450,6 @@ function OfflineNewJobDialog($$anchor, $$props) {
 	var div_2 = sibling(child(div_1), 2);
 	var div_3 = child(div_2);
 	var input = child(div_3);
-	set_attribute(input, "min", MIN_ALLOWED_ZOOM);
 
 	var div_4 = sibling(input, 2);
 	var text = child(div_4);
@@ -51147,7 +52464,6 @@ function OfflineNewJobDialog($$anchor, $$props) {
 	var div_9 = sibling(child(div_8), 2);
 	var div_10 = child(div_9);
 	var input_1 = child(div_10);
-	set_attribute(input_1, "max", MAX_ALLOWED_ZOOM);
 
 	var div_11 = sibling(input_1, 2);
 	var text_2 = child(div_11);
@@ -51155,6 +52471,7 @@ function OfflineNewJobDialog($$anchor, $$props) {
 	var div_12 = sibling(div_8, 2);
 	var div_13 = sibling(child(div_12), 2);
 	var div_14 = child(div_13);
+	let classes;
 
 	div_14.__click = [on_click$3, skipExisting];
 
@@ -51187,8 +52504,6 @@ function OfflineNewJobDialog($$anchor, $$props) {
 
 	var p_1 = sibling(node, 4);
 	var text_4 = child(p_1);
-
-	template_effect(() => set_text(text_4, `Estimated time: ${(get(numTilesToDownload) / get(maxRequestsPerSecond) / 60).toFixed(1) ?? ""} minutes.`));
 
 	var node_1 = sibling(div_18, 2);
 
@@ -51228,17 +52543,26 @@ function OfflineNewJobDialog($$anchor, $$props) {
 		$$props.close?.apply(this, $$args);
 	};
 
-	template_effect(() => {
-		set_attribute(input, "max", displayedZoom);
-		set_text(text, get(minZoom));
-		set_text(text_1, displayedZoom);
-		set_attribute(input_1, "min", displayedZoom);
-		set_text(text_2, get(maxZoom));
-		toggle_class(div_14, "is-enabled", get(skipExisting));
-		set_checked(input_2, get(skipExisting));
-		set_text(text_3, `Tiles to download in this job: ${get(numTilesToDownload) ?? ""}`);
-		button.disabled = get(numTilesToDownload) <= 0 || get(estimationRunning) > 0;
-	});
+	template_effect(
+		($0, $1) => {
+			set_attribute(input, 'min', MIN_ALLOWED_ZOOM);
+			set_attribute(input, 'max', displayedZoom);
+			set_text(text, get(minZoom));
+			set_text(text_1, displayedZoom);
+			set_attribute(input_1, 'min', displayedZoom);
+			set_attribute(input_1, 'max', MAX_ALLOWED_ZOOM);
+			set_text(text_2, get(maxZoom));
+			classes = set_class(div_14, 1, 'checkbox-container', null, classes, $0);
+			set_checked(input_2, get(skipExisting));
+			set_text(text_3, `Tiles to download in this job: ${get(numTilesToDownload) ?? ''}`);
+			set_text(text_4, `Estimated time: ${$1 ?? ''} minutes.`);
+			button.disabled = get(numTilesToDownload) <= 0 || get(estimationRunning) > 0;
+		},
+		[
+			() => ({ 'is-enabled': get(skipExisting) }),
+			() => (get(numTilesToDownload) / get(maxRequestsPerSecond) / 60).toFixed(1)
+		]
+	);
 
 	bind_value(input, () => get(minZoom), ($$value) => set(minZoom, $$value));
 	bind_value(input_1, () => get(maxZoom), ($$value) => set(maxZoom, $$value));
@@ -51247,7 +52571,7 @@ function OfflineNewJobDialog($$anchor, $$props) {
 	pop();
 }
 
-delegate(["click"]);
+delegate(['click']);
 
 async function purge(_, $$props, maxAgeMonths) {
 	const purged = await purgeOldTiles($$props.urlTemplate, get(maxAgeMonths));
@@ -51260,7 +52584,7 @@ async function purge(_, $$props, maxAgeMonths) {
 	$$props.close();
 }
 
-var root$5 = template(`<div class="purge-tiles"><div class="setting-item"><div class="setting-item-info"><div class="setting-item-name"><b>Purge Old Tiles</b></div> <div class="setting-item-description"><p> </p> <p>There is currently no way to differentiate between tiles downloaded explicitly via the dialog or automatic cache.</p></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Delete older than...</div></div> <div class="setting-item-control"><select class="dropdown"><option>1 month</option><option>3 months</option><option>6 months</option><option>1 year</option></select></div></div> <div class="setting-item modal-button-container"><button class="mod-cta">Cancel</button> <button class="mod-warning">Purge</button></div></div>`);
+var root$5 = from_html(`<div class="purge-tiles"><div class="setting-item"><div class="setting-item-info"><div class="setting-item-name"><b>Purge Old Tiles</b></div> <div class="setting-item-description"><p> </p> <p>There is currently no way to differentiate between tiles downloaded explicitly via the dialog or automatic cache.</p></div></div></div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Delete older than...</div></div> <div class="setting-item-control"><select class="dropdown"><option>1 month</option><option>3 months</option><option>6 months</option><option>1 year</option></select></div></div> <div class="setting-item modal-button-container"><button class="mod-cta">Cancel</button> <button class="mod-warning">Purge</button></div></div>`);
 
 function OfflinePurgeDialog($$anchor, $$props) {
 	push($$props, true);
@@ -51278,19 +52602,19 @@ function OfflinePurgeDialog($$anchor, $$props) {
 	var select = child(div_5);
 	var option = child(select);
 
-	option.value = null == (option.__value = 1) ? "" : 1;
+	option.value = option.__value = 1;
 
 	var option_1 = sibling(option);
 
-	option_1.value = null == (option_1.__value = 3) ? "" : 3;
+	option_1.value = option_1.__value = 3;
 
 	var option_2 = sibling(option_1);
 
-	option_2.value = null == (option_2.__value = 6) ? "" : 6;
+	option_2.value = option_2.__value = 6;
 
 	var option_3 = sibling(option_2);
 
-	option_3.value = null == (option_3.__value = 12) ? "" : 12;
+	option_3.value = option_3.__value = 12;
 
 	var div_6 = sibling(div_4, 2);
 	var button = child(div_6);
@@ -51302,13 +52626,13 @@ function OfflinePurgeDialog($$anchor, $$props) {
 	var button_1 = sibling(button, 2);
 
 	button_1.__click = [purge, $$props, maxAgeMonths];
-	template_effect(() => set_text(text, `Purge old tiles of '${new URL($$props.urlTemplate).hostname ?? ""}'.`));
+	template_effect(() => set_text(text, `Purge old tiles of '${new URL($$props.urlTemplate).hostname ?? ''}'.`));
 	bind_select_value(select, () => get(maxAgeMonths), ($$value) => set(maxAgeMonths, $$value));
 	append($$anchor, div);
 	pop();
 }
 
-delegate(["click"]);
+delegate(['click']);
 
 var css_248z$4 = "\n\t.offline-manager.svelte-1rnx5l9 {\n\t\tpadding: var(--size-4-2);\n\t}\n\n\t.jobs-container.svelte-1rnx5l9 {\n\t\tmargin-bottom: var(--size-4-2);\n\t}\n\n\t.info-container.svelte-1rnx5l9 {\n\t\tdisplay: flex;\n\t\talign-items: center;\n\t\tgap: var(--size-4-2);\n\t\tcolor: var(--text-muted);\n\t}\n\n\t.info-icon.svelte-1rnx5l9 {\n\t\twidth: 16px;\n\t\theight: 16px;\n\t}\n\n";
 styleInject(css_248z$4);
@@ -51323,14 +52647,17 @@ function openNewDownloadDialog(_, $$props, startJob) {
 	dialog.open();
 }
 
-var on_click$2 = (__1, openPurgeDialog, layer) => openPurgeDialog(get(layer));
+var on_click$2 = // The job goes to do its thing in offlineTiles.svelte.ts regardless of whether this dialog is open.
+// If by the time it is done the dialog isn't around anymore, notify the user by a notice.
+(__1, openPurgeDialog, layer) => openPurgeDialog(get(layer));
+
 var on_click_1$1 = (__2, deleteDownload, layer) => deleteDownload(get(layer));
-var root_2 = template(`<div class="setting-item"><div class="setting-item-info"><div class="setting-item-name"> </div> <div class="setting-item-description"> <b> </b>.<br> </div></div> <div class="setting-item-control"><button>Purge old...</button> <button class="mod-warning">Delete</button></div></div>`);
-var root_3$1 = template(`<div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">No tiles were downloaded yet.</div> <div class="setting-item-description"><!></div></div></div>`);
+var root_2 = from_html(`<div class="setting-item"><div class="setting-item-info"><div class="setting-item-name"> </div> <div class="setting-item-description"> <b> </b>.<br/> </div></div> <div class="setting-item-control"><button>Purge old...</button> <button class="mod-warning">Delete</button></div></div>`);
+var root_3$1 = from_html(`<div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">No tiles were downloaded yet.</div> <div class="setting-item-description"><!></div></div></div>`);
 var on_click_2$1 = (__3, job) => cancelJob(get(job).id);
-var root_7$1 = template(`<div class="setting-item"><div class="setting-item-info"><div class="setting-item-name"> </div> <div class="setting-item-description"><span> </span></div></div> <div class="setting-item-control"><button>Cancel</button></div></div>`);
-var root_6$1 = template(`<div class="setting-item"><div class="setting-item-name"><b>Ongoing Downloads</b></div></div> <div class="jobs-container svelte-1rnx5l9"><!> <div class="info-container svelte-1rnx5l9"><div class="info-icon svelte-1rnx5l9"><!></div> <p>Downloads will continue in the background whether or not this dialog is open.</p></div></div>`, 1);
-var root$4 = template(`<div class="offline-manager svelte-1rnx5l9"><div class="setting-item-container"><div class="setting-item-heading">Downloaded Tiles</div> <!></div> <div class="info-container svelte-1rnx5l9"><div class="info-icon svelte-1rnx5l9"><!></div> <p>You can see a visualization of your offline tiles using the "Highlight Offline Tiles" option in the Map View context menu.</p></div> <!> <div class="setting-item"><div class="setting-item-control"><button class="mod-cta">Download Tiles...</button></div></div></div>`);
+var root_7$1 = from_html(`<div class="setting-item"><div class="setting-item-info"><div class="setting-item-name"> </div> <div class="setting-item-description"><span> </span></div></div> <div class="setting-item-control"><button>Cancel</button></div></div>`);
+var root_6$1 = from_html(`<div class="setting-item"><div class="setting-item-name"><b>Ongoing Downloads</b></div></div> <div class="jobs-container svelte-1rnx5l9"><!> <div class="info-container svelte-1rnx5l9"><div class="info-icon svelte-1rnx5l9"><!></div> <p>Downloads will continue in the background whether or not this dialog is open.</p></div></div>`, 1);
+var root$4 = from_html(`<div class="offline-manager svelte-1rnx5l9"><div class="setting-item-container"><div class="setting-item-heading">Downloaded Tiles</div> <!></div> <div class="info-container svelte-1rnx5l9"><div class="info-icon svelte-1rnx5l9"><!></div> <p>You can see a visualization of your offline tiles using the "Highlight Offline Tiles" option in the Map View context menu.</p></div> <!> <div class="setting-item"><div class="setting-item-control"><button class="mod-cta">Download Tiles...</button></div></div></div>`);
 
 function OfflineManagerDialog($$anchor, $$props) {
 	push($$props, true);
@@ -51338,7 +52665,7 @@ function OfflineManagerDialog($$anchor, $$props) {
 	let downloadedTiles = state(proxy([]));
 
 	async function getDownloadedTiles() {
-		set(downloadedTiles, proxy([]));
+		set(downloadedTiles, [], true);
 
 		const sources = $$props.settings.mapSources;
 
@@ -51347,16 +52674,21 @@ function OfflineManagerDialog($$anchor, $$props) {
 			const storageInfo = await bundleExports.getStorageInfo(url);
 
 			if (storageInfo.length > 0) {
-				set(downloadedTiles, proxy([
-					...get(downloadedTiles),
-					{
-						url: new URL(url).hostname,
-						urlTemplate: url,
-						tiles: storageInfo.length,
-						totalSize: storageInfo.reduce((sum, item) => sum + item.blob.size, 0),
-						oldestTile: Math.min(...storageInfo.map((item) => item.createdAt))
-					}
-				]));
+				set(
+					downloadedTiles,
+					[
+						...get(downloadedTiles),
+
+						{
+							url: new URL(url).hostname,
+							urlTemplate: url,
+							tiles: storageInfo.length,
+							totalSize: storageInfo.reduce((sum, item) => sum + item.blob.size, 0),
+							oldestTile: Math.min(...storageInfo.map((item) => item.createdAt))
+						}
+					],
+					true
+				);
 			}
 		}
 	}
@@ -51366,6 +52698,7 @@ function OfflineManagerDialog($$anchor, $$props) {
 	async function openPurgeDialog(layer) {
 		const dialog = new SvelteModal(OfflinePurgeDialog, $$props.app, $$props.plugin, $$props.settings, {
 			urlTemplate: layer.urlTemplate,
+
 			beforeClose: () => {
 				getDownloadedTiles();
 			}
@@ -51384,17 +52717,21 @@ function OfflineManagerDialog($$anchor, $$props) {
 
 			// Change the downloadedTiles list in the strange way that will trigger
 			// Svelte's reactivity and update the numbers on the go
-			set(downloadedTiles, proxy(get(downloadedTiles).map((l) => {
-				if (l.urlTemplate === layer.urlTemplate) {
-					return {
-						...l,
-						tiles: l.tiles - 1,
-						totalSize: l.totalSize - tile.blob.size
-					};
-				}
+			set(
+				downloadedTiles,
+				get(downloadedTiles).map((l) => {
+					if (l.urlTemplate === layer.urlTemplate) {
+						return {
+							...l,
+							tiles: l.tiles - 1,
+							totalSize: l.totalSize - tile.blob.size
+						};
+					}
 
-				return l;
-			})));
+					return l;
+				}),
+				true
+			);
 		}
 
 		await getDownloadedTiles();
@@ -51405,6 +52742,7 @@ function OfflineManagerDialog($$anchor, $$props) {
 		startJob(tiles, requestsPerSecond, async () => {
 			await getDownloadedTiles();
 			$$props.mapContainer.refreshMap();
+
 			// The job goes to do its thing in offlineTiles.svelte.ts regardless of whether this dialog is open.
 			// If by the time it is done the dialog isn't around anymore, notify the user by a notice.
 			if (!document.body.contains(document.querySelector('.offline-manager'))) new obsidian.Notice('Map View: an offline background download has finished.');
@@ -51431,11 +52769,7 @@ function OfflineManagerDialog($$anchor, $$props) {
 				var b = sibling(text_1);
 				var text_2 = child(b);
 
-				template_effect(() => set_text(text_2, `${(get(layer).totalSize / (1024 * 1024)).toFixed(1) ?? ""}MB`));
-
 				var text_3 = sibling(b, 3);
-
-				template_effect(() => set_text(text_3, ` Oldest tile is from ${new Date(get(layer).oldestTile).toISOString().split('T')[0] ?? ""}.`));
 
 				var div_6 = sibling(div_3, 2);
 				var button = child(div_6);
@@ -51446,10 +52780,18 @@ function OfflineManagerDialog($$anchor, $$props) {
 
 				button_1.__click = [on_click_1$1, deleteDownload, layer];
 
-				template_effect(() => {
-					set_text(text, get(layer).url);
-					set_text(text_1, `${get(layer).tiles ?? ""} tiles, total `);
-				});
+				template_effect(
+					($0, $1) => {
+						set_text(text, get(layer).url);
+						set_text(text_1, `${get(layer).tiles ?? ''} tiles, total `);
+						set_text(text_2, `${$0 ?? ''}MB`);
+						set_text(text_3, ` Oldest tile is from ${$1 ?? ''}.`);
+					},
+					[
+						() => (get(layer).totalSize / (1024 * 1024)).toFixed(1),
+						() => new Date(get(layer).oldestTile).toISOString().split('T')[0]
+					]
+				);
 
 				append($$anchor, div_2);
 			});
@@ -51465,13 +52807,13 @@ function OfflineManagerDialog($$anchor, $$props) {
 
 			{
 				var consequent_1 = ($$anchor) => {
-					var text_4 = text("Once the ongoing job(s) finish, you will see them here.");
+					var text_4 = text('Once the ongoing job(s) finish, you will see them here.');
 
 					append($$anchor, text_4);
 				};
 
 				var alternate = ($$anchor) => {
-					var text_5 = text("You can make the current view available offline using the button below.");
+					var text_5 = text('You can make the current view available offline using the button below.');
 
 					append($$anchor, text_5);
 				};
@@ -51512,13 +52854,19 @@ function OfflineManagerDialog($$anchor, $$props) {
 				var span = child(div_16);
 				var text_7 = child(span);
 
-				template_effect(() => set_text(text_7, `Progress: ${Math.round(get(job).progress) ?? ""}%`));
-
 				var div_17 = sibling(div_14, 2);
 				var button_2 = child(div_17);
 
 				button_2.__click = [on_click_2$1, job];
-				template_effect(() => set_text(text_6, get(job).name));
+
+				template_effect(
+					($0) => {
+						set_text(text_6, get(job).name);
+						set_text(text_7, `Progress: ${$0 ?? ''}%`);
+					},
+					[() => Math.round(get(job).progress)]
+				);
+
 				append($$anchor, div_13);
 			});
 
@@ -51544,17 +52892,14 @@ function OfflineManagerDialog($$anchor, $$props) {
 	pop();
 }
 
-delegate(["click"]);
+delegate(['click']);
 
-/* offlineTiles.svelte.ts generated by Svelte v5.6.2 */
+/* offlineTiles.svelte.ts generated by Svelte v5.38.6 */
 
 let jobs = state(proxy([]));
 
 function openManagerDialog(plugin, settings, mapContainer) {
-	const dialog = new SvelteModal(OfflineManagerDialog, plugin.app, plugin, settings, {
-		mapContainer,
-		tileLayer: mapContainer.display.tileLayer
-	});
+	const dialog = new SvelteModal(OfflineManagerDialog, plugin.app, plugin, settings, { mapContainer, tileLayer: mapContainer.display.tileLayer });
 
 	dialog.open();
 }
@@ -51587,7 +52932,7 @@ function startJob(tiles, requestsPerSecond, onFinish) {
 		onFinish
 	};
 
-	set(jobs, proxy([...get(jobs), newJob]));
+	set(jobs, [...get(jobs), newJob], true);
 	doDownloadJob(newJob);
 }
 
@@ -51611,6 +52956,7 @@ async function getBlobFromImageElement(image, helperCanvas) {
 	// We can't use the image in a buffer as we intend to do below unless we assure the CORS mechanism we're allowed
 	// to do.
 	image.crossOrigin = 'Anonymous';
+
 	// Wait for the image to be fully loaded
 	await image.decode();
 
@@ -51637,6 +52983,7 @@ async function saveDownloadedTile(element, layer, point, zoom, helperCanvas) {
 	// First we need to craft a TileInfo object that can identify the tile in the DB, we do this by reversing what the
 	// getTileUrls expects from the layer object that we have.
 	const projectedPoint = point.multiplyBy(layer.getTileSize().x);
+
 	const tiles = layer.getTileUrls(leafletSrcExports.bounds(projectedPoint, projectedPoint), zoom);
 
 	if ((tiles === null || tiles === void 0 ? void 0 : tiles.length) > 0) {
@@ -51646,6 +52993,7 @@ async function saveDownloadedTile(element, layer, point, zoom, helperCanvas) {
 			const blob = await getBlobFromImageElement(element, helperCanvas);
 
 			await bundleExports.saveTile(tile, blob);
+
 			// Success
 			return true;
 		} catch(e) {}
@@ -51673,27 +53021,29 @@ async function doDownloadJob(job) {
 
 			downloaded++;
 
-			set(jobs, proxy(get(jobs).map((j) => {
-				if (j.id === job.id) {
-					return {
-						...j,
-						progress: downloaded / job.tiles.length * 100
-					};
-				}
+			set(
+				jobs,
+				get(jobs).map((j) => {
+					if (j.id === job.id) {
+						return { ...j, progress: downloaded / job.tiles.length * 100 };
+					}
 
-				return j;
-			})));
+					return j;
+				}),
+				true
+			);
 
 			if (job.abortController.signal.aborted) break;
 		} catch(error) {
 			console.error(`Failed to download tile: ${tile.url}`, error);
 			console.error(`Error details: ${error.message}`);
 			new obsidian.Notice('Offline tiles downloaded failed, see the console for more details.');
+
 			break;
 		}
 	}
 
-	set(jobs, proxy(get(jobs).filter((j) => j.id !== job.id)));
+	set(jobs, get(jobs).filter((j) => j.id !== job.id), true);
 	job.onFinish();
 }
 
@@ -51733,6 +53083,7 @@ async function calculateTilesToDownload(
 
 			if (newTiles.length >= maxTiles) {
 				console.error('Too many tiles');
+
 				return newTiles;
 			}
 		}
@@ -52244,7 +53595,7 @@ function getAllTagNames(app, plugin) {
     return sortedTags;
 }
 function isMobile(app) {
-    return app === null || app === void 0 ? void 0 : app.isMobile;
+    return obsidian.Platform.isMobile;
 }
 function trimmedFileName(file) {
     const MAX_LENGTH = 12;
@@ -52451,7 +53802,7 @@ async function buildAndAppendFileMarkers(mapToAppendTo, file, settings, app, ski
     const frontMatter = fileCache === null || fileCache === void 0 ? void 0 : fileCache.frontmatter;
     const tagNameToSearch = (_a = settings.tagForGeolocationNotes) === null || _a === void 0 ? void 0 : _a.trim();
     if (frontMatter || (tagNameToSearch === null || tagNameToSearch === void 0 ? void 0 : tagNameToSearch.length) > 0) {
-        if (frontMatter && !skipMetadata) {
+        if (frontMatter && true) {
             const location = getFrontMatterLocation(file, app, settings);
             if (location) {
                 verifyLocation(location);
@@ -52757,7 +54108,7 @@ function isSame(loc1, loc2) {
 function askForLocation(app, settings, geoaction = 'locate', mvaction = 'showonmap', mvcontext = '') {
     if (!settings.supportRealTimeGeolocation)
         return false;
-    if (isMobile(app) && settings.geoHelperPreferApp) {
+    if (isMobile() && settings.geoHelperPreferApp) {
         open('geohelper://locate' +
             `?geoaction=${geoaction}&mvaction=${mvaction}&mvcontext=${mvcontext}`);
         new obsidian.Notice('Asking GeoHelper App for location');
@@ -52900,22 +54251,19 @@ var on_change$1 = (_, $$props, expanded) => {
 	$$props.afterToggle?.(expanded());
 };
 
-var root$3 = template(`<div class="collapsible svelte-m98lp5"><input type="checkbox" class="toggle svelte-m98lp5"> <label class="svelte-m98lp5"><svg class="triangle svelte-m98lp5" viewBox="0 0 10 10" fill="none"><path d="M2 2L8 5L2 8Z" fill="currentColor"></path></svg> <span class="svelte-m98lp5"> </span></label> <div class="contents"><!></div></div>`);
+var root$3 = from_html(`<div><input type="checkbox" class="toggle svelte-m98lp5"/> <label class="svelte-m98lp5"><svg class="triangle svelte-m98lp5" viewBox="0 0 10 10" fill="none"><path d="M2 2L8 5L2 8Z" fill="currentColor"></path></svg> <span class="svelte-m98lp5"> </span></label> <div class="contents"><!></div></div>`);
 
 function ViewCollapsibleSection($$anchor, $$props) {
 	push($$props, true);
 
-	let expanded = prop($$props, "expanded", 7);
+	let expanded = prop($$props, 'expanded');
 	const uniqueId = `collapsible-${crypto.randomUUID()}`;
 	var div = root$3();
+	let classes;
 	var input = child(div);
-	set_attribute(input, "id", uniqueId);
 	input.__change = [on_change$1, $$props, expanded];
 
 	var label = sibling(input, 2);
-
-	set_attribute(label, "for", uniqueId);
-
 	var span = sibling(child(label), 2);
 	var text = child(span);
 
@@ -52924,18 +54272,23 @@ function ViewCollapsibleSection($$anchor, $$props) {
 
 	snippet(node, () => $$props.children ?? noop$3);
 
-	template_effect(() => {
-		toggle_class(div, "open", expanded());
-		set_text(text, $$props.headerText);
-		div_1.hidden = !expanded();
-	});
+	template_effect(
+		($0) => {
+			classes = set_class(div, 1, 'collapsible svelte-m98lp5', null, classes, $0);
+			set_attribute(input, 'id', uniqueId);
+			set_attribute(label, 'for', uniqueId);
+			set_text(text, $$props.headerText);
+			div_1.hidden = !expanded();
+		},
+		[() => ({ open: expanded() })]
+	);
 
 	bind_checked(input, expanded);
 	append($$anchor, div);
 	pop();
 }
 
-delegate(["change"]);
+delegate(['change']);
 
 class NewPresetDialog extends obsidian.Modal {
     constructor(app, stateToSave, plugin, settings, callback) {
@@ -54026,21 +55379,21 @@ class QuerySuggest extends obsidian.PopoverSuggest {
 var css_248z$2 = "\n\t.top-right-controls.svelte-1sl5jax {\n\t\tposition: absolute;\n\t\tpadding: 4px;\n\t\ttop: 4px;\n\t\tright: 4px;\n\t\tdisplay: flex;\n\t\talign-items: center;\n\t}\n\t\n\t.mv-filters-on.svelte-1sl5jax {\n\t\tposition: absolute;\n\t\tfont-size: 0.3em;\n\t\ttop: 4px;\n\t\tleft: 4px;\n\t\tz-index: 1;\n\t}\n\n\t.minimize-button.svelte-1sl5jax {\n\t\tbackground: transparent;\n\t\tborder: none;\n\t\tcolor: var(--text-muted);\n\t\tcursor: pointer;\n\t\tpadding: 0;\n\t\tdisplay: flex;\n\t}\n\n\t.map-view-graph-controls.minimized.svelte-1sl5jax {\n\t\tpadding: 4px;\n\t\tdisplay: flex;\n\t\tjustify-content: flex-end;\n\t}\n\n\t.map-view-graph-controls.minimized.svelte-1sl5jax .top-right-controls:where(.svelte-1sl5jax) {\n\t\tposition: relative;\n\t\ttop: 0;\n\t\tleft: 0;\n\t}\n\n\t.map-view-graph-controls.svelte-1sl5jax:not(.minimized):has(.top-right-controls:where(.svelte-1sl5jax)) {\n\t    padding-right: 25px;\n\t}\n\n\t.minimize-button.svelte-1sl5jax:hover {\n\t\tcolor: var(--text-normal);\n\t}\n\n\t.graph-control-follow-div.svelte-1sl5jax {\n\t\tdisplay: flex;\n\t\talign-items: center;\n\t\tgap: 4px;\n\t\tmargin: 5px;\n\t}\n\n\t.follow-label.svelte-1sl5jax {\n\t\tmargin-left: 2px;\n\t\tline-height: 1;\n\t}\n";
 styleInject(css_248z$2);
 
-var root_3 = template(`<span class="mv-filters-on svelte-1sl5jax" title="Filters are active">🟠</span>`);
+var root_3 = from_html(`<span class="mv-filters-on svelte-1sl5jax" title="Filters are active">🟠</span>`);
 
 var on_click$1 = (_, setMapControl, settings, minimized) => {
 	setMapControl('minimized', !settings().mapControls.minimized);
 	set(minimized, !get(minimized));
 };
 
-var root_4 = template(`<div class="minimize-button svelte-1sl5jax"><!></div>`);
-var root_1$2 = template(`<div class="top-right-controls svelte-1sl5jax"><!> <!></div>`);
-var root_6 = template(`<button class="button" title="Open a full Map View with the current state.">Open</button>`);
+var root_4 = from_html(`<div class="minimize-button svelte-1sl5jax"><!></div>`);
+var root_1$2 = from_html(`<div class="top-right-controls svelte-1sl5jax"><!> <!></div>`);
+var root_6 = from_html(`<button class="button" title="Open a full Map View with the current state.">Open</button>`);
 var on_click_1 = (__1, saveButton) => saveButton();
-var root_7 = template(`<button class="button" title="Update the source code block with the updated view state.">Save</button>`);
+var root_7 = from_html(`<button class="button" title="Update the source code block with the updated view state.">Save</button>`);
 var on_click_2 = (__2, mapState) => get(mapState).query = '';
-var root_9 = template(`<div class="search-input-container mv-map-control"><input type="text" placeholder="Query" contenteditable="true"> <div class="search-input-clear-button"></div></div>`);
-var root_12 = template(`<option> </option>`);
+var root_9 = from_html(`<div class="search-input-container mv-map-control"><input type="text" placeholder="Query" contenteditable="true"/> <div class="search-input-clear-button"></div></div>`);
+var root_12 = from_html(`<option> </option>`);
 
 var on_click_3 = (__3, selectedPreset, onChangePreset) => {
 	set(selectedPreset, "0");
@@ -54048,12 +55401,12 @@ var on_click_3 = (__3, selectedPreset, onChangePreset) => {
 };
 
 var on_click_4 = (__4, toggleFollowActiveNote) => toggleFollowActiveNote();
-var root_13 = template(`<button class="button" title="Set the map view to fit all currently-displayed markers.">Fit</button> <div class="graph-control-follow-div svelte-1sl5jax"><div class="checkbox-container"><input type="checkbox" id="follow-active"></div> <label class="follow-label svelte-1sl5jax" for="follow-active">Follow active note</label></div> <select class="dropdown mv-map-control"><option>No labels</option><option>Left labels</option><option>Right labels</option></select>`, 1);
-var root_11 = template(`<select class="dropdown mv-map-control"></select> <select class="dropdown mv-map-control"><option>Auto</option><option>Light</option><option>Dark</option></select> <button class="button" title="Reset the view to the defined default.">Reset</button> <!>`, 1);
+var root_13 = from_html(`<button class="button" title="Set the map view to fit all currently-displayed markers.">Fit</button> <div class="graph-control-follow-div svelte-1sl5jax"><div><input type="checkbox" id="follow-active"/></div> <label class="follow-label svelte-1sl5jax" for="follow-active">Follow active note</label></div> <select class="dropdown mv-map-control"><option>No labels</option><option>Left labels</option><option>Right labels</option></select>`, 1);
+var root_11 = from_html(`<select class="dropdown mv-map-control"></select> <select class="dropdown mv-map-control"><option>Auto</option><option>Light</option><option>Dark</option></select> <button class="button" title="Reset the view to the defined default.">Reset</button> <!>`, 1);
 var on_change = (e, mapState) => get(mapState).showLinks = e.currentTarget.value === 'true';
-var root_15 = template(`<select class="dropdown mv-map-control"><option>Off</option><option>Show links</option></select> <input type="text" class="mv-map-control" placeholder="color" contenteditable="true" title="Color used for lines (edges). Can be any valid HTML color, e.g. 'red' or '#bc11ff'." style="width: 6em;">`, 1);
+var root_15 = from_html(`<select class="dropdown mv-map-control"><option>Off</option><option>Show links</option></select> <input type="text" class="mv-map-control" placeholder="color" contenteditable="true" title="Color used for lines (edges). Can be any valid HTML color, e.g. 'red' or '#bc11ff'." style="width: 6em;"/>`, 1);
 var on_change_1 = (__5, onChangePreset) => onChangePreset();
-var root_18 = template(`<option> </option>`);
+var root_18 = from_html(`<option> </option>`);
 
 var on_click_5 = (__6, presetSaveAs) => {
 	presetSaveAs();
@@ -54075,28 +55428,23 @@ var on_click_9 = (__10, copyBlock) => {
 	copyBlock();
 };
 
-var root_17 = template(`<select class="dropdown mv-map-control"><option>(no preset)</option><!></select> <button class="button mv-map-control" title="Save the current view as a preset.">Save as...</button> <button class="button mv-map-control" title="Delete the currently-selected preset.">Delete</button> <button class="button mv-map-control" title="Save the current view as the default one.">Save as Default</button> <button class="button mv-map-control" title="Copy the current view as a URL.">Copy URL</button> <button class="button mv-map-control" title="Copy the current view as a code block you can paste in notes for an inline map.">Copy Block</button>`, 1);
-var root_5 = template(`<div class="graph-control-div"><!> <!> <!> <!> <!> <!></div>`);
-var root$2 = template(`<div class="map-view-graph-controls svelte-1sl5jax"><!> <!></div>`);
+var root_17 = from_html(`<select class="dropdown mv-map-control"><option>(no preset)</option><!></select> <button class="button mv-map-control" title="Save the current view as a preset.">Save as...</button> <button class="button mv-map-control" title="Delete the currently-selected preset.">Delete</button> <button class="button mv-map-control" title="Save the current view as the default one.">Save as Default</button> <button class="button mv-map-control" title="Copy the current view as a URL.">Copy URL</button> <button class="button mv-map-control" title="Copy the current view as a code block you can paste in notes for an inline map.">Copy Block</button>`, 1);
+var root_5 = from_html(`<div class="graph-control-div"><!> <!> <!> <!> <!> <!></div>`);
+var root$2 = from_html(`<div><!> <!></div>`);
 
 function ViewControlsPanel($$anchor, $$props) {
 	push($$props, true);
 
-	let settings = prop($$props, "settings", 7),
-		view = prop($$props, "view", 7);
+	let settings = prop($$props, 'settings'),
+		view = prop($$props, 'view');
 
-	let mapState = state(undefined);
-
-	let presets = state(proxy([
-		view().defaultState,
-		...settings().savedStates || []
-	]));
-
+	let mapState = state(void 0);
+	let presets = state(proxy([view().defaultState, ...settings().savedStates || []]));
 	let selectedPreset = state('-1');
-	let lastSavedState = state(undefined);
+	let lastSavedState = state(void 0);
 	let minimized = state(proxy(settings().mapControls.minimized));
 	let suggestor = null;
-	let queryInputElement = state(undefined);
+	let queryInputElement = state(void 0);
 	let previousState = null;
 
 	user_effect(() => {
@@ -54107,16 +55455,18 @@ function ViewControlsPanel($$anchor, $$props) {
 
 		// If the new state matches an existing preset, select that preset.
 		const preset = findPresetIndexForCurrentState().toString();
+
 		// We don't want this $effect to be called with selectedPreset changes; when the user selects a new
 		// reset, the onChangePreset method does the job. Therefore we read selectedPreset using untrack.
 		const untrackedSelectedPreset = untrack(() => get(selectedPreset));
 
-		if (preset !== untrackedSelectedPreset) set(selectedPreset, proxy(preset.toString()));
+		if (preset !== untrackedSelectedPreset) set(selectedPreset, preset.toString(), true);
+
 		previousState = copyState(get(mapState));
 	});
 
 	function updateControlsToState() {
-		set(mapState, proxy(view().getState()));
+		set(mapState, view().getState(), true);
 	}
 
 	// Update settings.mapControls.<path> about whether a collapsible section of the accordion is open or not
@@ -54127,6 +55477,7 @@ function ViewControlsPanel($$anchor, $$props) {
 
 	function toggleFollowActiveNote() {
 		get(mapState).followActiveNote = !get(mapState).followActiveNote;
+
 		// To prevent user confusion, clearing "follow active note" resets the query
 		if (!get(mapState).followActiveNote) get(mapState).query = '';
 	}
@@ -54134,10 +55485,12 @@ function ViewControlsPanel($$anchor, $$props) {
 	// We save the current state in previousState before calling updateControlsToState because we don't want this initial
 	// call to trigger an auto fit
 	previousState = view().getState();
+
 	updateControlsToState();
+
 	// Initialize lastSavedState to the initial map state (this is not a reactive assignment, i.e. it does not update every time mapState changes).
 	// svelte-ignore state_referenced_locally
-	set(lastSavedState, proxy(get(mapState)));
+	set(lastSavedState, get(mapState), true);
 
 	// Finds in the presets array a preset that matches the current map state and returns its index, or -1 if none was found
 	function findPresetIndexForCurrentState() {
@@ -54157,19 +55510,16 @@ function ViewControlsPanel($$anchor, $$props) {
 			const chosenPreset = get(presets)[presetIndex];
 			const mergedState = mergeStates(get(mapState), chosenPreset);
 
-			set(mapState, proxy({ ...mergedState }));
+			set(mapState, { ...mergedState }, true);
 		}
 	}
 
 	async function presetSaveAs() {
 		const dialog = new NewPresetDialog($$props.app, get(mapState), $$props.plugin, settings(), (index) => {
 			// If a new preset was added, this small function makes sure it's selected afterwards
-			set(presets, proxy([
-				view().defaultState,
-				...settings().savedStates || []
-			]));
+			set(presets, [view().defaultState, ...settings().savedStates || []], true);
 
-			set(selectedPreset, proxy(index.toString()));
+			set(selectedPreset, index.toString(), true);
 			onChangePreset();
 		});
 
@@ -54181,12 +55531,7 @@ function ViewControlsPanel($$anchor, $$props) {
 
 		if (presetIndex > 0) {
 			settings().savedStates.splice(presetIndex - 1, 1);
-
-			set(presets, proxy([
-				view().defaultState,
-				...settings().savedStates || []
-			]));
-
+			set(presets, [view().defaultState, ...settings().savedStates || []], true);
 			await $$props.plugin.saveSettings();
 		}
 	}
@@ -54194,12 +55539,7 @@ function ViewControlsPanel($$anchor, $$props) {
 	async function saveAsDefault() {
 		settings().defaultState = { ...get(mapState), name: 'Default' };
 		view().defaultState = settings().defaultState;
-
-		set(presets, proxy([
-			view().defaultState,
-			...settings().savedStates || []
-		]));
-
+		set(presets, [view().defaultState, ...settings().savedStates || []], true);
 		onChangePreset();
 		await $$props.plugin.saveSettings();
 		new obsidian.Notice('Default preset updated');
@@ -54222,7 +55562,7 @@ function ViewControlsPanel($$anchor, $$props) {
 
 	async function saveButton() {
 		view().updateCodeBlockCallback();
-		set(lastSavedState, proxy(get(mapState)));
+		set(lastSavedState, get(mapState), true);
 	}
 
 	function openQuerySuggest() {
@@ -54242,6 +55582,7 @@ function ViewControlsPanel($$anchor, $$props) {
 	}
 
 	var div = root$2();
+	let classes;
 	var node = child(div);
 
 	{
@@ -54280,17 +55621,12 @@ function ViewControlsPanel($$anchor, $$props) {
 				var consequent_2 = ($$anchor) => {
 					var div_2 = root_4();
 
-					div_2.__click = [
-						on_click$1,
-						setMapControl,
-						settings,
-						minimized
-					];
+					div_2.__click = [on_click$1, setMapControl, settings, minimized];
 
 					var node_4 = child(div_2);
 
 					html(node_4, () => obsidian.getIcon(get(minimized) ? 'maximize-2' : 'minimize-2').outerHTML);
-					template_effect(() => set_attribute(div_2, "title", settings().mapControls.minimized ? "Expand controls" : "Minimize controls"));
+					template_effect(() => set_attribute(div_2, 'title', settings().mapControls.minimized ? "Expand controls" : "Minimize controls"));
 					append($$anchor, div_2);
 				};
 
@@ -54346,11 +55682,14 @@ function ViewControlsPanel($$anchor, $$props) {
 			{
 				var consequent_6 = ($$anchor) => {
 					ViewCollapsibleSection($$anchor, {
-						headerText: "Filters",
+						headerText: 'Filters',
+
 						get expanded() {
 							return settings().mapControls.filtersDisplayed;
 						},
+
 						afterToggle: (expanded) => setMapControl('filtersDisplayed', expanded),
+
 						children: ($$anchor, $$slotProps) => {
 							var div_4 = root_9();
 							var input = child(div_4);
@@ -54362,16 +55701,23 @@ function ViewControlsPanel($$anchor, $$props) {
 								}
 							};
 
+							let classes_1;
+
 							bind_this(input, ($$value) => set(queryInputElement, $$value), () => get(queryInputElement));
 
 							var div_5 = sibling(input, 2);
 
 							div_5.__click = [on_click_2, mapState];
-							template_effect(() => toggle_class(input, "graph-control-error", get(mapState).queryError));
-							event("focus", input, () => openQuerySuggest());
+
+							template_effect(($0) => classes_1 = set_class(input, 1, '', null, classes_1, $0), [
+								() => ({ 'graph-control-error': get(mapState).queryError })
+							]);
+
+							event('focus', input, () => openQuerySuggest());
 							bind_value(input, () => get(mapState).query, ($$value) => get(mapState).query = $$value);
 							append($$anchor, div_4);
 						},
+
 						$$slots: { default: true }
 					});
 				};
@@ -54386,21 +55732,22 @@ function ViewControlsPanel($$anchor, $$props) {
 			{
 				var consequent_8 = ($$anchor) => {
 					ViewCollapsibleSection($$anchor, {
-						headerText: "View",
+						headerText: 'View',
+
 						get expanded() {
 							return settings().mapControls.viewDisplayed;
 						},
+
 						afterToggle: (expanded) => setMapControl('viewDisplayed', expanded),
+
 						children: ($$anchor, $$slotProps) => {
 							var fragment_3 = root_11();
 							var select = first_child(fragment_3);
 
 							each(select, 21, () => settings().mapSources, index, ($$anchor, source, i) => {
 								var option = root_12();
-
-								option.value = null == (option.__value = i) ? "" : i;
-
 								var text = child(option);
+								option.value = option.__value = i;
 								template_effect(() => set_text(text, get(source).name));
 								append($$anchor, option);
 							});
@@ -54408,15 +55755,15 @@ function ViewControlsPanel($$anchor, $$props) {
 							var select_1 = sibling(select, 2);
 							var option_1 = child(select_1);
 
-							option_1.value = null == (option_1.__value = "auto") ? "" : "auto";
+							option_1.value = option_1.__value = 'auto';
 
 							var option_2 = sibling(option_1);
 
-							option_2.value = null == (option_2.__value = "light") ? "" : "light";
+							option_2.value = option_2.__value = 'light';
 
 							var option_3 = sibling(option_2);
 
-							option_3.value = null == (option_3.__value = "dark") ? "" : "dark";
+							option_3.value = option_3.__value = 'dark';
 
 							var button_2 = sibling(select_1, 2);
 
@@ -54428,7 +55775,7 @@ function ViewControlsPanel($$anchor, $$props) {
 								var consequent_7 = ($$anchor) => {
 									var fragment_4 = root_13();
 									var button_3 = first_child(fragment_4);
-									var event_handler = derived(() => view().autoFitMapToMarkers());
+									var event_handler = user_derived(() => view().autoFitMapToMarkers());
 
 									button_3.__click = function (...$$args) {
 										get(event_handler)?.apply(this, $$args);
@@ -54436,6 +55783,7 @@ function ViewControlsPanel($$anchor, $$props) {
 
 									var div_6 = sibling(button_3, 2);
 									var div_7 = child(div_6);
+									let classes_2;
 
 									div_7.__click = [on_click_4, toggleFollowActiveNote];
 
@@ -54444,20 +55792,23 @@ function ViewControlsPanel($$anchor, $$props) {
 									var select_2 = sibling(div_6, 2);
 									var option_4 = child(select_2);
 
-									option_4.value = null == (option_4.__value = "off") ? "" : "off";
+									option_4.value = option_4.__value = 'off';
 
 									var option_5 = sibling(option_4);
 
-									option_5.value = null == (option_5.__value = "left") ? "" : "left";
+									option_5.value = option_5.__value = 'left';
 
 									var option_6 = sibling(option_5);
 
-									option_6.value = null == (option_6.__value = "right") ? "" : "right";
+									option_6.value = option_6.__value = 'right';
 
-									template_effect(() => {
-										toggle_class(div_7, "is-enabled", get(mapState).followActiveNote);
-										set_checked(input_1, get(mapState).followActiveNote);
-									});
+									template_effect(
+										($0) => {
+											classes_2 = set_class(div_7, 1, 'checkbox-container', null, classes_2, $0);
+											set_checked(input_1, get(mapState).followActiveNote);
+										},
+										[() => ({ 'is-enabled': get(mapState).followActiveNote })]
+									);
 
 									bind_select_value(select_2, () => get(mapState).markerLabels, ($$value) => get(mapState).markerLabels = $$value);
 									append($$anchor, fragment_4);
@@ -54472,6 +55823,7 @@ function ViewControlsPanel($$anchor, $$props) {
 							bind_select_value(select_1, () => settings().chosenMapMode, ($$value) => settings().chosenMapMode = $$value);
 							append($$anchor, fragment_3);
 						},
+
 						$$slots: { default: true }
 					});
 				};
@@ -54486,35 +55838,38 @@ function ViewControlsPanel($$anchor, $$props) {
 			{
 				var consequent_9 = ($$anchor) => {
 					ViewCollapsibleSection($$anchor, {
-						headerText: "Links",
+						headerText: 'Links',
+
 						get expanded() {
 							return settings().mapControls.linksDisplayed;
 						},
+
 						afterToggle: (expanded) => setMapControl('linksDisplayed', expanded),
+
 						children: ($$anchor, $$slotProps) => {
 							var fragment_6 = root_15();
 							var select_3 = first_child(fragment_6);
-
-							init_select(select_3, () => get(mapState).showLinks ? "true" : "false");
-
-							var select_3_value;
 
 							select_3.__change = [on_change, mapState];
 
 							var option_7 = child(select_3);
 
-							option_7.value = null == (option_7.__value = "false") ? "" : "false";
+							option_7.value = option_7.__value = 'false';
 
 							var option_8 = sibling(option_7);
 
-							option_8.value = null == (option_8.__value = "true") ? "" : "true";
+							option_8.value = option_8.__value = 'true';
+
+							var select_3_value;
+
+							init_select(select_3);
 
 							var input_2 = sibling(select_3, 2);
 
 							template_effect(() => {
 								if (select_3_value !== (select_3_value = get(mapState).showLinks ? "true" : "false")) {
 									(
-										select_3.value = null == (select_3.__value = get(mapState).showLinks ? "true" : "false") ? "" : get(mapState).showLinks ? "true" : "false",
+										select_3.value = select_3.__value = get(mapState).showLinks ? "true" : "false",
 										select_option(select_3, get(mapState).showLinks ? "true" : "false")
 									);
 								}
@@ -54523,6 +55878,7 @@ function ViewControlsPanel($$anchor, $$props) {
 							bind_value(input_2, () => get(mapState).linkColor, ($$value) => get(mapState).linkColor = $$value);
 							append($$anchor, fragment_6);
 						},
+
 						$$slots: { default: true }
 					});
 				};
@@ -54537,11 +55893,14 @@ function ViewControlsPanel($$anchor, $$props) {
 			{
 				var consequent_10 = ($$anchor) => {
 					ViewCollapsibleSection($$anchor, {
-						headerText: "Presets",
+						headerText: 'Presets',
+
 						get expanded() {
 							return settings().mapControls.presetsDisplayed;
 						},
+
 						afterToggle: (expanded) => setMapControl('presetsDisplayed', expanded),
+
 						children: ($$anchor, $$slotProps) => {
 							var fragment_8 = root_17();
 							var select_4 = first_child(fragment_8);
@@ -54550,22 +55909,26 @@ function ViewControlsPanel($$anchor, $$props) {
 
 							var option_9 = child(select_4);
 
-							option_9.value = null == (option_9.__value = "-1") ? "" : "-1";
+							option_9.value = option_9.__value = '-1';
 
 							var node_13 = sibling(option_9);
 
 							each(node_13, 17, () => get(presets), index, ($$anchor, preset, i) => {
 								var option_10 = root_18();
-								var option_10_value = {};
 								var text_1 = child(option_10);
 
-								template_effect(() => {
-									if (option_10_value !== (option_10_value = i.toString())) {
-										option_10.value = null == (option_10.__value = i.toString()) ? "" : i.toString();
-									}
+								var option_10_value = {};
 
-									set_text(text_1, get(preset).name);
-								});
+								template_effect(
+									($0) => {
+										set_text(text_1, get(preset).name);
+
+										if (option_10_value !== (option_10_value = $0)) {
+											option_10.value = (option_10.__value = $0) ?? '';
+										}
+									},
+									[() => i.toString()]
+								);
 
 								append($$anchor, option_10);
 							});
@@ -54592,6 +55955,7 @@ function ViewControlsPanel($$anchor, $$props) {
 							bind_select_value(select_4, () => get(selectedPreset), ($$value) => set(selectedPreset, $$value));
 							append($$anchor, fragment_8);
 						},
+
 						$$slots: { default: true }
 					});
 				};
@@ -54607,12 +55971,13 @@ function ViewControlsPanel($$anchor, $$props) {
 			if (!get(minimized)) $$render(consequent_11);
 		});
 	}
-	template_effect(() => toggle_class(div, "minimized", get(minimized)));
+	template_effect(($0) => classes = set_class(div, 1, 'map-view-graph-controls svelte-1sl5jax', null, classes, $0), [() => ({ minimized: get(minimized) })]);
 	append($$anchor, div);
+
 	return pop({ updateControlsToState });
 }
 
-delegate(["click", "focusout", "change"]);
+delegate(['click', 'focusout', 'change']);
 
 class ViewControls {
     constructor(parentElement, settings, viewSettings, app, view, plugin) {
@@ -54913,14 +56278,14 @@ async function handleFileSelect(
 	const files = target.files;
 
 	if (files && files.length > 0) {
-		set(selectedFileName, proxy(files[0].name));
+		set(selectedFileName, files[0].name, true);
 
 		// Read the file content
 		const file = files[0];
 
 		try {
-			set(fileContent, proxy(await file.text()));
-			set(previewText, proxy(kmlImport(get(fileContent), get(templateText))));
+			set(fileContent, await file.text(), true);
+			set(previewText, kmlImport(get(fileContent), get(templateText)), true);
 		} catch(error) {
 			console.error('Error reading file:', error);
 			set(previewText, 'Error reading file');
@@ -54928,6 +56293,9 @@ async function handleFileSelect(
 	}
 }
 
+// Extract folder name
+// Initialize Markdown output
+// Add folder name as a heading if available
 async function importIntoNote(_, previewText, $$props) {
 	if (get(previewText)) {
 		await verifyOrAddFrontMatterForInline($$props.app, $$props.editor, $$props.file, $$props.settings);
@@ -54937,16 +56305,16 @@ async function importIntoNote(_, previewText, $$props) {
 	$$props.close();
 }
 
-var root_1$1 = template(`<span class="selected-file svelte-wwqlpd"> </span>`);
+var root_1$1 = from_html(`<span class="selected-file svelte-wwqlpd"> </span>`);
 var on_click = (__1, fileInput) => get(fileInput)?.click();
 
-var root$1 = template(`<div class="import-dialog"><div class="setting-item-container"><div class="setting-item-heading">Import Geolocations from File</div> <div class="setting-item-description">This tool allows batch-importing geolocations from KML files generated by Google Maps.</div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Input file</div> <div class="setting-item-description">Select a file to import.</div></div> <div class="setting-item-control"><input type="file" accept=".kml" style="display: none"> <!> <button class="mod-cta">Select File...</button></div></div></div> <div class="setting-item template-container svelte-wwqlpd"><div class="setting-item-info svelte-wwqlpd"><div class="setting-item-name">Template text to use</div> <div class="setting-item-description"><p>Available fields:</p> <p style="font-family: var(--font-monospace);"> </p></div></div> <textarea rows="2" class="svelte-wwqlpd">
+var root$1 = from_html(`<div class="import-dialog"><div class="setting-item-container"><div class="setting-item-heading">Import Geolocations from File</div> <div class="setting-item-description">This tool allows batch-importing geolocations from KML files generated by Google Maps.</div> <div class="setting-item"><div class="setting-item-info"><div class="setting-item-name">Input file</div> <div class="setting-item-description">Select a file to import.</div></div> <div class="setting-item-control"><input type="file" accept=".kml" style="display: none"/> <!> <button class="mod-cta">Select File...</button></div></div></div> <div class="setting-item template-container svelte-wwqlpd"><div class="setting-item-info svelte-wwqlpd"><div class="setting-item-name">Template text to use</div> <div class="setting-item-description"><p>Available fields:</p> <p style="font-family: var(--font-monospace);"> </p></div></div> <textarea rows="2" class="svelte-wwqlpd">
 		</textarea></div> <div class="setting-item preview-container svelte-wwqlpd"><div class="setting-item-info svelte-wwqlpd"><div class="setting-item-name">Preview</div></div> <textarea rows="6" readonly="" class="svelte-wwqlpd"></textarea></div> <div class="setting-item"><div class="setting-item-control"><button class="mod-cta">Import into Note</button> <button class="mod-cta">Cancel</button></div></div></div>`);
 
 function ImportDialog($$anchor, $$props) {
 	push($$props, true);
 
-	let fileInput = state(undefined);
+	let fileInput = state(void 0);
 	let selectedFileName = state('');
 	let templateText = state(`- [{{name}}](geo:{{coordinates}})`);
 	let previewText = state('');
@@ -54954,28 +56322,25 @@ function ImportDialog($$anchor, $$props) {
 
 	const fields = [
 		{ xmlName: 'name', template: '{{name}}' },
+
 		{
 			xmlName: 'coordinates',
 			template: '{{coordinates}}',
 			formatter: formatCoordinates
 		},
+
 		{ xmlName: 'address', template: '{{address}}' },
-		{
-			xmlName: 'phoneNumber',
-			template: '{{phoneNumber}}'
-		},
-		{
-			xmlName: 'description',
-			template: '{{description}}'
-		}
+		{ xmlName: 'phoneNumber', template: '{{phoneNumber}}' },
+		{ xmlName: 'description', template: '{{description}}' }
 	];
 
 	user_effect(() => {
 		if (get(selectedFileName) && get(templateText)) {
-			set(previewText, proxy(kmlImport(get(fileContent), get(templateText))));
+			set(previewText, kmlImport(get(fileContent), get(templateText)), true);
 		}
 	});
 
+	// Read the file content
 	function formatCoordinates(coordinates) {
 		const [longitude, latitude] = coordinates.split(',').map((coord) => coord.trim());
 
@@ -54985,8 +56350,10 @@ function ImportDialog($$anchor, $$props) {
 	function kmlImport(content, template) {
 		const parser = new DOMParser();
 		const xmlDoc = parser.parseFromString(content, 'application/xml');
+
 		// Extract folder name
 		let title = null;
+
 		const folderNameElement = xmlDoc.querySelector('Folder > name');
 
 		if (folderNameElement) {
@@ -55009,7 +56376,9 @@ function ImportDialog($$anchor, $$props) {
 			const elementToText = (elem) => {
 				var _a, _b;
 
-				return elem == null ? "" : (_b = (_a = elem.textContent) === null || _a === void 0 ? void 0 : _a.trim()) !== null && _b !== void 0 ? _b : "";
+				return elem == null
+					? ""
+					: (_b = (_a = elem.textContent) === null || _a === void 0 ? void 0 : _a.trim()) !== null && _b !== void 0 ? _b : "";
 			};
 
 			let formattedText = template;
@@ -55072,8 +56441,6 @@ function ImportDialog($$anchor, $$props) {
 	var p = sibling(child(div_6), 2);
 	var text_1 = child(p);
 
-	template_effect(() => set_text(text_1, fields.map((field) => field.template).join(', ')));
-
 	var textarea = sibling(div_5, 2);
 
 	var div_7 = sibling(div_4, 2);
@@ -55090,14 +56457,22 @@ function ImportDialog($$anchor, $$props) {
 	button_2.__click = function (...$$args) {
 		$$props.close?.apply(this, $$args);
 	};
-	template_effect(() => button_1.disabled = !get(previewText));
+
+	template_effect(
+		($0) => {
+			set_text(text_1, $0);
+			button_1.disabled = !get(previewText);
+		},
+		[() => fields.map((field) => field.template).join(', ')]
+	);
+
 	bind_value(textarea, () => get(templateText), ($$value) => set(templateText, $$value));
 	bind_value(textarea_1, () => get(previewText), ($$value) => set(previewText, $$value));
 	append($$anchor, div);
 	pop();
 }
 
-delegate(["change", "click"]);
+delegate(['change', 'click']);
 
 function addShowOnMap(menu, geolocation, file, editorLine, plugin, settings, markerIdToHighlight = null) {
     if (geolocation) {
@@ -56357,7 +57732,6 @@ function detectOverflow(state, options) {
   var popperOffsets = computeOffsets({
     reference: referenceClientRect,
     element: popperRect,
-    strategy: 'absolute',
     placement: placement
   });
   var popperClientRect = rectToClientRect(Object.assign({}, popperRect, popperOffsets));
@@ -56685,7 +58059,6 @@ function popperOffsets(_ref) {
   state.modifiersData[name] = computeOffsets({
     reference: state.rects.reference,
     element: state.rects.popper,
-    strategy: 'absolute',
     placement: state.placement
   });
 } // eslint-disable-next-line import/no-unused-modules
@@ -57191,14 +58564,18 @@ function openNote(ev, $$props) {
 	$$props.view.goToMarker($$props.marker, mouseEventToOpenMode($$props.settings, ev, 'openNote'), true);
 }
 
-var root_1 = template(`<p class="map-view-marker-sub-name svelte-18f8gcb"> </p>`);
-var root = template(`<div class="mv-marker-popup-internal svelte-18f8gcb"><div class="top-row svelte-18f8gcb"><div class="headlines clickable svelte-18f8gcb"><p class="map-view-marker-name svelte-18f8gcb"></p> <!></div> <div class="top-right-controls svelte-18f8gcb"><div class="button clickable svelte-18f8gcb"><!></div> <div class="button clickable svelte-18f8gcb"><!></div> <div class="button clickable svelte-18f8gcb"><!></div></div></div>  <div class="markdown-embed markdown-embed-content markdown-preview-view markdown-rendered allow-fold-headings allow-fold-lists svelte-18f8gcb"></div></div>`);
+var root_1 = from_html(`<p class="map-view-marker-sub-name svelte-18f8gcb"> </p>`);
+var root = from_html(`<div><div class="top-row svelte-18f8gcb"><div class="headlines clickable svelte-18f8gcb"><p class="map-view-marker-name svelte-18f8gcb"> </p> <!></div> <div class="top-right-controls svelte-18f8gcb"><div class="button clickable svelte-18f8gcb"><!></div> <div class="button clickable svelte-18f8gcb"><!></div> <div class="button clickable svelte-18f8gcb"><!></div></div></div>  <div class="markdown-embed markdown-embed-content markdown-preview-view markdown-rendered allow-fold-headings allow-fold-lists svelte-18f8gcb"></div></div>`);
 
 function MarkerPopup($$anchor, $$props) {
 	push($$props, true);
 
 	const fileName = $$props.marker.file.name;
-	const fileNameWithoutExtension = fileName.endsWith('.md') ? fileName.substring(0, fileName.lastIndexOf('.md')) : fileName;
+
+	const fileNameWithoutExtension = fileName.endsWith('.md')
+		? fileName.substring(0, fileName.lastIndexOf('.md'))
+		: fileName;
+
 	const showLinkSetting = $$props.settings.showLinkNameInPopup;
 	const showExtraName = (showLinkSetting === 'always' || showLinkSetting === 'mobileOnly' && isMobile($$props.app)) && $$props.marker.extraName && $$props.marker.extraName.length > 0;
 	const mapHeight = $$props.view.display.mapDiv.clientHeight;
@@ -57225,18 +58602,23 @@ function MarkerPopup($$anchor, $$props) {
 			let end = Math.min(fileLine + linesBelow + 1, lines.length); // +1 because slice end is exclusive
 
 			lines[fileLine] = `<mark class="mv-marked-line">${lines[fileLine]}</mark>`;
+
 			return lines.slice(start, end).join('\n');
 		} else {
 			return lines.slice(0, snippetLines).join('\n');
 		}
 	}
 
+	/**
+	 * If the popup has a highlighted line, try to make this line visible and centered.
+	 */
 	function scrollPopupToHighlight(element) {
 		const markedLine = element === null || element === void 0 ? void 0 : element.querySelector('mark.mv-marked-line');
 
 		if (element && markedLine) {
 			// Get the top of the marked line in relation to the scrollable container (element).
 			const containerRect = element.getBoundingClientRect();
+
 			const markedLineRect = markedLine.getBoundingClientRect();
 			const markTop = markedLineRect.top - containerRect.top;
 			const markHeight = markedLine.offsetHeight;
@@ -57256,25 +58638,22 @@ function MarkerPopup($$anchor, $$props) {
 	});
 
 	var div = root();
-
-	toggle_class(div, "with-preview", showPreview);
-
+	let classes;
 	var div_1 = child(div);
 	var div_2 = child(div_1);
 
 	div_2.__click = [openNote, $$props];
 
 	var p = child(div_2);
-
-	p.textContent = fileNameWithoutExtension;
+	var text = child(p);
 
 	var node = sibling(p, 2);
 
 	{
 		var consequent = ($$anchor) => {
 			var p_1 = root_1();
-			var text = child(p_1);
-			template_effect(() => set_text(text, $$props.marker.extraName));
+			var text_1 = child(p_1);
+			template_effect(() => set_text(text_1, $$props.marker.extraName));
 			append($$anchor, p_1);
 		};
 
@@ -57301,7 +58680,7 @@ function MarkerPopup($$anchor, $$props) {
 	html(node_2, () => obsidian.getIcon('ellipsis-vertical').outerHTML);
 
 	var div_6 = sibling(div_5, 2);
-	var event_handler = derived(() => $$props.doClose());
+	var event_handler = user_derived(() => $$props.doClose());
 
 	div_6.__click = function (...$$args) {
 		get(event_handler)?.apply(this, $$args);
@@ -57314,11 +58693,21 @@ function MarkerPopup($$anchor, $$props) {
 	var div_7 = sibling(div_1, 2);
 
 	bind_this(div_7, ($$value) => previewDiv = $$value, () => previewDiv);
+
+	template_effect(
+		($0) => {
+			classes = set_class(div, 1, 'mv-marker-popup-internal svelte-18f8gcb', null, classes, $0);
+			set_text(text, fileNameWithoutExtension);
+		},
+		[() => ({ 'with-preview': showPreview })]
+	);
+
 	append($$anchor, div);
+
 	return pop({ scrollPopupToHighlight });
 }
 
-delegate(["click"]);
+delegate(['click']);
 
 class MapContainer {
     /**
@@ -57713,7 +59102,7 @@ class MapContainer {
         }
         this.display.map.on('click', (event) => {
             this.setHighlight(null);
-            this.closeMarkerPopup();
+            this.closeMarkerPopup(false);
         });
         // Build the map right-click context menu
         this.display.map.on('contextmenu', async (event) => {
@@ -57729,13 +59118,13 @@ class MapContainer {
         setInterval(async () => {
             var _a;
             if (this.display.popupDiv &&
-                this.display.popupDiv.style.display != 'none') {
+                this.display.popupDiv.hasClass('visible')) {
                 if (isMobile(this.app))
                     return;
                 // If the popup is displayed, we're not on mobile (so it should be only displayed on hover) but
                 // there's no popup element, close the popup
                 if (!this.display.popupElement)
-                    this.closeMarkerPopup();
+                    this.closeMarkerPopup(false);
                 if (this.display.popupElement) {
                     const mousePosition = await getMousePosition();
                     const element = (_a = this.display.popupElement) === null || _a === void 0 ? void 0 : _a.getElement();
@@ -57747,7 +59136,7 @@ class MapContainer {
                             mousePosition.y <= rect.bottom)) {
                         // The mouse position is not inside the marker the popup belongs to, seems like we missed
                         // an event to close the popup
-                        this.closeMarkerPopup();
+                        this.closeMarkerPopup(false);
                     }
                 }
             }
@@ -57913,11 +59302,11 @@ class MapContainer {
         });
         newMarker.on('mouseout', (event) => {
             if (!isMobile(this.app)) {
-                this.closeMarkerPopup();
+                this.closeMarkerPopup(false);
             }
         });
         newMarker.on('remove', (event) => {
-            this.closeMarkerPopup();
+            this.closeMarkerPopup(true);
         });
         newMarker.on('add', (event) => {
             newMarker
@@ -57991,7 +59380,7 @@ class MapContainer {
         // Popups based on the markers below the cursor shouldn't be opened while animations
         // are occuring
         if (this.settings.showNoteNamePopup || this.settings.showNotePreview) {
-            this.closeMarkerPopup();
+            this.closeMarkerPopup(true);
             const component = mount(MarkerPopup, {
                 target: this.display.popupDiv,
                 props: {
@@ -58001,7 +59390,7 @@ class MapContainer {
                     view: this,
                     marker: fileMarker,
                     doClose: () => {
-                        this.closeMarkerPopup();
+                        this.closeMarkerPopup(false);
                     },
                 },
             });
@@ -58010,7 +59399,7 @@ class MapContainer {
             };
             const markerElement = event.target.getElement();
             // Make the popup visible
-            this.display.popupDiv.style.display = 'block';
+            this.display.popupDiv.addClass('visible');
             // If we're using Popper (non-mobile), update the Popper instance about which marker it should follow.
             // Otherwise, use a more naive placement
             if (this.display.popperInstance) {
@@ -58022,15 +59411,39 @@ class MapContainer {
                 this.display.popupDiv.addClass('simple-placement');
             }
         }
+        if (this.settings.showNativeObsidianHoverPopup) {
+            const previewDetails = {
+                scroll: fileMarker.fileLine,
+                line: fileMarker.fileLine,
+                startLoc: {
+                    line: fileMarker.fileLine,
+                    col: 0,
+                    offset: fileMarker.fileLocation,
+                },
+                endLoc: {
+                    line: fileMarker.fileLine,
+                    col: 0,
+                    offset: fileMarker.fileLocation,
+                },
+            };
+            this.app.workspace.trigger('link-hover', fileMarker.geoLayer.getElement(), fileMarker.geoLayer.getElement(), fileMarker.file.path, '', previewDetails);
+        }
         this.startHoverHighlight(fileMarker);
     }
-    closeMarkerPopup() {
+    /*
+     * Popups can be closed in two ways:
+     * 1. A "soft" close, which means the user just hovered out of the popup element, and we may want the popup to fade away nicely, OR,
+     * 2. A "hard" close, which means a new popup needs to be opened right away, and there's no time for a fadeout.
+     */
+    closeMarkerPopup(hardClose) {
         this.endHoverHighlight();
-        this.display.popupDiv.style.display = 'none';
-        this.display.popupElement = null;
-        if (this.display.popupElementUnmount)
-            this.display.popupElementUnmount();
-        this.display.popupElementUnmount = null;
+        this.display.popupDiv.removeClass('visible');
+        if (hardClose) {
+            this.display.popupElement = null;
+            if (this.display.popupElementUnmount)
+                this.display.popupElementUnmount();
+            this.display.popupElementUnmount = null;
+        }
     }
     openClusterPreviewPopup(event) {
         let content = this.display.viewDiv.createDiv();
@@ -58126,7 +59539,12 @@ class MapContainer {
         if (!chosenLeaf) {
             chosenLeaf = this.app.workspace.getLeaf(true);
         }
-        await chosenLeaf.openFile(file);
+        // Open the file and switch to it -- unless we created a new tab for it, on which case we should respect the user's
+        // "always focus new tabs" Obsidian setting
+        let active = undefined; // Respect user's "always focus new tabs" settings
+        if (!createTab)
+            active = true; // Focus the leaf
+        await chosenLeaf.openFile(file, { active });
         const editor = getEditor(this.app, chosenLeaf);
         if (editor && editorAction)
             await editorAction(editor);
@@ -58631,6 +60049,7 @@ const DEFAULT_SETTINGS = {
     newNoteTemplate: '',
     showNoteNamePopup: true,
     showLinkNameInPopup: 'always',
+    showNativeObsidianHoverPopup: false,
     showNotePreview: true,
     showClusterPreview: true,
     debug: false,
@@ -58670,6 +60089,7 @@ const DEFAULT_SETTINGS = {
     },
     maxClusterRadiusPixels: 20,
     searchProvider: 'osm',
+    osmUser: '',
     searchDelayMs: 250,
     geocodingApiKey: '',
     useGooglePlaces: false,
@@ -58874,10 +60294,19 @@ class GeoSearcher {
         this.searchProvider = null;
         this.settings = settings;
         this.urlConvertor = new UrlConvertor(app, settings);
-        if (settings.searchProvider == 'osm')
-            this.searchProvider = new F();
+        if (settings.searchProvider == 'osm') {
+            if (!settings.osmUser) {
+                new obsidian.Notice('Map View: the OpenStreetMap geosearch requires a user email address. Set one in the settings to be able to use this feature.', 5000);
+                return;
+            }
+            this.searchProvider = new _({
+                params: {
+                    email: settings.osmUser
+                }
+            });
+        }
         else if (settings.searchProvider == 'google') {
-            this.searchProvider = new A$1({
+            this.searchProvider = new F({
                 apiKey: settings.geocodingApiKey,
             });
         }
@@ -59298,9 +60727,7 @@ function getLinkReplaceEditorPlugin(mapViewPlugin) {
                     // The functions referenced here need to be given as text, and are therefore defined in
                     // the main plugin module on a 'window' level.
                     onclick: `handleMapViewGeoLink(event, ${from}, "${markerId}", "${lat}", "${lng}")`,
-                    // This is not ideal since it ruins scrolling and other default behaviors on touches that
-                    // start from the link, but without this, in mobile links launch their default behavior
-                    // in addition to the one I set above
+                    ontouchstart: `handleTouchStart(event, ${from}, "${markerId}", "${lat}", "${lng}")`,
                     onpointerdown: `handlePointerDown(event, ${from}, "${markerId}", "${lat}", "${lng}")`,
                     onpointerup: `handlePointerUp(event, ${from}, "${markerId}", "${lat}", "${lng}")`,
                     onmouseover: `createMapPopup(event, ${from}, "${markerId}", "${lat}", "${lng}")`,
@@ -59364,6 +60791,7 @@ class SettingsTab extends obsidian.PluginSettingTab {
             });
         });
         let apiKeyControl = null;
+        let osmUser = null;
         new obsidian.Setting(containerEl)
             .setName('Geocoding search provider')
             .setDesc('The service used for searching for geolocations. To use Google, see details in the plugin documentation.')
@@ -59377,6 +60805,8 @@ class SettingsTab extends obsidian.PluginSettingTab {
                 this.plugin.settings.searchProvider = value;
                 await this.plugin.saveSettings();
                 this.refreshPluginOnHide = true;
+                osmUser.settingEl.style.display =
+                    value === 'osm' ? '' : 'none';
                 apiKeyControl.settingEl.style.display =
                     value === 'google' ? '' : 'none';
                 googlePlacesControl.settingEl.style.display =
@@ -59384,6 +60814,24 @@ class SettingsTab extends obsidian.PluginSettingTab {
                         ? ''
                         : 'none';
             });
+        });
+        osmUser = new obsidian.Setting(containerEl)
+            .setName('OpenStreetMap user e-mail')
+            .setDesc('The OpenStreetMap Nominatim provider requires a user email. Restart Map View after setting it.')
+            .addText(component => {
+            component
+                .setValue(this.plugin.settings.osmUser)
+                .onChange(async (value) => {
+                this.plugin.settings.osmUser = value;
+                await this.plugin.saveSettings();
+                component.inputEl.style.borderColor = value
+                    ? ''
+                    : 'red';
+            });
+            component.inputEl.style.borderColor = this.plugin.settings
+                .osmUser
+                ? ''
+                : 'red';
         });
         apiKeyControl = new obsidian.Setting(containerEl)
             .setName('Gecoding API key')
@@ -59415,7 +60863,9 @@ class SettingsTab extends obsidian.PluginSettingTab {
                 await this.plugin.saveSettings();
             });
         });
-        // Display the API key control only if the search provider requires it
+        // Display the user or API key control only if the search provider requires it
+        osmUser.settingEl.style.display =
+            this.plugin.settings.searchProvider === 'osm' ? '' : 'none';
         apiKeyControl.settingEl.style.display =
             this.plugin.settings.searchProvider === 'google' ? '' : 'none';
         googlePlacesControl.settingEl.style.display =
@@ -59624,7 +61074,7 @@ class SettingsTab extends obsidian.PluginSettingTab {
         });
         new obsidian.Setting(containerEl)
             .setName('Geolink context menu in notes')
-            .setDesc('Override the Obsidian context menu for geolinks in notes, making sure Map View "open in" items are shown correctly. Requires "Geolinks in Notes" above.')
+            .setDesc('Override the Obsidian context menu for geolinks in notes, making sure Map View "open in" items are shown correctly. Requires "Geolinks in Notes" above. Does not currently work in iOS.')
             .addToggle((component) => {
             var _a;
             component
@@ -59666,13 +61116,26 @@ class SettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName('Show note preview on map marker hover')
+            .setName('Show note preview on marker hover')
             .setDesc('In addition to the note name, show a preview if the note contents. Either way, it will be displayed only if the map is large enough to contain it.')
             .addToggle((component) => {
             component
                 .setValue(this.plugin.settings.showNotePreview)
                 .onChange(async (value) => {
                 this.plugin.settings.showNotePreview = value;
+                await this.plugin.saveSettings();
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName('Show native Obsidian popup on marker hover')
+            .setDesc('In addition to the above settings, trigger the native Obsidian note preview when hovering on a marker. ' +
+            'The native Obsidian preview is more feature-rich than the above, and not recommended together with it, but Map View cannot control its placement and cannot add to it the note name, marker name etc.')
+            .addToggle((component) => {
+            component
+                .setValue(this.plugin.settings.showNativeObsidianHoverPopup)
+                .onChange(async (value) => {
+                this.plugin.settings.showNativeObsidianHoverPopup =
+                    value;
                 await this.plugin.saveSettings();
             });
         });
@@ -59928,7 +61391,7 @@ class SettingsTab extends obsidian.PluginSettingTab {
                 this.plugin.settings.geoHelperType =
                     value;
                 geoHelperUrl.settingEl.style.display =
-                    value === 'url' || 'commandline' ? '' : 'none';
+                    '' ;
                 geoHelperCommand.settingEl.style.display =
                     value === 'commandline' ? '' : 'none';
                 await this.plugin.saveSettings();
@@ -60716,14 +62179,17 @@ class MapViewPlugin extends obsidian.Plugin {
         window.handleMapViewGeoLink = (event, documentLocation, markerId, lat, lng) => {
             var _a;
             event.preventDefault();
-            event.stopImmediatePropagation();
+            // Special iOS behavior (https://github.com/esm7/obsidian-map-view/issues/301)
+            if (!obsidian.Platform.isIosApp)
+                event.stopImmediatePropagation();
             const location = new leafletSrcExports.LatLng(parseFloat(lat), parseFloat(lng));
             this.openMapWithLocation(location, mouseEventToOpenMode(this.settings, event, 'openMap'), null, null, false, markerId);
             (_a = this.mapPreviewPopup) === null || _a === void 0 ? void 0 : _a.close(event);
         };
         window.handleMapViewContextMenu = (event, documentLocation, markerId, lat, lng, name) => {
             var _a;
-            if (!this.settings.handleGeolinkContextMenu)
+            // Special iOS behavior (https://github.com/esm7/obsidian-map-view/issues/301)
+            if (!this.settings.handleGeolinkContextMenu || obsidian.Platform.isIosApp)
                 return;
             event.preventDefault();
             event.stopImmediatePropagation();
@@ -60735,14 +62201,27 @@ class MapViewPlugin extends obsidian.Plugin {
             menu.showAtPosition(event);
         };
         window.handlePointerUp = (event, documentLocation, markerId, lat, lng) => {
-            event.preventDefault();
-            event.stopImmediatePropagation();
+            // Special iOS behavior (https://github.com/esm7/obsidian-map-view/issues/301)
+            if (!obsidian.Platform.isIosApp) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
         };
         window.handlePointerDown = (event, documentLocation, markerId, lat, lng) => {
             var _a;
-            event.preventDefault();
-            event.stopImmediatePropagation();
+            // Special iOS behavior (https://github.com/esm7/obsidian-map-view/issues/301)
+            if (!obsidian.Platform.isIosApp) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+            }
             (_a = this.mapPreviewPopup) === null || _a === void 0 ? void 0 : _a.close(event);
+        };
+        window.handleTouchStart = (event, documentLocation, markerId, lat, lng) => {
+            // Special iOS behavior (https://github.com/esm7/obsidian-map-view/issues/301)
+            // Unfortunately this means that a single tap launches the link in iOS, even if the user intended to drag.
+            if (obsidian.Platform.isIosApp) {
+                window.handleMapViewGeoLink(event, documentLocation, markerId, lat, lng);
+            }
         };
         // As part of geoLinkReplacers.ts, geolinks in notes are embedded with mouse events that
         // override the default Obsidian behavior.
@@ -60980,6 +62459,7 @@ class MapViewPlugin extends obsidian.Plugin {
         }
     }
     onEditorMenu(menu, editor, view) {
+        var _a;
         if (!editor)
             return;
         if (view instanceof obsidian.FileView) {
@@ -60991,7 +62471,7 @@ class MapViewPlugin extends obsidian.Plugin {
             }
             if (!multiLineMode) {
                 const editorLine = editor.getCursor().line;
-                const [location, name] = this.getLocationOnEditorLine(editor, editorLine, view, true);
+                const [location, name] = (_a = this.getLocationOnEditorLine(editor, editorLine, view, true)) !== null && _a !== void 0 ? _a : [];
                 if (location) {
                     const editorLine = editor.getCursor().line;
                     addShowOnMap(menu, location, view.file, editorLine, this, this.settings);
@@ -61003,6 +62483,7 @@ class MapViewPlugin extends obsidian.Plugin {
         }
     }
     geolocationsWithinSelection(editor, view) {
+        var _a;
         const editorSelections = editor.listSelections();
         if (editorSelections && editorSelections.length > 0) {
             const anchorLine = editorSelections[0].anchor.line;
@@ -61012,7 +62493,7 @@ class MapViewPlugin extends obsidian.Plugin {
                 const toLine = Math.max(anchorLine, headLine);
                 let geolocations = [];
                 for (let line = fromLine; line <= toLine; line++) {
-                    const [geolocationOnLine, _] = this.getLocationOnEditorLine(editor, line, view, false);
+                    const [geolocationOnLine, _] = (_a = this.getLocationOnEditorLine(editor, line, view, false)) !== null && _a !== void 0 ? _a : [];
                     if (geolocationOnLine)
                         geolocations.push(geolocationOnLine);
                 }
@@ -61054,7 +62535,7 @@ class MapViewPlugin extends obsidian.Plugin {
         }
         else {
             const leaf = this.app.workspace.activeLeaf;
-            await leaf.openFile(file);
+            await leaf.openFile(file, { active: true });
             const editor = getEditor(this.app);
             if (editor)
                 await goToEditorLocation(editor, cursorPos, false);

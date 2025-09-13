@@ -515,7 +515,7 @@ var init_folderSelectionModal = __esm({
         }
       }
       getItems() {
-        const folderPaths = this.app.vault.getAllLoadedFiles().filter((file2) => file2.children).map((folder) => folder.path);
+        const folderPaths = this.app.vault.getAllLoadedFiles().filter((file) => file.children).map((folder) => folder.path);
         if (!folderPaths.includes(this.defaultFolder)) {
           folderPaths.unshift(this.defaultFolder);
         }
@@ -783,7 +783,14 @@ async function updateNoteFrontmatter(imagePath, plugin, usedField = null) {
   }
   const bannerField = usedField || (Array.isArray(plugin.settings.customBannerField) && plugin.settings.customBannerField.length > 0 ? plugin.settings.customBannerField[0] : "banner");
   const format = plugin.settings.imagePropertyFormat;
-  const bannerValue = format === "[[image]]" ? `[[${imageReference}]]` : `![[${imageReference}]]`;
+  let bannerValue;
+  if (format === "image") {
+    bannerValue = imageReference;
+  } else if (format === "[[image]]") {
+    bannerValue = `[[${imageReference}]]`;
+  } else {
+    bannerValue = `![[${imageReference}]]`;
+  }
   await plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
     if (Array.isArray(plugin.settings.customBannerField)) {
       for (const field of plugin.settings.customBannerField) {
@@ -843,8 +850,8 @@ async function handlePinIconClick(imageUrl, plugin, usedField = null, suggestedF
     return imageUrl;
   } else {
     const imageBlob = await fetchImage(imageUrl);
-    const { file: file2, useAsBanner } = await saveImageLocally(imageBlob, plugin, suggestedFilename);
-    const finalPath = await waitForFileRename(file2, plugin);
+    const { file, useAsBanner } = await saveImageLocally(imageBlob, plugin, suggestedFilename);
+    const finalPath = await waitForFileRename(file, plugin);
     if (!finalPath) {
       console.error("\u274C Failed to resolve valid file path");
       new Notice("Failed to save image - file not found");
@@ -925,9 +932,9 @@ function hidePinIcon() {
   const pinIcon = document.querySelector(".pin-icon");
   if (pinIcon) pinIcon.style.display = "none";
 }
-async function waitForFileRename(file2, plugin) {
+async function waitForFileRename(file, plugin) {
   return new Promise((resolve) => {
-    const initialPath = file2.path;
+    const initialPath = file.path;
     let timeoutId;
     let renamedPath = null;
     const validatePath = async (path) => {
@@ -1063,6 +1070,11 @@ var init_selectPixelBannerModal = __esm({
         `;
         return spinner;
       }
+      // Refresh the modal when Pixel Banner Plus enabled state changes
+      async refreshModal() {
+        this.contentEl.empty();
+        await this.onOpen();
+      }
       // Initialize the basic UI (non-API dependent)
       async initializeBasicUI() {
         var _a;
@@ -1169,13 +1181,20 @@ var init_selectPixelBannerModal = __esm({
           new ImageSelectionModal(
             this.app,
             this.plugin,
-            async (file2) => {
+            async (file) => {
               const activeFile2 = this.app.workspace.getActiveFile();
               if (activeFile2) {
                 await this.plugin.app.fileManager.processFrontMatter(activeFile2, (frontmatter) => {
                   const bannerField = this.plugin.settings.customBannerField[0];
                   const format = this.plugin.settings.imagePropertyFormat;
-                  const bannerValue = format === "[[image]]" ? `[[${file2.path}]]` : `![[${file2.path}]]`;
+                  let bannerValue;
+                  if (format === "image") {
+                    bannerValue = file.path;
+                  } else if (format === "[[image]]") {
+                    bannerValue = `[[${file.path}]]`;
+                  } else {
+                    bannerValue = `![[${file.path}]]`;
+                  }
                   frontmatter[bannerField] = bannerValue;
                 });
                 if (this.plugin.settings.openTargetingModalAfterSelectingBannerOrIcon) {
@@ -1312,7 +1331,7 @@ var init_selectPixelBannerModal = __esm({
             }
             const activeFile2 = this.app.workspace.getActiveFile();
             if (!activeFile2) return;
-            const file2 = this.app.vault.getAbstractFileByPath(pathString);
+            const file = this.app.vault.getAbstractFileByPath(pathString);
             if (typeof pathString === "string" && (pathString.startsWith("http://") || pathString.startsWith("https://"))) {
               this.app.fileManager.processFrontMatter(activeFile2, (fm) => {
                 const iconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
@@ -1337,7 +1356,16 @@ var init_selectPixelBannerModal = __esm({
             }
             this.app.fileManager.processFrontMatter(activeFile2, (fm) => {
               const iconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
-              fm[iconImageField] = `![[${pathString}]]`;
+              const format = this.plugin.settings.imagePropertyFormat;
+              let iconValue;
+              if (format === "image") {
+                iconValue = pathString;
+              } else if (format === "[[image]]") {
+                iconValue = `[[${pathString}]]`;
+              } else {
+                iconValue = `![[${pathString}]]`;
+              }
+              fm[iconImageField] = iconValue;
             });
             new TargetPositionModal(this.app, this.plugin).open();
           };
@@ -1413,28 +1441,82 @@ var init_selectPixelBannerModal = __esm({
             cls: "pixel-banner-message-text"
           });
         }
+        const accountSection = mainContainer.createDiv({
+          cls: "pixel-banner-section pixel-banner-api-dependent",
+          attr: {
+            style: `
+                    gap: 5px;
+                    position: relative;
+                    min-height: ${this.plugin.settings.pixelBannerPlusEnabled ? "97px" : "60px"};
+                `
+          }
+        });
+        const accountTitleContainer = accountSection.createDiv({
+          attr: {
+            style: `
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    margin-bottom: ${this.plugin.settings.pixelBannerPlusEnabled ? "10px" : "0"};
+                `
+          }
+        });
+        const accountTitle = accountTitleContainer.createEl("h3", {
+          text: "Pixel Banner Plus",
+          cls: "pixel-banner-section-title",
+          attr: {
+            style: `
+                    margin: 0;
+                    cursor: help;
+                    width: max-content;
+                `
+          }
+        });
+        const toggleContainer = accountTitleContainer.createDiv({
+          cls: "pixel-banner-plus-toggle-container",
+          attr: {
+            style: `
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                `
+          }
+        });
+        toggleContainer.createEl("span", {
+          text: "Enabled",
+          attr: {
+            style: `
+                    font-size: 12px;
+                    opacity: 0.8;
+                    font-weight: normal;
+                `
+          }
+        });
+        const toggleSettingContainer = toggleContainer.createDiv({
+          attr: {
+            style: `
+                    display: inline-flex;
+                    align-items: center;
+                `
+          }
+        });
+        new import_obsidian13.Setting(toggleSettingContainer).addToggle(
+          (toggle) => toggle.setValue(this.plugin.settings.pixelBannerPlusEnabled).onChange(async (value) => {
+            this.plugin.pixelBannerPlusEnabled = value;
+            this.plugin.settings.pixelBannerPlusEnabled = value;
+            await this.plugin.saveSettings();
+            this.refreshModal();
+          })
+        ).then((setting) => {
+          if (setting.nameEl) setting.nameEl.style.display = "none";
+          if (setting.descEl) setting.descEl.style.display = "none";
+          if (setting.settingEl) {
+            setting.settingEl.style.border = "none";
+            setting.settingEl.style.padding = "0";
+            setting.settingEl.style.margin = "0";
+          }
+        });
         if (this.plugin.settings.pixelBannerPlusEnabled) {
-          const accountSection = mainContainer.createDiv({
-            cls: "pixel-banner-section pixel-banner-api-dependent",
-            attr: {
-              style: `
-                        gap: 5px;
-                        position: relative;
-                        min-height: 97px;
-                    `
-            }
-          });
-          const accountTitle = accountSection.createEl("h3", {
-            text: "Pixel Banner Plus Account",
-            cls: "pixel-banner-section-title",
-            attr: {
-              style: `
-                        margin: 0;
-                        cursor: help;
-                        width: max-content;
-                    `
-            }
-          });
           const accountInfo = accountSection.createDiv({
             cls: "pixel-banner-account-info",
             attr: {
@@ -1554,12 +1636,16 @@ var init_selectPixelBannerModal = __esm({
               if (!isConnected) {
                 const aiButton = document.getElementById("pixel-banner-plus-ai-button");
                 const storeButton = document.getElementById("pixel-banner-plus-store-button");
-                aiButton.disabled = true;
-                aiButton.classList.add("pixel-banner-button-disabled");
-                aiButton.title = "You need an authorize Pixel Banner Plus account to use this feature";
-                storeButton.disabled = true;
-                storeButton.classList.add("pixel-banner-button-disabled");
-                storeButton.title = "You need an authorize Pixel Banner Plus account to use this feature";
+                if (aiButton) {
+                  aiButton.disabled = true;
+                  aiButton.classList.add("pixel-banner-button-disabled");
+                  aiButton.title = "You need an authorize Pixel Banner Plus account to use this feature";
+                }
+                if (storeButton) {
+                  storeButton.disabled = true;
+                  storeButton.classList.add("pixel-banner-button-disabled");
+                  storeButton.title = "You need an authorize Pixel Banner Plus account to use this feature";
+                }
               }
               const statusText = !isOnline || !pixelBannerPlusServerOnline ? "\u{1F6A8} Servers Offline \u{1F6A8}" : isConnected ? "\u2705 Authorized" : "\u274C Not Authorized";
               const statusBorderColor = !isOnline || !pixelBannerPlusServerOnline ? "#FF6B6B" : isConnected ? "#177d47" : "#FF0000";
@@ -1889,7 +1975,7 @@ var init_selectPixelBannerModal = __esm({
                 background: var(--background-primary);
                 cursor: pointer;
                 transition: all 0.2s ease;
-                flex: 1;
+                flex: auto;
                 min-width: 80px;
                 height: 100%;
                 box-sizing: border-box;
@@ -1957,7 +2043,7 @@ var init_selectPixelBannerModal = __esm({
                 background: var(--background-primary);
                 cursor: pointer;
                 transition: all 0.2s ease;
-                flex: 1;
+                flex: auto;
                 min-width: 80px;
                 height: 100%;
                 box-sizing: border-box;
@@ -2490,11 +2576,11 @@ var init_generateAIBannerModal = __esm({
               text: "No file selected (max 10MB)"
             });
             fileInput.addEventListener("change", (e) => {
-              const file2 = e.target.files[0];
-              if (file2) {
+              const file = e.target.files[0];
+              if (file) {
                 const maxFileSize = 10 * 1024 * 1024;
-                const fileSizeMB = (file2.size / (1024 * 1024)).toFixed(1);
-                if (file2.size > maxFileSize) {
+                const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+                if (file.size > maxFileSize) {
                   fileInfo.innerHTML = `<span style="color: var(--text-error);">\u274C File too large: ${fileSizeMB}MB (max 10MB)</span>`;
                   previewImage.style.display = "none";
                   this.controlValues[controlKey] = null;
@@ -2502,7 +2588,7 @@ var init_generateAIBannerModal = __esm({
                   console.error(`File too large: ${fileSizeMB}MB`);
                   return;
                 }
-                fileInfo.innerHTML = `\u{1F4C1} ${file2.name} (${fileSizeMB}MB)`;
+                fileInfo.innerHTML = `\u{1F4C1} ${file.name} (${fileSizeMB}MB)`;
                 const reader = new FileReader();
                 reader.onload = (e2) => {
                   previewImage.src = e2.target.result;
@@ -2511,7 +2597,7 @@ var init_generateAIBannerModal = __esm({
                 reader.onerror = (e2) => {
                   console.error("File reader error:", e2);
                 };
-                reader.readAsDataURL(file2);
+                reader.readAsDataURL(file);
                 this.controlValues[controlKey] = "FILE_SELECTED";
                 controlValueDisplay.textContent = "File selected";
               } else {
@@ -2520,6 +2606,118 @@ var init_generateAIBannerModal = __esm({
                 this.controlValues[controlKey] = null;
                 controlValueDisplay.textContent = "No file";
               }
+            });
+          } else if (control.type === "image_files") {
+            const fileContainer = controlElement.createDiv({
+              attr: { style: "display: flex; flex-direction: column; gap: 10px;" }
+            });
+            if (!this.selectedFiles) this.selectedFiles = {};
+            this.selectedFiles[controlKey] = [];
+            const fileInput = fileContainer.createEl("input", {
+              type: "file",
+              attr: {
+                id: `control-${this.selectedModelId}-${controlKey}`,
+                accept: "image/jpeg,image/jpg,image/png,image/webp,image/gif",
+                multiple: true
+              }
+            });
+            const previewContainer = fileContainer.createDiv({
+              attr: {
+                id: `${fileInput.id}-previews`,
+                style: "display: flex; flex-wrap: wrap; gap: 10px; display: none;"
+              }
+            });
+            const fileInfo = fileContainer.createDiv({
+              attr: {
+                id: `${fileInput.id}-info`,
+                style: "font-size: 12px; color: var(--text-muted);"
+              },
+              text: "No files selected (max 10MB each)"
+            });
+            const updatePreviewDisplay = () => {
+              previewContainer.empty();
+              const validFiles = this.selectedFiles[controlKey];
+              if (validFiles.length > 0) {
+                validFiles.forEach((file, index) => {
+                  const previewItem = previewContainer.createDiv({
+                    attr: {
+                      style: "display: flex; flex-direction: column; align-items: center; position: relative;"
+                    }
+                  });
+                  const removeButton = previewItem.createEl("button", {
+                    text: "X",
+                    attr: {
+                      style: "position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border-radius: 50%; background: maroon; color: white; border: none; font-weight: bold; cursor: pointer; z-index: 1; line-height: 1; font-size: 14px;",
+                      title: "Remove this image"
+                    }
+                  });
+                  const previewImage = previewItem.createEl("img", {
+                    attr: {
+                      style: "max-width: 100px; max-height: 100px; border-radius: 4px; border: 1px solid var(--background-modifier-border);"
+                    }
+                  });
+                  const fileName = previewItem.createDiv({
+                    text: file.name,
+                    attr: { style: "font-size: 10px; color: var(--text-muted); text-align: center; max-width: 100px; word-break: break-word;" }
+                  });
+                  const reader = new FileReader();
+                  reader.onload = (e) => {
+                    previewImage.src = e.target.result;
+                  };
+                  reader.onerror = (e) => {
+                    console.error("File reader error:", e);
+                  };
+                  reader.readAsDataURL(file);
+                  removeButton.addEventListener("click", (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.selectedFiles[controlKey] = this.selectedFiles[controlKey].filter((_, i) => i !== index);
+                    updatePreviewDisplay();
+                  });
+                });
+                const totalSize = validFiles.reduce((sum, file) => sum + file.size, 0);
+                const totalSizeMB = (totalSize / (1024 * 1024)).toFixed(1);
+                let infoText = `\u{1F4C1} ${validFiles.length} file${validFiles.length !== 1 ? "s" : ""} selected (${totalSizeMB}MB total)`;
+                fileInfo.textContent = infoText;
+                previewContainer.style.display = "flex";
+                this.controlValues[controlKey] = "FILES_SELECTED";
+                controlValueDisplay.textContent = `${validFiles.length} files selected`;
+              } else {
+                fileInfo.textContent = "No files selected (max 10MB each)";
+                previewContainer.style.display = "none";
+                this.controlValues[controlKey] = null;
+                controlValueDisplay.textContent = "No files";
+              }
+            };
+            fileInput.addEventListener("change", (e) => {
+              const newFiles = Array.from(e.target.files);
+              if (newFiles.length > 0) {
+                let errors = [];
+                newFiles.forEach((file) => {
+                  const maxFileSize = 10 * 1024 * 1024;
+                  const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+                  const isDuplicate = this.selectedFiles[controlKey].some(
+                    (existingFile) => existingFile.name === file.name && existingFile.size === file.size
+                  );
+                  if (file.size > maxFileSize) {
+                    errors.push(`${file.name}: ${fileSizeMB}MB (too large)`);
+                    return;
+                  }
+                  if (isDuplicate) {
+                    errors.push(`${file.name}: already selected`);
+                    return;
+                  }
+                  this.selectedFiles[controlKey].push(file);
+                });
+                if (errors.length > 0) {
+                  const errorMsg = `\u274C ${errors.length} file${errors.length !== 1 ? "s" : ""} rejected: ${errors.join(", ")}`;
+                  fileInfo.innerHTML = errorMsg;
+                  setTimeout(() => updatePreviewDisplay(), 3e3);
+                } else {
+                  updatePreviewDisplay();
+                }
+              }
+              fileInput.value = "";
             });
           }
         });
@@ -2539,6 +2737,7 @@ var init_generateAIBannerModal = __esm({
       }
       // Helper method to collect control values
       async collectControlValues() {
+        var _a;
         if (!this.selectedModelId || !this.availableModels[this.selectedModelId]) {
           console.error("No selected model or model data not found");
           return {};
@@ -2552,8 +2751,11 @@ var init_generateAIBannerModal = __esm({
             if (controls[controlKey].type === "slider") {
               controlValues[controlKey] = parseInt(controlElement.value, 10);
             } else if (controls[controlKey].type === "image_file") {
-              const file2 = controlElement.files[0];
-              controlValues[controlKey] = file2 ? "FILE_SELECTED" : null;
+              const file = controlElement.files[0];
+              controlValues[controlKey] = file ? "FILE_SELECTED" : null;
+            } else if (controls[controlKey].type === "image_files") {
+              const selectedFiles = ((_a = this.selectedFiles) == null ? void 0 : _a[controlKey]) || [];
+              controlValues[controlKey] = selectedFiles.length > 0 ? "FILES_SELECTED" : null;
             } else {
               controlValues[controlKey] = controlElement.value;
             }
@@ -2565,22 +2767,22 @@ var init_generateAIBannerModal = __esm({
       }
       // Helper method to upload image files
       async uploadImageFiles(controlValues) {
-        var _a;
+        var _a, _b, _c;
         const controls = this.availableModels[this.selectedModelId].controls;
         const updatedControlValues = { ...controlValues };
         for (const controlKey in controlValues) {
           if (((_a = controls[controlKey]) == null ? void 0 : _a.type) === "image_file" && controlValues[controlKey] === "FILE_SELECTED") {
             const controlId = `control-${this.selectedModelId}-${controlKey}`;
             const fileInput = this.contentEl.querySelector(`#${controlId}`);
-            const file2 = fileInput == null ? void 0 : fileInput.files[0];
-            if (file2) {
+            const file = fileInput == null ? void 0 : fileInput.files[0];
+            if (file) {
               try {
                 const maxFileSize = 10 * 1024 * 1024;
-                if (file2.size > maxFileSize) {
-                  throw new Error(`Image file too large. Maximum size is ${maxFileSize / (1024 * 1024)}MB, but file is ${(file2.size / (1024 * 1024)).toFixed(1)}MB`);
+                if (file.size > maxFileSize) {
+                  throw new Error(`Image file too large. Maximum size is ${maxFileSize / (1024 * 1024)}MB, but file is ${(file.size / (1024 * 1024)).toFixed(1)}MB`);
                 }
                 const formData = new FormData();
-                formData.append("image", file2);
+                formData.append("image", file);
                 const uploadUrl = new URL(PIXEL_BANNER_PLUS.ENDPOINTS.UPLOAD_TEMP_IMAGE, PIXEL_BANNER_PLUS.API_URL).toString();
                 const response = await fetch(uploadUrl, {
                   method: "POST",
@@ -2603,6 +2805,49 @@ var init_generateAIBannerModal = __esm({
                   throw new Error(`Upload response missing imageId for ${controlKey}`);
                 }
                 updatedControlValues[controlKey] = responseData.imageId;
+              } catch (error) {
+                console.error(`Error uploading ${controlKey}:`, error);
+                throw new Error(`Failed to upload ${controlKey}: ${error.message}`);
+              }
+            } else {
+              updatedControlValues[controlKey] = null;
+            }
+          } else if (((_b = controls[controlKey]) == null ? void 0 : _b.type) === "image_files" && controlValues[controlKey] === "FILES_SELECTED") {
+            const files = ((_c = this.selectedFiles) == null ? void 0 : _c[controlKey]) || [];
+            if (files.length > 0) {
+              try {
+                const uploadedImageIds = [];
+                for (const file of files) {
+                  const maxFileSize = 10 * 1024 * 1024;
+                  if (file.size > maxFileSize) {
+                    throw new Error(`Image file too large. Maximum size is ${maxFileSize / (1024 * 1024)}MB, but file is ${(file.size / (1024 * 1024)).toFixed(1)}MB`);
+                  }
+                  const formData = new FormData();
+                  formData.append("image", file);
+                  const uploadUrl = new URL(PIXEL_BANNER_PLUS.ENDPOINTS.UPLOAD_TEMP_IMAGE, PIXEL_BANNER_PLUS.API_URL).toString();
+                  const response = await fetch(uploadUrl, {
+                    method: "POST",
+                    headers: {
+                      "X-User-Email": this.plugin.settings.pixelBannerPlusEmail,
+                      "X-API-Key": this.plugin.settings.pixelBannerPlusApiKey,
+                      "X-Pixel-Banner-Version": this.plugin.settings.lastVersion
+                      // Don't set Content-Type - let browser set it with boundary for FormData
+                    },
+                    body: formData
+                  });
+                  if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error(`Upload failed with status ${response.status}:`, errorText);
+                    throw new Error(`Failed to upload ${controlKey} image: HTTP ${response.status}`);
+                  }
+                  const responseData = await response.json();
+                  if (!(responseData == null ? void 0 : responseData.imageId)) {
+                    console.error("Upload response missing imageId:", responseData);
+                    throw new Error(`Upload response missing imageId for ${controlKey}`);
+                  }
+                  uploadedImageIds.push(responseData.imageId);
+                }
+                updatedControlValues[controlKey] = uploadedImageIds;
               } catch (error) {
                 console.error(`Error uploading ${controlKey}:`, error);
                 throw new Error(`Failed to upload ${controlKey}: ${error.message}`);
@@ -2637,7 +2882,7 @@ var init_generateAIBannerModal = __esm({
             await this.refreshHistoryContainer();
           }
           let controlValues = await this.collectControlValues();
-          const hasImageFiles = Object.values(controlValues).includes("FILE_SELECTED");
+          const hasImageFiles = Object.values(controlValues).includes("FILE_SELECTED") || Object.values(controlValues).includes("FILES_SELECTED");
           if (hasImageFiles) {
             loadingContainer.empty();
             const uploadingDiv = loadingContainer.createDiv({ text: "Uploading images..." });
@@ -2721,7 +2966,16 @@ var init_generateAIBannerModal = __esm({
               if (!activeFile || !savedPath) return;
               await this.plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
                 const bannerField = this.plugin.settings.customBannerField[0];
-                frontmatter[bannerField] = `![[${savedPath}]]`;
+                const format = this.plugin.settings.imagePropertyFormat;
+                let bannerValue;
+                if (format === "image") {
+                  bannerValue = savedPath;
+                } else if (format === "[[image]]") {
+                  bannerValue = `[[${savedPath}]]`;
+                } else {
+                  bannerValue = `![[${savedPath}]]`;
+                }
+                frontmatter[bannerField] = bannerValue;
               });
               if (this.plugin.settings.openTargetingModalAfterSelectingBannerOrIcon) {
                 new TargetPositionModal(this.app, this.plugin).open();
@@ -3608,7 +3862,16 @@ var init_generateAIBannerModal = __esm({
           if (!activeFile || !savedPath) return;
           await this.plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
             const bannerField = this.plugin.settings.customBannerField[0];
-            frontmatter[bannerField] = `![[${savedPath}]]`;
+            const format = this.plugin.settings.imagePropertyFormat;
+            let bannerValue;
+            if (format === "image") {
+              bannerValue = savedPath;
+            } else if (format === "[[image]]") {
+              bannerValue = `[[${savedPath}]]`;
+            } else {
+              bannerValue = `![[${savedPath}]]`;
+            }
+            frontmatter[bannerField] = bannerValue;
           });
           if (this.plugin.settings.openTargetingModalAfterSelectingBannerOrIcon) {
             new TargetPositionModal(this.app, this.plugin).open();
@@ -3755,7 +4018,7 @@ var init_imageSelectionModal = __esm({
         this.currentPage = 1;
         this.imagesPerPage = 20;
         this.sortOrder = "name-asc";
-        this.imageFiles = this.app.vault.getFiles().filter((file2) => file2.extension.toLowerCase().match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/));
+        this.imageFiles = this.app.vault.getFiles().filter((file) => file.extension.toLowerCase().match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/));
       }
       debounce(func, wait) {
         let timeout;
@@ -3764,11 +4027,11 @@ var init_imageSelectionModal = __esm({
           timeout = setTimeout(() => func.apply(this, args), wait);
         };
       }
-      async confirmDelete(file2) {
+      async confirmDelete(file) {
         return new Promise((resolve) => {
           const modal = new import_obsidian15.Modal(this.app);
           modal.contentEl.createEl("h2", { text: "Delete Image" });
-          modal.contentEl.createEl("p", { text: `Are you sure you want to delete "${file2.name}"?` });
+          modal.contentEl.createEl("p", { text: `Are you sure you want to delete "${file.name}"?` });
           const buttonContainer = modal.contentEl.createDiv();
           buttonContainer.style.display = "flex";
           buttonContainer.style.justifyContent = "flex-end";
@@ -3789,12 +4052,12 @@ var init_imageSelectionModal = __esm({
           modal.open();
         });
       }
-      async deleteImage(file2) {
-        const confirmed = await this.confirmDelete(file2);
+      async deleteImage(file) {
+        const confirmed = await this.confirmDelete(file);
         if (!confirmed) return;
         try {
-          await this.app.vault.delete(file2);
-          this.imageFiles = this.imageFiles.filter((f) => f.path !== file2.path);
+          await this.app.vault.delete(file);
+          this.imageFiles = this.imageFiles.filter((f) => f.path !== file.path);
           this.updateImageGrid();
         } catch (error) {
           new import_obsidian15.Notice(`Failed to delete image: ${error.message}`);
@@ -4125,8 +4388,8 @@ var init_imageSelectionModal = __esm({
           }
         });
         fileInput.addEventListener("change", async (event) => {
-          const file2 = event.target.files[0];
-          if (file2) {
+          const file = event.target.files[0];
+          if (file) {
             const reader = new FileReader();
             reader.onload = async () => {
               const arrayBuffer = reader.result;
@@ -4143,7 +4406,7 @@ var init_imageSelectionModal = __esm({
               if (!await this.app.vault.adapter.exists(folderPath)) {
                 await this.app.vault.createFolder(folderPath);
               }
-              const suggestedName = file2.name;
+              const suggestedName = file.name;
               const fileName = await new Promise((resolve) => {
                 new SaveImageModal(this.app, suggestedName, (result) => {
                   resolve(result);
@@ -4162,7 +4425,7 @@ var init_imageSelectionModal = __esm({
                 new import_obsidian15.Notice("Failed to save image: " + error.message);
               }
             };
-            reader.readAsArrayBuffer(file2);
+            reader.readAsArrayBuffer(file);
           }
         });
         clearButton.addEventListener("click", () => {
@@ -4197,9 +4460,9 @@ var init_imageSelectionModal = __esm({
       updateImageGrid() {
         this.gridContainer.empty();
         this.paginationContainer.empty();
-        let filteredFiles = this.imageFiles.filter((file2) => {
-          const filePath = file2.path.toLowerCase();
-          const fileName = file2.name.toLowerCase();
+        let filteredFiles = this.imageFiles.filter((file) => {
+          const filePath = file.path.toLowerCase();
+          const fileName = file.name.toLowerCase();
           return filePath.includes(this.searchQuery) || fileName.includes(this.searchQuery);
         });
         filteredFiles = this.sortFiles(filteredFiles);
@@ -4214,12 +4477,12 @@ var init_imageSelectionModal = __esm({
             text: filteredFiles.length === 0 ? "\u{1F50D} No images found matching your search." : "No images on this page."
           });
         }
-        currentFiles.forEach((file2) => {
+        currentFiles.forEach((file) => {
           const imageContainer = this.gridContainer.createDiv({ cls: "pixel-banner-image-container" });
           const thumbnailContainer = imageContainer.createDiv();
-          const fileExt = file2.extension.toLowerCase();
+          const fileExt = file.extension.toLowerCase();
           if (fileExt === "svg") {
-            this.app.vault.read(file2).then((content) => {
+            this.app.vault.read(file).then((content) => {
               const parser = new DOMParser();
               const svgDoc = parser.parseFromString(content, "image/svg+xml");
               const svgElement = svgDoc.documentElement;
@@ -4235,7 +4498,7 @@ var init_imageSelectionModal = __esm({
               });
             });
           } else if (fileExt === "mp4" || fileExt === "mov") {
-            const resourcePath = this.app.vault.getResourcePath(file2);
+            const resourcePath = this.app.vault.getResourcePath(file);
             const video = thumbnailContainer.createEl("video", {
               cls: "pixel-banner-video-thumbnail",
               attr: {
@@ -4264,7 +4527,7 @@ var init_imageSelectionModal = __esm({
                     pointer-events: none;
                 `;
           } else {
-            this.app.vault.readBinary(file2).then((arrayBuffer) => {
+            this.app.vault.readBinary(file).then((arrayBuffer) => {
               const blob = new Blob([arrayBuffer]);
               const url = URL.createObjectURL(blob);
               const img = thumbnailContainer.createEl("img", {
@@ -4284,13 +4547,13 @@ var init_imageSelectionModal = __esm({
           const infoContainer = imageContainer.createDiv("pixel-banner-image-info");
           infoContainer.createEl("div", {
             cls: "pixel-banner-image-path",
-            text: file2.path
+            text: file.path
           });
           const statsContainer = infoContainer.createDiv("pixel-banner-image-stats");
           statsContainer.style.fontSize = "0.8em";
           statsContainer.style.color = "var(--text-muted)";
-          const fileSize = this.formatFileSize(file2.stat.size);
-          const modifiedDate = this.formatDate(file2.stat.mtime);
+          const fileSize = this.formatFileSize(file.stat.size);
+          const modifiedDate = this.formatDate(file.stat.mtime);
           statsContainer.createEl("span", {
             text: `${fileSize} \u2022 ${modifiedDate}`
           });
@@ -4299,10 +4562,10 @@ var init_imageSelectionModal = __esm({
           deleteBtn.innerHTML = trashIcon;
           deleteBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            this.deleteImage(file2);
+            this.deleteImage(file);
           });
           imageContainer.addEventListener("click", () => {
-            this.onChoose(file2);
+            this.onChoose(file);
             this.close();
           });
         });
@@ -4544,7 +4807,7 @@ var init_iconFolderSelectionModal = __esm({
         }
       }
       getItems() {
-        const folderPaths = this.app.vault.getAllLoadedFiles().filter((file2) => file2.children).map((folder) => folder.path);
+        const folderPaths = this.app.vault.getAllLoadedFiles().filter((file) => file.children).map((folder) => folder.path);
         if (!folderPaths.includes(this.defaultFolder)) {
           folderPaths.unshift(this.defaultFolder);
         }
@@ -4780,7 +5043,7 @@ var init_targetPositionModal = __esm({
         });
       }
       updateBannerIconVerticalOffset(verticalOffset) {
-        const bannerIconVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconVeritalOffsetField) ? this.plugin.settings.customBannerIconVeritalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVeritalOffsetField;
+        const bannerIconVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
           frontmatter[bannerIconVerticalOffsetField] = verticalOffset;
         });
@@ -5491,27 +5754,27 @@ var init_targetPositionModal = __esm({
           new IconImageSelectionModal(
             this.app,
             this.plugin,
-            async (file2) => {
-              if (!file2) return;
+            async (file) => {
+              if (!file) return;
               const activeFile2 = this.app.workspace.getActiveFile();
               if (!activeFile2) return;
-              if (file2.isWebUrl) {
+              if (file.isWebUrl) {
                 this.app.fileManager.processFrontMatter(activeFile2, (fm) => {
                   const iconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
-                  fm[iconImageField] = file2.path;
+                  fm[iconImageField] = file.path;
                 });
                 new _TargetPositionModal(this.app, this.plugin).open();
                 return;
               }
               let fileExtension = "";
               let filePath = "";
-              if (typeof file2 === "string") {
-                filePath = file2;
-                const extensionPart = file2.split(".").pop();
+              if (typeof file === "string") {
+                filePath = file;
+                const extensionPart = file.split(".").pop();
                 fileExtension = extensionPart ? extensionPart.toLowerCase() : "";
-              } else if (file2 && file2.extension) {
-                filePath = file2.path;
-                fileExtension = file2.extension.toLowerCase();
+              } else if (file && file.extension) {
+                filePath = file.path;
+                fileExtension = file.extension.toLowerCase();
               }
               if (fileExtension && fileExtension.match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif)$/)) {
                 try {
@@ -5527,7 +5790,16 @@ var init_targetPositionModal = __esm({
               }
               this.app.fileManager.processFrontMatter(activeFile2, (fm) => {
                 const iconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
-                fm[iconImageField] = `![[${filePath}]]`;
+                const format = this.plugin.settings.imagePropertyFormat;
+                let iconImageValue;
+                if (format === "image") {
+                  iconImageValue = filePath;
+                } else if (format === "[[image]]") {
+                  iconImageValue = `[[${filePath}]]`;
+                } else {
+                  iconImageValue = `![[${filePath}]]`;
+                }
+                fm[iconImageField] = iconImageValue;
               });
               new _TargetPositionModal(this.app, this.plugin).open();
             },
@@ -5536,14 +5808,26 @@ var init_targetPositionModal = __esm({
         };
         const bannerIconField = Array.isArray(this.plugin.settings.customBannerIconField) ? this.plugin.settings.customBannerIconField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconField;
         const bannerIconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
-        let hasBannerIcon = frontmatter && (frontmatter[bannerIconField] && frontmatter[bannerIconField].trim() !== "" || frontmatter[bannerIconImageField] && frontmatter[bannerIconImageField].trim() !== "");
-        const hasBannerIconImage = frontmatter && frontmatter[bannerIconImageField] && frontmatter[bannerIconImageField].trim() !== "";
+        const getStringValue = (value) => {
+          if (value === void 0 || value === null) return "";
+          if (typeof value === "string") return value;
+          if (Array.isArray(value)) {
+            let current = value;
+            while (Array.isArray(current) && current.length > 0) {
+              current = current[0];
+            }
+            return typeof current === "string" ? current : "";
+          }
+          return String(value);
+        };
+        let hasBannerIcon = frontmatter && (frontmatter[bannerIconField] && getStringValue(frontmatter[bannerIconField]).trim() !== "" || frontmatter[bannerIconImageField] && getStringValue(frontmatter[bannerIconImageField]).trim() !== "");
+        const hasBannerIconImage = frontmatter && frontmatter[bannerIconImageField] && getStringValue(frontmatter[bannerIconImageField]).trim() !== "";
         if (!hasBannerIcon) {
           await new Promise((resolve) => {
             setTimeout(async () => {
               var _a2;
               const refreshedFrontmatter = (_a2 = this.app.metadataCache.getFileCache(activeFile)) == null ? void 0 : _a2.frontmatter;
-              if (refreshedFrontmatter && (refreshedFrontmatter[bannerIconField] && refreshedFrontmatter[bannerIconField].trim() !== "" || refreshedFrontmatter[bannerIconImageField] && refreshedFrontmatter[bannerIconImageField].trim() !== "")) {
+              if (refreshedFrontmatter && (refreshedFrontmatter[bannerIconField] && getStringValue(refreshedFrontmatter[bannerIconField]).trim() !== "" || refreshedFrontmatter[bannerIconImageField] && getStringValue(refreshedFrontmatter[bannerIconImageField]).trim() !== "")) {
                 hasBannerIcon = true;
               }
               resolve();
@@ -5603,7 +5887,7 @@ var init_targetPositionModal = __esm({
           }
         });
         bannerIconHeaderButtonIcon.addEventListener("click", openIconImagePicker);
-        const hasBannerIconText = frontmatter && frontmatter[bannerIconField] && frontmatter[bannerIconField].trim() !== "";
+        const hasBannerIconText = frontmatter && frontmatter[bannerIconField] && getStringValue(frontmatter[bannerIconField]).trim() !== "";
         const bannerIconHeaderButtonText = bannerIconHeaderButtons.createEl("button", {
           text: hasBannerIconText ? "\u{1F4DD} Edit Icon Text & Emoji" : "\u{1F4F0} Add Icon Text & Emoji",
           cls: "banner-icon-header-button cursor-pointer",
@@ -5813,8 +6097,8 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconVeritalOffsetField) ? this.plugin.settings.customBannerIconVeritalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVeritalOffsetField;
-        this.currentBannerIconVerticalOffset = (frontmatter == null ? void 0 : frontmatter[iconVerticalOffsetField]) || this.plugin.settings.bannerIconVeritalOffset;
+        const iconVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
+        this.currentBannerIconVerticalOffset = (frontmatter == null ? void 0 : frontmatter[iconVerticalOffsetField]) || this.plugin.settings.bannerIconVerticalOffset;
         const bannerIconVerticalOffsetSlider = bannerIconVerticalOffsetContainer.createEl("input", {
           type: "range",
           cls: "banner-icon-vertical-offset-slider",
@@ -6777,6 +7061,9 @@ var init_targetPositionModal = __esm({
           bannerIconXPositionSlider.value = this.plugin.settings.bannerIconXPosition;
           bannerFadeSlider.value = this.plugin.settings.fade;
           bannerFadeValue.setText(this.plugin.settings.fade.toString());
+          if (borderRadiusSlider) borderRadiusSlider.value = this.plugin.settings.borderRadius;
+          if (borderRadiusValue) borderRadiusValue.setText(this.plugin.settings.borderRadius.toString());
+          this.updateBannerBorderRadius(this.plugin.settings.borderRadius);
           const currentTheme = getCurrentTheme_default();
           let defaultColor = currentTheme === "dark" ? "#ffffff" : "#000000";
           if (bannerIconSizeSlider) bannerIconSizeSlider.value = this.plugin.settings.bannerIconSize;
@@ -6822,7 +7109,7 @@ var init_targetPositionModal = __esm({
           if (bannerIconPaddingXSlider) bannerIconPaddingXSlider.value = this.plugin.settings.bannerIconPaddingX;
           if (bannerIconPaddingYSlider) bannerIconPaddingYSlider.value = this.plugin.settings.bannerIconPaddingY;
           if (bannerIconBorderRadiusSlider) bannerIconBorderRadiusSlider.value = this.plugin.settings.bannerIconBorderRadius;
-          if (bannerIconVerticalOffsetSlider) bannerIconVerticalOffsetSlider.value = this.plugin.settings.bannerIconVeritalOffset;
+          if (bannerIconVerticalOffsetSlider) bannerIconVerticalOffsetSlider.value = this.plugin.settings.bannerIconVerticalOffset;
           if (bannerIconSizeSlider) bannerIconSizeSlider.value = this.plugin.settings.bannerIconSize;
           if (bannerIconRotateSlider) bannerIconRotateSlider.value = 0;
           zoomValue.setText("100%");
@@ -6843,7 +7130,7 @@ var init_targetPositionModal = __esm({
           if (bannerIconPaddingXValue) bannerIconPaddingXValue.setText(`${this.plugin.settings.bannerIconPaddingX}`);
           if (bannerIconPaddingYValue) bannerIconPaddingYValue.setText(`${this.plugin.settings.bannerIconPaddingY}`);
           if (bannerIconBorderRadiusValue) bannerIconBorderRadiusValue.setText(`${this.plugin.settings.bannerIconBorderRadius}`);
-          if (bannerIconVerticalOffsetValue) bannerIconVerticalOffsetValue.setText(`${this.plugin.settings.bannerIconVeritalOffset}`);
+          if (bannerIconVerticalOffsetValue) bannerIconVerticalOffsetValue.setText(`${this.plugin.settings.bannerIconVerticalOffset}`);
           if (bannerIconRotateValue) bannerIconRotateValue.setText(`${this.plugin.settings.bannerIconRotate}`);
           toggleInput.checked = false;
           this.currentX = this.plugin.settings.xPosition;
@@ -6863,13 +7150,14 @@ var init_targetPositionModal = __esm({
             const bannerIconImageAlignmentField = Array.isArray(this.plugin.settings.customBannerIconImageAlignmentField) ? this.plugin.settings.customBannerIconImageAlignmentField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageAlignmentField;
             const repeatField = Array.isArray(this.plugin.settings.customImageRepeatField) ? this.plugin.settings.customImageRepeatField[0].split(",")[0].trim() : this.plugin.settings.customImageRepeatField;
             const fadeField = Array.isArray(this.plugin.settings.customFadeField) ? this.plugin.settings.customFadeField[0].split(",")[0].trim() : this.plugin.settings.customFadeField;
+            const borderRadiusField = Array.isArray(this.plugin.settings.customBorderRadiusField) ? this.plugin.settings.customBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBorderRadiusField;
             const bannerIconColorField = Array.isArray(this.plugin.settings.customBannerIconColorField) ? this.plugin.settings.customBannerIconColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconColorField;
             const bannerIconFontWeightField = Array.isArray(this.plugin.settings.customBannerIconFontWeightField) ? this.plugin.settings.customBannerIconFontWeightField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconFontWeightField;
             const bannerIconBgColorField = Array.isArray(this.plugin.settings.customBannerIconBackgroundColorField) ? this.plugin.settings.customBannerIconBackgroundColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBackgroundColorField;
             const bannerIconPaddingXField = Array.isArray(this.plugin.settings.customBannerIconPaddingXField) ? this.plugin.settings.customBannerIconPaddingXField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingXField;
             const bannerIconPaddingYField = Array.isArray(this.plugin.settings.customBannerIconPaddingYField) ? this.plugin.settings.customBannerIconPaddingYField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingYField;
             const bannerIconBorderRadiusField = Array.isArray(this.plugin.settings.customBannerIconBorderRadiusField) ? this.plugin.settings.customBannerIconBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBorderRadiusField;
-            const bannerIconVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconVeritalOffsetField) ? this.plugin.settings.customBannerIconVeritalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVeritalOffsetField;
+            const bannerIconVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
             const bannerIconSizeField = Array.isArray(this.plugin.settings.customBannerIconSizeField) ? this.plugin.settings.customBannerIconSizeField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconSizeField;
             const bannerIconTextVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconTextVerticalOffsetField) ? this.plugin.settings.customBannerIconTextVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconTextVerticalOffsetField;
             const bannerIconImageSizeMultiplierField = Array.isArray(this.plugin.settings.customBannerIconImageSizeMultiplierField) ? this.plugin.settings.customBannerIconImageSizeMultiplierField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageSizeMultiplierField;
@@ -6882,6 +7170,7 @@ var init_targetPositionModal = __esm({
             delete frontmatter2[contentStartPositionField];
             delete frontmatter2[repeatField];
             delete frontmatter2[fadeField];
+            delete frontmatter2[borderRadiusField];
             delete frontmatter2[bannerIconXPositionField];
             delete frontmatter2[bannerIconImageAlignmentField];
             delete frontmatter2[bannerIconColorField];
@@ -7396,7 +7685,7 @@ var init_iconImageSelectionModal = __esm({
         this.currentPage = 1;
         this.imagesPerPage = 20;
         this.sortOrder = "name-asc";
-        this.imageFiles = this.app.vault.getFiles().filter((file2) => file2 && file2.extension && file2.extension.toLowerCase && file2.extension.toLowerCase().match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif)$/));
+        this.imageFiles = this.app.vault.getFiles().filter((file) => file && file.extension && file.extension.toLowerCase && file.extension.toLowerCase().match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif)$/));
         this.iconCategories = [];
         this.selectedIconCategory = null;
         this.selectedIconCategoryIndex = 0;
@@ -7408,9 +7697,9 @@ var init_iconImageSelectionModal = __esm({
         this._isPaginating = false;
         this.targetingModalOpened = false;
         const originalOnChoose = this.onChoose;
-        this.onChoose = (file2) => {
+        this.onChoose = (file) => {
           this.targetingModalOpened = true;
-          originalOnChoose(file2);
+          originalOnChoose(file);
         };
       }
       debounce(func, wait) {
@@ -7420,11 +7709,11 @@ var init_iconImageSelectionModal = __esm({
           timeout = setTimeout(() => func.apply(this, args), wait);
         };
       }
-      async confirmDelete(file2) {
+      async confirmDelete(file) {
         return new Promise((resolve) => {
           const modal = new import_obsidian18.Modal(this.app);
           modal.contentEl.createEl("h2", { text: "Delete Image" });
-          modal.contentEl.createEl("p", { text: `Are you sure you want to delete "${file2.name}"?` });
+          modal.contentEl.createEl("p", { text: `Are you sure you want to delete "${file.name}"?` });
           const buttonContainer = modal.contentEl.createDiv();
           buttonContainer.style.display = "flex";
           buttonContainer.style.justifyContent = "flex-end";
@@ -7445,12 +7734,12 @@ var init_iconImageSelectionModal = __esm({
           modal.open();
         });
       }
-      async deleteImage(file2) {
-        const confirmed = await this.confirmDelete(file2);
+      async deleteImage(file) {
+        const confirmed = await this.confirmDelete(file);
         if (!confirmed) return;
         try {
-          await this.app.vault.delete(file2);
-          this.imageFiles = this.imageFiles.filter((f) => f.path !== file2.path);
+          await this.app.vault.delete(file);
+          this.imageFiles = this.imageFiles.filter((f) => f.path !== file.path);
           this.updateImageGrid();
         } catch (error) {
           new import_obsidian18.Notice(`Failed to delete image: ${error.message}`);
@@ -7738,7 +8027,7 @@ var init_iconImageSelectionModal = __esm({
               const iconSizeField = Array.isArray(this.plugin.settings.customBannerIconSizeField) ? this.plugin.settings.customBannerIconSizeField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconSizeField;
               const iconImageSizeMultiplierField = Array.isArray(this.plugin.settings.customBannerIconImageSizeMultiplierField) ? this.plugin.settings.customBannerIconImageSizeMultiplierField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageSizeMultiplierField;
               const iconRotateField = Array.isArray(this.plugin.settings.customBannerIconRotateField) ? this.plugin.settings.customBannerIconRotateField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconRotateField;
-              const iconYPositionField = Array.isArray(this.plugin.settings.customBannerIconVeritalOffsetField) ? this.plugin.settings.customBannerIconVeritalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVeritalOffsetField;
+              const iconYPositionField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
               const iconXPositionField = Array.isArray(this.plugin.settings.customBannerIconXPositionField) ? this.plugin.settings.customBannerIconXPositionField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconXPositionField;
               const iconColorField = Array.isArray(this.plugin.settings.customBannerIconColorField) ? this.plugin.settings.customBannerIconColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconColorField;
               const iconBgColorField = Array.isArray(this.plugin.settings.customBannerIconBackgroundColorField) ? this.plugin.settings.customBannerIconBackgroundColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBackgroundColorField;
@@ -7786,11 +8075,11 @@ var init_iconImageSelectionModal = __esm({
                 const initialFrontmatter = JSON.stringify(
                   ((_a = this.app.metadataCache.getFileCache(activeFile)) == null ? void 0 : _a.frontmatter) || {}
                 );
-                const eventRef = this.app.metadataCache.on("changed", (file2) => {
+                const eventRef = this.app.metadataCache.on("changed", (file) => {
                   var _a2;
-                  if (file2.path !== activeFile.path) return;
+                  if (file.path !== activeFile.path) return;
                   const updatedFrontmatter = JSON.stringify(
-                    ((_a2 = this.app.metadataCache.getFileCache(file2)) == null ? void 0 : _a2.frontmatter) || {}
+                    ((_a2 = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a2.frontmatter) || {}
                   );
                   if (updatedFrontmatter !== initialFrontmatter) {
                     this.app.metadataCache.off("changed", eventRef);
@@ -7983,8 +8272,8 @@ var init_iconImageSelectionModal = __esm({
           }
         });
         fileInput.addEventListener("change", async (event) => {
-          const file2 = event.target.files[0];
-          if (file2) {
+          const file = event.target.files[0];
+          if (file) {
             const reader = new FileReader();
             reader.onload = async () => {
               const arrayBuffer = reader.result;
@@ -8001,7 +8290,7 @@ var init_iconImageSelectionModal = __esm({
               if (!await this.app.vault.adapter.exists(folderPath)) {
                 await this.app.vault.createFolder(folderPath);
               }
-              const suggestedName = file2.name;
+              const suggestedName = file.name;
               const fileName = await new Promise((resolve) => {
                 new SaveImageModal(this.app, suggestedName, (result) => {
                   resolve(result);
@@ -8020,7 +8309,7 @@ var init_iconImageSelectionModal = __esm({
                 new import_obsidian18.Notice(`Failed to save image: ${error.message}`);
               }
             };
-            reader.readAsArrayBuffer(file2);
+            reader.readAsArrayBuffer(file);
           }
         });
         clearButton.addEventListener("click", () => {
@@ -8821,9 +9110,9 @@ var init_iconImageSelectionModal = __esm({
       updateImageGrid() {
         this.gridContainer.empty();
         this.paginationContainer.empty();
-        let filteredFiles = this.imageFiles.filter((file2) => {
-          const filePath = file2 && file2.path ? file2.path.toLowerCase() : "";
-          const fileName = file2 && file2.name ? file2.name.toLowerCase() : "";
+        let filteredFiles = this.imageFiles.filter((file) => {
+          const filePath = file && file.path ? file.path.toLowerCase() : "";
+          const fileName = file && file.name ? file.name.toLowerCase() : "";
           return filePath.includes(this.searchQuery) || fileName.includes(this.searchQuery);
         });
         filteredFiles = this.sortFiles(filteredFiles);
@@ -8855,7 +9144,7 @@ var init_iconImageSelectionModal = __esm({
             }
           });
         }
-        currentFiles.forEach((file2) => {
+        currentFiles.forEach((file) => {
           const imageContainer = this.gridContainer.createDiv({ cls: "pixel-banner-image-container" });
           const thumbnailContainer = imageContainer.createDiv({
             attr: {
@@ -8867,8 +9156,8 @@ var init_iconImageSelectionModal = __esm({
                     `
             }
           });
-          if (file2 && file2.extension && file2.extension.toLowerCase() === "svg") {
-            this.app.vault.readBinary(file2).then((arrayBuffer) => {
+          if (file && file.extension && file.extension.toLowerCase() === "svg") {
+            this.app.vault.readBinary(file).then((arrayBuffer) => {
               const blob = new Blob([arrayBuffer], { type: "image/svg+xml" });
               const url = URL.createObjectURL(blob);
               const img = thumbnailContainer.createEl("img", {
@@ -8885,7 +9174,7 @@ var init_iconImageSelectionModal = __esm({
               });
             });
           } else {
-            this.app.vault.readBinary(file2).then((arrayBuffer) => {
+            this.app.vault.readBinary(file).then((arrayBuffer) => {
               const blob = new Blob([arrayBuffer]);
               const url = URL.createObjectURL(blob);
               const img = thumbnailContainer.createEl("img", {
@@ -8906,17 +9195,17 @@ var init_iconImageSelectionModal = __esm({
           deleteButton.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>';
           deleteButton.addEventListener("click", (e) => {
             e.stopPropagation();
-            this.deleteImage(file2);
+            this.deleteImage(file);
           });
           const infoContainer = imageContainer.createDiv({ cls: "pixel-banner-image-info" });
-          const displayPath = this.plugin.settings.useShortPath ? this.getShortPath(file2.path) : file2.path;
+          const displayPath = this.plugin.settings.useShortPath ? this.getShortPath(file.path) : file.path;
           infoContainer.createDiv({ text: displayPath, cls: "pixel-banner-image-path" });
           imageContainer.addEventListener("click", () => {
-            if (!file2 || !file2.path) {
+            if (!file || !file.path) {
               console.error("\u{1F527} ERROR: file or file.path is undefined during selection");
               return;
             }
-            this.onChoose(file2.path);
+            this.onChoose(file.path);
             this.close();
           });
         });
@@ -28326,7 +28615,7 @@ var init_emojiSelectionModal = __esm({
                 const iconSizeField = Array.isArray(this.plugin.settings.customBannerIconSizeField) ? this.plugin.settings.customBannerIconSizeField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconSizeField;
                 const iconTextVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconTextVerticalOffsetField) ? this.plugin.settings.customBannerIconTextVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconTextVerticalOffsetField;
                 const iconRotateField = Array.isArray(this.plugin.settings.customBannerIconRotateField) ? this.plugin.settings.customBannerIconRotateField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconRotateField;
-                const iconYPositionField = Array.isArray(this.plugin.settings.customBannerIconVeritalOffsetField) ? this.plugin.settings.customBannerIconVeritalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVeritalOffsetField;
+                const iconYPositionField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
                 const iconXPositionField = Array.isArray(this.plugin.settings.customBannerIconXPositionField) ? this.plugin.settings.customBannerIconXPositionField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconXPositionField;
                 const iconColorField = Array.isArray(this.plugin.settings.customBannerIconColorField) ? this.plugin.settings.customBannerIconColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconColorField;
                 const iconBgColorField = Array.isArray(this.plugin.settings.customBannerIconBackgroundColorField) ? this.plugin.settings.customBannerIconBackgroundColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBackgroundColorField;
@@ -28382,11 +28671,11 @@ var init_emojiSelectionModal = __esm({
                 const initialFrontmatter = JSON.stringify(
                   ((_a2 = this.app.metadataCache.getFileCache(activeFile3)) == null ? void 0 : _a2.frontmatter) || {}
                 );
-                const eventRef = this.app.metadataCache.on("changed", (file2) => {
+                const eventRef = this.app.metadataCache.on("changed", (file) => {
                   var _a3;
-                  if (file2.path !== activeFile3.path) return;
+                  if (file.path !== activeFile3.path) return;
                   const updatedFrontmatter = JSON.stringify(
-                    ((_a3 = this.app.metadataCache.getFileCache(file2)) == null ? void 0 : _a3.frontmatter) || {}
+                    ((_a3 = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a3.frontmatter) || {}
                   );
                   if (updatedFrontmatter !== initialFrontmatter) {
                     this.app.metadataCache.off("changed", eventRef);
@@ -28517,11 +28806,11 @@ var init_emojiSelectionModal = __esm({
                 const initialFrontmatter = JSON.stringify(
                   ((_a = this.app.metadataCache.getFileCache(activeFile)) == null ? void 0 : _a.frontmatter) || {}
                 );
-                const eventRef = this.app.metadataCache.on("changed", (file2) => {
+                const eventRef = this.app.metadataCache.on("changed", (file) => {
                   var _a2;
-                  if (file2.path !== activeFile.path) return;
+                  if (file.path !== activeFile.path) return;
                   const updatedFrontmatter = JSON.stringify(
-                    ((_a2 = this.app.metadataCache.getFileCache(file2)) == null ? void 0 : _a2.frontmatter) || {}
+                    ((_a2 = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a2.frontmatter) || {}
                   );
                   if (updatedFrontmatter !== initialFrontmatter) {
                     this.app.metadataCache.off("changed", eventRef);
@@ -28655,8 +28944,8 @@ var init_pixelBannerStoreModal = __esm({
             byteNumbers[i] = byteCharacters.charCodeAt(i);
           }
           const arrayBuffer = new Uint8Array(byteNumbers).buffer;
-          const { file: file2, useAsBanner } = await this.saveVideoLocally(arrayBuffer, suggestedFilename);
-          const finalPath = await this.waitForFileRename(file2);
+          const { file, useAsBanner } = await this.saveVideoLocally(arrayBuffer, suggestedFilename);
+          const finalPath = await this.waitForFileRename(file);
           if (!finalPath) {
             console.error("\u274C Failed to resolve valid file path");
             new import_obsidian20.Notice("Failed to save video - file not found");
@@ -28723,13 +29012,13 @@ var init_pixelBannerStoreModal = __esm({
         };
       }
       // Wait for potential file rename (adapted from handlePinIconClick)
-      async waitForFileRename(file2) {
+      async waitForFileRename(file) {
         const maxWaitTime = 5e3;
         const checkInterval = 100;
         let elapsedTime = 0;
         while (elapsedTime < maxWaitTime) {
           try {
-            const currentFile = this.plugin.app.vault.getAbstractFileByPath(file2.path);
+            const currentFile = this.plugin.app.vault.getAbstractFileByPath(file.path);
             if (currentFile) {
               return currentFile.path;
             }
@@ -28738,7 +29027,7 @@ var init_pixelBannerStoreModal = __esm({
           await new Promise((resolve) => setTimeout(resolve, checkInterval));
           elapsedTime += checkInterval;
         }
-        return file2.path;
+        return file.path;
       }
       // Initialize modal content
       async initializeModal() {
@@ -30617,7 +30906,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian31 = require("obsidian");
 
 // virtual-module:virtual:release-notes
-var releaseNotes = '<a href="https://www.youtube.com/watch?v=tfNqEAQuhXs">\n  <img src="https://pixel-banner.online/img/pixel-banner-v3.6.jpg" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n\n<h2>\u{1F389} What&#39;s New</h2>\n<h3>v3.6.0</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Support for \u{1F3AC} Video Banners!<ul>\n<li>Upload and choose Video files as banners from your vault</li>\n<li>Downloadable \u{1F3AC} Video Banners from the <code>Pixel Banner Plus Collection</code></li>\n</ul>\n</li>\n<li>Added paging controls to the <code>Pixel Banner Plus Collection</code></li>\n<li>New global <code>Banner Max Width</code> setting to control the default max width for all banners</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>Default Saved Banners Folder</code> setting to the <code>General</code> tab</li>\n<li>Renamed <code>Pixel Banner Plus Store</code> to <code>Pixel Banner Plus Collection</code> as many items are free</li>\n</ul>\n<h3>v3.6.1</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with Icon Image selection modal not setting the selected icon image</li>\n</ul>\n<h3>v3.6.2</h3>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Improved debounce logic to prevent multiple banner reloads when opening a note</li>\n</ul>\n<h3>v3.6.3</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Added <code>filesize</code> display to the store modal</li>\n</ul>\n<h3>v3.6.4</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Banner images now support local <code>file</code> protocol for images outside of your vault (e.g. <code>file:///C:\\path\\banner.jpg</code>)</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Allow commas in banner filenames</li>\n</ul>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Ensure pinned banner is the currently displayed image when saving API banners</li>\n<li>Ensure banner icons are only rendered when a main banner image is present</li>\n<li>Banner Icon Image not always rendered until the note was clicked/focused</li>\n</ul>\n<h3>v3.6.5</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fix refresh button to use original comma-separated keywords from frontmatter instead of the cached single keyword</li>\n<li>Resolved issue with the default x/y frontmatter fields not being hidden when the &quot;Hide Pixel Banner Fields&quot; option is enabled</li>\n<li>Updated API call for <code>Pexels</code> to conform to spec changes on their side</li>\n</ul>\n<h3>v3.6.6</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>New folder group entries now inherit the user&#39;s default Content Start Position setting instead of being hardcoded to 150px</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n</ul>\n<h3>v3.6.7</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed ImageViewModal to properly display banner images and videos when clicking the &quot;Show View Image Icon&quot;<ul>\n<li>Added support for MP4 and MOV video files in the ImageViewModal with proper video player controls</li>\n<li>Correctly display actual image URLs instead of keywords for 3rd party API banners in the ImageViewModal</li>\n<li>Local images, videos, and file:/// paths maintain original display behavior</li>\n</ul>\n</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n<li><code>Enter</code> button support for submitting the save image form in the <code>Save Image Modal</code></li>\n<li>New <code>Pin Image URL</code> option to save API images directly as URL references in frontmatter without downloading to vault</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Replaced manual frontmatter string manipulation with Obsidian&#39;s native processFrontMatter API for more reliable metadata updates</li>\n</ul>\n<h3>v3.6.9</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>New <code>Icon Image Size Multiplier</code> setting to the <code>General</code> settings tab to control the global size of banner icon images</li>\n<li>Check for version updates when opening <code>General</code> settings and show update button if available</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>AI Model</code> selection from radio buttons to a dropdown for better organization</li>\n<li>Changed default banner fade value from <code>-70</code> to <code>-40</code></li>\n</ul>\n<a href="https://www.youtube.com/watch?v=pJFsMfrWak4">\n  <img src="https://pixel-banner.online/img/pixel-banner-transparent-bg.png" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n';
+var releaseNotes = '<a href="https://www.youtube.com/watch?v=tfNqEAQuhXs">\n  <img src="https://pixel-banner.online/img/pixel-banner-v3.6.jpg" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n\n<h2>\u{1F389} What&#39;s New</h2>\n<h3>v3.6.0</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Support for \u{1F3AC} Video Banners!<ul>\n<li>Upload and choose Video files as banners from your vault</li>\n<li>Downloadable \u{1F3AC} Video Banners from the <code>Pixel Banner Plus Collection</code></li>\n</ul>\n</li>\n<li>Added paging controls to the <code>Pixel Banner Plus Collection</code></li>\n<li>New global <code>Banner Max Width</code> setting to control the default max width for all banners</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>Default Saved Banners Folder</code> setting to the <code>General</code> tab</li>\n<li>Renamed <code>Pixel Banner Plus Store</code> to <code>Pixel Banner Plus Collection</code> as many items are free</li>\n</ul>\n<h3>v3.6.1</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with Icon Image selection modal not setting the selected icon image</li>\n</ul>\n<h3>v3.6.2</h3>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Improved debounce logic to prevent multiple banner reloads when opening a note</li>\n</ul>\n<h3>v3.6.3</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Added <code>filesize</code> display to the store modal</li>\n</ul>\n<h3>v3.6.4</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Banner images now support local <code>file</code> protocol for images outside of your vault (e.g. <code>file:///C:\\path\\banner.jpg</code>)</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Allow commas in banner filenames</li>\n</ul>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Ensure pinned banner is the currently displayed image when saving API banners</li>\n<li>Ensure banner icons are only rendered when a main banner image is present</li>\n<li>Banner Icon Image not always rendered until the note was clicked/focused</li>\n</ul>\n<h3>v3.6.5</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fix refresh button to use original comma-separated keywords from frontmatter instead of the cached single keyword</li>\n<li>Resolved issue with the default x/y frontmatter fields not being hidden when the &quot;Hide Pixel Banner Fields&quot; option is enabled</li>\n<li>Updated API call for <code>Pexels</code> to conform to spec changes on their side</li>\n</ul>\n<h3>v3.6.6</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>New folder group entries now inherit the user&#39;s default Content Start Position setting instead of being hardcoded to 150px</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n</ul>\n<h3>v3.6.7</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed ImageViewModal to properly display banner images and videos when clicking the &quot;Show View Image Icon&quot;<ul>\n<li>Added support for MP4 and MOV video files in the ImageViewModal with proper video player controls</li>\n<li>Correctly display actual image URLs instead of keywords for 3rd party API banners in the ImageViewModal</li>\n<li>Local images, videos, and file:/// paths maintain original display behavior</li>\n</ul>\n</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n<li><code>Enter</code> button support for submitting the save image form in the <code>Save Image Modal</code></li>\n<li>New <code>Pin Image URL</code> option to save API images directly as URL references in frontmatter without downloading to vault</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Replaced manual frontmatter string manipulation with Obsidian&#39;s native processFrontMatter API for more reliable metadata updates</li>\n</ul>\n<h3>v3.6.9</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>New <code>Icon Image Size Multiplier</code> setting to the <code>General</code> settings tab to control the global size of banner icon images</li>\n<li>Check for version updates when opening <code>General</code> settings and show update button if available</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>AI Model</code> selection from radio buttons to a dropdown for better organization</li>\n<li>Changed default banner fade value from <code>-70</code> to <code>-40</code></li>\n</ul>\n<h3>v3.6.10</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Icon images and emojis not being displayed properly</li>\n</ul>\n<h3>v3.6.11</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>New toggle to turn on/off <code>Pixel Banner Plus</code> in the main Pixel Banner select modal</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Added unquoted wiki-link support for Image Icons paths (e.g. <code>[[path/icon.png]]</code>)</li>\n<li>Misc code cleanup</li>\n</ul>\n<h3>v3.6.12</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved incorrect <code>Pixel Banner Plus Server</code> URL</li>\n</ul>\n<h3>v3.6.13</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Support for Multiple Image Reference for new AI Image Generation models<ul>\n<li><code>Nano Banana</code></li>\n<li><code>Seedream 4</code></li>\n</ul>\n</li>\n</ul>\n<a href="https://www.youtube.com/watch?v=pJFsMfrWak4">\n  <img src="https://pixel-banner.online/img/pixel-banner-transparent-bg.png" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n';
 
 // src/settings/settings.js
 var import_obsidian6 = require("obsidian");
@@ -31323,8 +31612,8 @@ var FolderImageSetting = class extends import_obsidian2.Setting {
       this.folderImage.bannerIconBorderRadius = value;
       await this.plugin.saveSettings();
     }));
-    new import_obsidian2.Setting(controlEl5).setName("Icon Vertical Offset").addSlider((slider) => slider.setLimits(-100, 100, 1).setValue(this.folderImage.bannerIconVeritalOffset || this.plugin.settings.bannerIconVeritalOffset).setDynamicTooltip().onChange(async (value) => {
-      this.folderImage.bannerIconVeritalOffset = value;
+    new import_obsidian2.Setting(controlEl5).setName("Icon Vertical Offset").addSlider((slider) => slider.setLimits(-100, 100, 1).setValue(this.folderImage.bannerIconVerticalOffset || this.plugin.settings.bannerIconVerticalOffset).setDynamicTooltip().onChange(async (value) => {
+      this.folderImage.bannerIconVerticalOffset = value;
       await this.plugin.saveSettings();
     }));
   }
@@ -31559,7 +31848,7 @@ function createCustomFieldsSettings(containerEl, plugin) {
       placeholder: "banner-icon-border-radius, icon-border-radius"
     },
     {
-      setting: "customBannerIconVeritalOffsetField",
+      setting: "customBannerIconVerticalOffsetField",
       name: "Banner Icon Vertical Offset Field Names",
       desc: "Set custom field names for the banner icon vertical offset in frontmatter",
       values: "-50, 0, 50",
@@ -32319,7 +32608,7 @@ function createGeneralSettings(containerEl, plugin) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Image Property Format").setDesc("Set the format for the banner property value.").addDropdown((dropdown) => dropdown.addOption("![[image]]", "![[image]]").addOption("[[image]]", "[[image]]").setValue(plugin.settings.imagePropertyFormat).onChange(async (value) => {
+  new import_obsidian4.Setting(containerEl).setName("Image Property Format").setDesc("Set the format for the banner property value.").addDropdown((dropdown) => dropdown.addOption("image", "image").addOption("[[image]]", "[[image]]").addOption("![[image]]", "![[image]]").setValue(plugin.settings.imagePropertyFormat).onChange(async (value) => {
     try {
       plugin.settings.imagePropertyFormat = value;
       await plugin.saveSettings();
@@ -32611,19 +32900,19 @@ function createGeneralSettings(containerEl, plugin) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Vertical Offset").setDesc("Set the default vertical offset for the banner icon").addSlider((slider) => slider.setLimits(-100, 100, 1).setValue(plugin.settings.bannerIconVeritalOffset).setDynamicTooltip().onChange(async (value) => {
+  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Vertical Offset").setDesc("Set the default vertical offset for the banner icon").addSlider((slider) => slider.setLimits(-100, 100, 1).setValue(plugin.settings.bannerIconVerticalOffset).setDynamicTooltip().onChange(async (value) => {
     try {
-      plugin.settings.bannerIconVeritalOffset = value;
+      plugin.settings.bannerIconVerticalOffset = value;
       await plugin.saveSettings();
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   })).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
     try {
-      plugin.settings.bannerIconVeritalOffset = DEFAULT_SETTINGS.bannerIconVeritalOffset;
+      plugin.settings.bannerIconVerticalOffset = DEFAULT_SETTINGS.bannerIconVerticalOffset;
       await plugin.saveSettings();
       const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerIconVeritalOffset;
+      sliderInput.value = DEFAULT_SETTINGS.bannerIconVerticalOffset;
       const event = new Event("input", { bubbles: true, cancelable: true });
       sliderInput.dispatchEvent(event);
     } catch (error) {
@@ -32988,7 +33277,7 @@ var DEFAULT_SETTINGS = {
   customBannerIconPaddingXField: ["icon-padding-x"],
   customBannerIconPaddingYField: ["icon-padding-y"],
   customBannerIconBorderRadiusField: ["icon-border-radius"],
-  customBannerIconVeritalOffsetField: ["icon-y"],
+  customBannerIconVerticalOffsetField: ["icon-y"],
   customBannerIconImageAlignmentField: ["banner-icon-image-alignment"],
   customFlagColorField: ["pixel-banner-flag-color"],
   folderImages: [],
@@ -33003,7 +33292,7 @@ var DEFAULT_SETTINGS = {
   showPinIcon: false,
   pinnedImageFolder: "pixel-banner-images",
   pinnedImageFilename: "pixel-banner-image",
-  imagePropertyFormat: "![[image]]",
+  imagePropertyFormat: "image",
   showReleaseNotes: true,
   lastVersion: null,
   showRefreshIcon: false,
@@ -33033,7 +33322,7 @@ var DEFAULT_SETTINGS = {
   bannerIconPaddingX: "10",
   bannerIconPaddingY: "10",
   bannerIconBorderRadius: "17",
-  bannerIconVeritalOffset: "0",
+  bannerIconVerticalOffset: "0",
   bannerIconImageAlignment: "left",
   openTargetingModalAfterSelectingBannerOrIcon: true,
   enableDailyGame: false
@@ -33044,7 +33333,7 @@ var FolderSuggestModal = class extends import_obsidian6.FuzzySuggestModal {
     this.onChoose = onChoose;
   }
   getItems() {
-    return this.app.vault.getAllLoadedFiles().filter((file2) => file2.children).map((folder) => folder.path);
+    return this.app.vault.getAllLoadedFiles().filter((file) => file.children).map((folder) => folder.path);
   }
   getItemText(item) {
     return item;
@@ -33252,8 +33541,8 @@ async function handleSetBannerIcon(plugin) {
             resolve();
           }
         }, 2e3);
-        eventRef = plugin.app.metadataCache.on("changed", (file2) => {
-          if (file2.path === activeFile.path && !resolved) {
+        eventRef = plugin.app.metadataCache.on("changed", (file) => {
+          if (file.path === activeFile.path && !resolved) {
             resolved = true;
             clearTimeout(timeoutId);
             cleanup();
@@ -33336,7 +33625,16 @@ async function handleSetBannerIconImage(plugin) {
             });
           });
         }
-        frontmatter[bannerIconImageField] = imagePath;
+        const format = plugin.settings.imagePropertyFormat;
+        let iconValue;
+        if (format === "image") {
+          iconValue = imagePath;
+        } else if (format === "[[image]]") {
+          iconValue = `[[${imagePath}]]`;
+        } else {
+          iconValue = `![[${imagePath}]]`;
+        }
+        frontmatter[bannerIconImageField] = iconValue;
       });
       const metadataUpdated = new Promise((resolve) => {
         let eventRef = null;
@@ -33354,8 +33652,8 @@ async function handleSetBannerIconImage(plugin) {
             resolve();
           }
         }, 2e3);
-        eventRef = plugin.app.metadataCache.on("changed", (file2) => {
-          if (file2.path === activeFile.path && !resolved) {
+        eventRef = plugin.app.metadataCache.on("changed", (file) => {
+          if (file.path === activeFile.path && !resolved) {
             resolved = true;
             clearTimeout(timeoutId);
             cleanup();
@@ -33790,11 +34088,11 @@ var SUPPORTED_EXTENSIONS = [...SUPPORTED_IMAGE_EXTENSIONS, ...SUPPORTED_MOVIE_EX
 var debouncedAddPixelBanner = debounceAndSwallow(addPixelBanner, 350);
 async function addPixelBanner(plugin, el, ctx) {
   var _a, _b, _c;
-  const { frontmatter, file: file2, isContentChange, yPosition, xPosition, contentStartPosition, bannerImage, isReadingView, updateMode } = ctx;
+  const { frontmatter, file, isContentChange, yPosition, xPosition, contentStartPosition, bannerImage, isReadingView, updateMode } = ctx;
   const viewContent = el;
   const isEmbedded = viewContent.classList.contains("internal-embed") && viewContent.classList.contains("markdown-embed");
   const isHoverPopover = viewContent.closest(".hover-popover") !== null;
-  const hideEmbeddedNoteBanners = getFrontmatterValue(frontmatter, plugin.settings.customHideEmbeddedNoteBannersField) || ((_a = plugin.getFolderSpecificImage(file2.path)) == null ? void 0 : _a.hideEmbeddedNoteBanners) || plugin.settings.hideEmbeddedNoteBanners || false;
+  const hideEmbeddedNoteBanners = getFrontmatterValue(frontmatter, plugin.settings.customHideEmbeddedNoteBannersField) || ((_a = plugin.getFolderSpecificImage(file.path)) == null ? void 0 : _a.hideEmbeddedNoteBanners) || plugin.settings.hideEmbeddedNoteBanners || false;
   if (!isEmbedded && !isHoverPopover && viewContent.classList.contains("view-content")) {
     const sourceEl = viewContent.querySelector(":scope > .markdown-source-view .cm-sizer");
     if (sourceEl) {
@@ -33816,7 +34114,7 @@ async function addPixelBanner(plugin, el, ctx) {
     if (embedContentDiv && !hideEmbeddedNoteBanners) {
       const previewViewEl = embedContentDiv.querySelector(":scope > .markdown-preview-view");
       if (previewViewEl) {
-        const folderSpecific = plugin.getFolderSpecificImage(file2.path);
+        const folderSpecific = plugin.getFolderSpecificImage(file.path);
         const maxWidth = getFrontmatterValue(frontmatter, plugin.settings.customBannerMaxWidthField) || (folderSpecific == null ? void 0 : folderSpecific.bannerMaxWidth) || plugin.settings.bannerMaxWidth || "unset";
         const maxWidthValue = maxWidth === "unset" ? "unset" : `${maxWidth}px`;
         const bannerYPosition = getValueWithZeroCheck([
@@ -33871,9 +34169,9 @@ async function addPixelBanner(plugin, el, ctx) {
           17
         ]);
         const bannerIconVerticalOffset = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVeritalOffsetField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerIconVeritalOffset,
-          plugin.settings.bannerIconVeritalOffset,
+          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVerticalOffsetField),
+          folderSpecific == null ? void 0 : folderSpecific.bannerIconVerticalOffset,
+          plugin.settings.bannerIconVerticalOffset,
           0
         ]);
         const bannerIconRotate = getValueWithZeroCheck([
@@ -33930,13 +34228,7 @@ async function addPixelBanner(plugin, el, ctx) {
         }
         previewViewEl.style.setProperty("--pixel-banner-alignment", alignmentValue);
         previewViewEl.style.setProperty("--pixel-banner-icon-start", `${bannerHeight - bannerIconSize / 2}px`);
-        let bannerIconVeritalOffset = Number(getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVeritalOffsetField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerIconVeritalOffset,
-          plugin.settings.bannerIconVeritalOffset,
-          0
-        ]));
-        const contentStart = !hideEmbeddedNoteBanners ? `${parseInt(bannerHeight) + parseInt(bannerIconSize) / 2 + parseInt(bannerIconVeritalOffset) + parseInt(bannerIconPaddingY)}px` : "0px";
+        const contentStart = !hideEmbeddedNoteBanners ? `${parseInt(bannerHeight) + parseInt(bannerIconSize) / 2 + parseInt(bannerIconVerticalOffset) + parseInt(bannerIconPaddingY)}px` : "0px";
         previewViewEl.style.setProperty("--pixel-banner-content-start", contentStart);
       }
     }
@@ -34081,10 +34373,10 @@ async function addPixelBanner(plugin, el, ctx) {
     container._hasOverriddenSetChildrenInPlace = true;
   }
   if (bannerImage) {
-    let imageUrl = plugin.loadedImages.get(file2.path);
-    const lastInput = plugin.lastKeywords.get(file2.path);
-    const inputType = plugin.getInputType(bannerImage, file2.path);
-    const folderSpecific = plugin.getFolderSpecificImage(file2.path);
+    let imageUrl = plugin.loadedImages.get(file.path);
+    const lastInput = plugin.lastKeywords.get(file.path);
+    const inputType = plugin.getInputType(bannerImage, file.path);
+    const folderSpecific = plugin.getFolderSpecificImage(file.path);
     const hasShufflePath = getFrontmatterValue(frontmatter, plugin.settings.customBannerShuffleField);
     const isShuffled = hasShufflePath || (folderSpecific == null ? void 0 : folderSpecific.enableImageShuffle);
     const effectiveUpdateMode = updateMode || plugin.UPDATE_MODE.FULL_UPDATE;
@@ -34095,10 +34387,10 @@ async function addPixelBanner(plugin, el, ctx) {
       shouldFetchNewImage = effectiveUpdateMode === plugin.UPDATE_MODE.FULL_UPDATE || !imageUrl || isShuffled || isContentChange && bannerImage !== lastInput;
     }
     if (shouldFetchNewImage) {
-      imageUrl = await plugin.getImageUrl(inputType, bannerImage, file2.path);
+      imageUrl = await plugin.getImageUrl(inputType, bannerImage, file.path);
       if (imageUrl) {
-        plugin.loadedImages.set(file2.path, imageUrl);
-        plugin.lastKeywords.set(file2.path, bannerImage);
+        plugin.loadedImages.set(file.path, imageUrl);
+        plugin.lastKeywords.set(file.path, bannerImage);
       }
     }
     if (imageUrl) {
@@ -34115,7 +34407,7 @@ async function addPixelBanner(plugin, el, ctx) {
           isVideoFile = true;
         }
       }
-      const isSvg = fileUrl.includes("image/svg+xml") || file2.path && file2.path.toLowerCase().endsWith(".svg");
+      const isSvg = fileUrl.includes("image/svg+xml") || file.path && file.path.toLowerCase().endsWith(".svg");
       if (fileUrl.startsWith("blob:")) {
         try {
           const response = await fetch(fileUrl);
@@ -34124,10 +34416,10 @@ async function addPixelBanner(plugin, el, ctx) {
           }
         } catch (error) {
           console.log("Blob URL invalid, refreshing file:", error);
-          plugin.loadedImages.delete(file2.path);
+          plugin.loadedImages.delete(file.path);
           URL.revokeObjectURL(fileUrl);
-          const inputType2 = plugin.getInputType(bannerImage, file2.path);
-          const freshResult = await plugin.getImageUrl(inputType2, bannerImage, file2.path);
+          const inputType2 = plugin.getInputType(bannerImage, file.path);
+          const freshResult = await plugin.getImageUrl(inputType2, bannerImage, file.path);
           if (freshResult) {
             if (typeof freshResult === "object" && freshResult !== null) {
               isVideoFile = freshResult.isVideo === true;
@@ -34135,7 +34427,7 @@ async function addPixelBanner(plugin, el, ctx) {
             } else {
               fileUrl = freshResult;
             }
-            plugin.loadedImages.set(file2.path, fileUrl);
+            plugin.loadedImages.set(file.path, fileUrl);
           }
         }
       }
@@ -34179,7 +34471,7 @@ async function addPixelBanner(plugin, el, ctx) {
       const viewImageIcon = container.querySelector(":scope > .view-image-icon");
       if (viewImageIcon && viewImageIcon._updateVisibility) {
         const bannerValue = getFrontmatterValue(frontmatter, plugin.settings.customBannerField);
-        let displayUrl = bannerValue || file2.path;
+        let displayUrl = bannerValue || file.path;
         if (inputType === "keyword") {
           if (imageUrl && typeof imageUrl === "object" && imageUrl.url) {
             displayUrl = imageUrl.url;
@@ -34216,10 +34508,10 @@ async function addPixelBanner(plugin, el, ctx) {
         pinIcon._isPersistentPin = true;
         pinIcon.onclick = async () => {
           try {
-            const currentImage = plugin.loadedImages.get(file2.path);
+            const currentImage = plugin.loadedImages.get(file.path);
             if (!currentImage) {
               new import_obsidian27.Notice("Could not find the current image URL to pin.");
-              console.error("Error pinning image: currentImage is null or undefined for file.path:", file2.path);
+              console.error("Error pinning image: currentImage is null or undefined for file.path:", file.path);
               return;
             }
             const imageUrlToPin = typeof currentImage === "object" && currentImage.url ? currentImage.url : currentImage;
@@ -34248,10 +34540,10 @@ async function addPixelBanner(plugin, el, ctx) {
           refreshIcon._isPersistentRefresh = true;
           refreshIcon.onclick = async () => {
             try {
-              plugin.loadedImages.delete(file2.path);
-              plugin.lastKeywords.delete(file2.path);
+              plugin.loadedImages.delete(file.path);
+              plugin.lastKeywords.delete(file.path);
               const originalBannerValue = getFrontmatterValue(frontmatter, plugin.settings.customBannerField);
-              const result = await plugin.getImageUrl(inputType, originalBannerValue || bannerImage, file2.path);
+              const result = await plugin.getImageUrl(inputType, originalBannerValue || bannerImage, file.path);
               if (result) {
                 let isVideoFile2 = false;
                 let fileUrl2 = "";
@@ -34261,8 +34553,8 @@ async function addPixelBanner(plugin, el, ctx) {
                 } else {
                   fileUrl2 = result;
                 }
-                plugin.loadedImages.set(file2.path, fileUrl2);
-                plugin.lastKeywords.set(file2.path, bannerImage);
+                plugin.loadedImages.set(file.path, fileUrl2);
+                plugin.lastKeywords.set(file.path, bannerImage);
                 if (isVideoFile2) {
                   bannerDiv.style.backgroundImage = "";
                   const existingVideo = bannerDiv.querySelector("video");
@@ -34293,8 +34585,8 @@ async function addPixelBanner(plugin, el, ctx) {
                 const viewImageIcon2 = container.querySelector(":scope > .view-image-icon");
                 if (viewImageIcon2 && viewImageIcon2._updateVisibility) {
                   const bannerValue = getFrontmatterValue(frontmatter, plugin.settings.customBannerField);
-                  let displayUrl = bannerValue || file2.path;
-                  const refreshInputType = plugin.getInputType(bannerValue, file2.path);
+                  let displayUrl = bannerValue || file.path;
+                  const refreshInputType = plugin.getInputType(bannerValue, file.path);
                   if (refreshInputType === "keyword") {
                     if (fileUrl2 && typeof fileUrl2 === "object" && fileUrl2.url) {
                       displayUrl = fileUrl2.url;
@@ -34316,8 +34608,8 @@ async function addPixelBanner(plugin, el, ctx) {
       }
     } else {
       bannerDiv.style.display = "none";
-      plugin.loadedImages.delete(file2.path);
-      plugin.lastKeywords.delete(file2.path);
+      plugin.loadedImages.delete(file.path);
+      plugin.lastKeywords.delete(file.path);
       if (!isEmbedded) {
         viewContent.classList.remove("pixel-banner");
       }
@@ -34416,7 +34708,9 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
   if (bannerImage) {
     if (Array.isArray(bannerImage)) {
       bannerImage = bannerImage.flat()[0];
-      bannerImage = `[[${bannerImage}]]`;
+      if (bannerImage && !bannerImage.startsWith("[[") && !bannerImage.startsWith("![[")) {
+        bannerImage = `[[${bannerImage}]]`;
+      }
     }
     if (typeof bannerImage === "string" && !bannerImage.startsWith("[[") && !bannerImage.startsWith("![[") && !bannerImage.startsWith("http")) {
       if (bannerImage.includes(",")) {
@@ -34433,10 +34727,10 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
         }
       }
     }
-    if (bannerImage && (!bannerImage.startsWith("[[") || !bannerImage.startsWith("![[")) && !bannerImage.startsWith("http")) {
-      const file2 = plugin.app.vault.getAbstractFileByPath(bannerImage);
-      if (file2 && "extension" in file2) {
-        if (file2.extension.match(/^(jpg|jpeg|png|gif|bmp|svg)$/i)) {
+    if (bannerImage && !bannerImage.startsWith("[[") && !bannerImage.startsWith("![[") && !bannerImage.startsWith("http")) {
+      const file = plugin.app.vault.getAbstractFileByPath(bannerImage);
+      if (file && "extension" in file) {
+        if (file.extension.match(/^(jpg|jpeg|png|gif|bmp|svg)$/i)) {
           bannerImage = `![[${bannerImage}]]`;
         }
       }
@@ -34535,7 +34829,13 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
     plugin.updateFieldVisibility(view);
   }
   const bannerIcon = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconField);
-  const bannerIconImage = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconImageField);
+  let bannerIconImage = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconImageField);
+  if (Array.isArray(bannerIconImage)) {
+    bannerIconImage = bannerIconImage.flat()[0];
+    if (bannerIconImage && !bannerIconImage.startsWith("[[") && !bannerIconImage.startsWith("![[")) {
+      bannerIconImage = `[[${bannerIconImage}]]`;
+    }
+  }
   if (isEmbedded) {
     const embedContainer = contentEl.querySelector(".markdown-preview-sizer") || contentEl.querySelector(".markdown-embed-content") || contentEl;
     const thisEmbedOverlays = embedContainer.querySelectorAll(':scope > .banner-icon-overlay:not([data-persistent="true"])');
@@ -34613,8 +34913,8 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
           plugin.settings.bannerIconBorderRadius
         ]),
         verticalOffset: getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVeritalOffsetField),
-          plugin.settings.bannerIconVeritalOffset
+          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVerticalOffsetField),
+          plugin.settings.bannerIconVerticalOffset
         ]),
         imageAlignment: getFrontmatterValue(frontmatter, plugin.settings.customBannerIconImageAlignmentField) || plugin.settings.bannerIconImageAlignment,
         viewType
@@ -34635,31 +34935,69 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
       const imageAlignment = currentIconState.imageAlignment === "right" ? "right" : "left";
       let imgElement = null;
       if (bannerIconImage) {
-        const inputType = plugin.getInputType(bannerIconImage, file.path);
+        const inputType = plugin.getIconImageInputType(bannerIconImage, view.file.path);
         let imagePath = null;
+        let resolvedVaultPath = null;
         if (inputType === "invalid") {
           console.warn("Invalid banner icon image value detected:", bannerIconImage);
         } else {
           switch (inputType) {
             case "obsidianLink":
-              const file2 = plugin.getPathFromObsidianLink(bannerIconImage);
-              if (file2) {
-                imagePath = plugin.loadedImages.get(file2.path);
+              const file = plugin.getPathFromObsidianLink(bannerIconImage);
+              if (file) {
+                imagePath = plugin.loadedImages.get(file.path);
                 if (!imagePath) {
-                  imagePath = await plugin.getVaultImageUrl(file2.path);
-                  if (imagePath) plugin.loadedImages.set(file2.path, imagePath);
+                  imagePath = await plugin.getVaultImageUrl(file.path);
+                  if (imagePath) plugin.loadedImages.set(file.path, imagePath);
+                }
+              }
+              break;
+            case "markdownImage":
+              const mdPath = plugin.getPathFromMarkdownImage(bannerIconImage);
+              if (typeof mdPath === "string") {
+                try {
+                  new URL(mdPath);
+                  imagePath = mdPath;
+                } catch (_) {
+                  imagePath = plugin.loadedImages.get(mdPath);
+                  if (!imagePath) {
+                    imagePath = await plugin.getVaultImageUrl(mdPath);
+                    if (imagePath) plugin.loadedImages.set(mdPath, imagePath);
+                  }
+                }
+              } else if (mdPath) {
+                imagePath = plugin.loadedImages.get(mdPath.path);
+                if (!imagePath) {
+                  imagePath = await plugin.getVaultImageUrl(mdPath.path);
+                  if (imagePath) plugin.loadedImages.set(mdPath.path, imagePath);
                 }
               }
               break;
             case "vaultPath":
-              imagePath = plugin.loadedImages.get(bannerIconImage);
-              if (!imagePath) {
-                imagePath = await plugin.getVaultImageUrl(bannerIconImage);
-                if (imagePath) plugin.loadedImages.set(bannerIconImage, imagePath);
+              const cleanedInput = bannerIconImage.trim().replace(/^["'](.*)["']$/, "$1");
+              let resolvedFile = plugin.app.vault.getAbstractFileByPath(cleanedInput);
+              if (!resolvedFile) {
+                resolvedFile = plugin.app.metadataCache.getFirstLinkpathDest(cleanedInput, view.file.path);
+              }
+              if (resolvedFile && "path" in resolvedFile) {
+                resolvedVaultPath = resolvedFile.path;
+                imagePath = plugin.loadedImages.get(resolvedVaultPath);
+                if (!imagePath) {
+                  imagePath = await plugin.getVaultImageUrl(resolvedVaultPath);
+                  if (imagePath) plugin.loadedImages.set(resolvedVaultPath, imagePath);
+                }
+              } else {
+                console.warn("[Icon Image] Could not resolve vault path:", cleanedInput);
               }
               break;
             case "url":
               imagePath = bannerIconImage;
+              break;
+            case "fileUrl":
+              console.warn("file:/// URLs are not supported for banner icon images");
+              break;
+            case "keyword":
+              console.warn("Keywords are not supported for banner icon images");
               break;
           }
           if (imagePath) {
@@ -34764,10 +35102,10 @@ function applyBannerSettings(plugin, bannerDiv, ctx, isEmbedded) {
     plugin.settings.bannerIconBorderRadius,
     17
   ]);
-  const bannerIconVeritalOffset = getValueWithZeroCheck([
-    Number(getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVeritalOffsetField)),
-    folderSpecific == null ? void 0 : folderSpecific.bannerIconVeritalOffset,
-    plugin.settings.bannerIconVeritalOffset,
+  const bannerIconVerticalOffset = getValueWithZeroCheck([
+    Number(getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVerticalOffsetField)),
+    folderSpecific == null ? void 0 : folderSpecific.bannerIconVerticalOffset,
+    plugin.settings.bannerIconVerticalOffset,
     0
   ]);
   const bannerIconRotate = getValueWithZeroCheck([
@@ -34811,11 +35149,11 @@ function applyBannerSettings(plugin, bannerDiv, ctx, isEmbedded) {
     "--pixel-banner-icon-padding-x": `${bannerIconPaddingX}px`,
     "--pixel-banner-icon-padding-y": `${bannerIconPaddingY}px`,
     "--pixel-banner-icon-border-radius": `${bannerIconBorderRadius}px`,
-    "--pixel-banner-icon-vertical-offset": `${bannerIconVeritalOffset}px`,
+    "--pixel-banner-icon-vertical-offset": `${bannerIconVerticalOffset}px`,
     "--pixel-banner-icon-rotate": `${bannerIconRotate}deg`,
     "--pixel-banner-icon-image-size-multiplier": `${bannerIconImageSizeMultiplier}em`,
     "--pixel-banner-icon-text-vertical-offset": `${bannerIconTextVerticalOffset}px`,
-    "--pixel-banner-embed-min-height": !hideEmbeddedNoteBanners ? `${parseInt(bannerHeight) + parseInt(bannerIconSize) / 2 + parseInt(bannerIconVeritalOffset) + parseInt(bannerIconPaddingY)}px` : "0px",
+    "--pixel-banner-embed-min-height": !hideEmbeddedNoteBanners ? `${parseInt(bannerHeight) + parseInt(bannerIconSize) / 2 + parseInt(bannerIconVerticalOffset) + parseInt(bannerIconPaddingY)}px` : "0px",
     "--pixel-banner-alignment": alignmentValue
   };
   bannerDiv.style.backgroundSize = imageDisplay || "cover";
@@ -34877,11 +35215,11 @@ function updateAllBanners(plugin) {
   });
 }
 var debouncedUpdateBannerPosition = debounceAndSwallow(updateBannerPosition, 350);
-async function updateBannerPosition(plugin, file2, position) {
-  if (!file2) return;
-  const metadata = plugin.app.metadataCache.getFileCache(file2);
+async function updateBannerPosition(plugin, file, position) {
+  if (!file) return;
+  const metadata = plugin.app.metadataCache.getFileCache(file);
   if (!(metadata == null ? void 0 : metadata.frontmatter)) return;
-  await plugin.app.fileManager.processFrontMatter(file2, (frontmatter) => {
+  await plugin.app.fileManager.processFrontMatter(file, (frontmatter) => {
     frontmatter.banner_x = position.x;
     frontmatter.banner_y = position.y;
   });
@@ -34901,9 +35239,9 @@ function registerMarkdownPostProcessor(plugin) {
       markdownPostProcessorDebounceMap.set(debounceFile.path, currentTime);
     }
     if (!isPreview && !isHoverPopover) return;
-    const file2 = ctx.sourcePath ? plugin.app.vault.getAbstractFileByPath(ctx.sourcePath) : null;
-    if (!file2) return;
-    const frontmatter = (_a = plugin.app.metadataCache.getFileCache(file2)) == null ? void 0 : _a.frontmatter;
+    const file = ctx.sourcePath ? plugin.app.vault.getAbstractFileByPath(ctx.sourcePath) : null;
+    if (!file) return;
+    const frontmatter = (_a = plugin.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
     let bannerImage = null;
     for (const field of plugin.settings.customBannerField) {
       if (frontmatter == null ? void 0 : frontmatter[field]) {
@@ -34912,19 +35250,19 @@ function registerMarkdownPostProcessor(plugin) {
       }
     }
     if (!bannerImage) {
-      const folderSpecific2 = plugin.getFolderSpecificImage(file2.path);
+      const folderSpecific2 = plugin.getFolderSpecificImage(file.path);
       if (folderSpecific2 == null ? void 0 : folderSpecific2.image) {
         bannerImage = folderSpecific2.image;
       }
     }
     if (!bannerImage) return;
-    const folderSpecific = plugin.getFolderSpecificImage(file2.path);
+    const folderSpecific = plugin.getFolderSpecificImage(file.path);
     const yPosition = getFrontmatterValue(frontmatter, plugin.settings.customYPositionField) || (folderSpecific == null ? void 0 : folderSpecific.yPosition) || plugin.settings.yPosition;
     const xPosition = getFrontmatterValue(frontmatter, plugin.settings.customXPositionField) || (folderSpecific == null ? void 0 : folderSpecific.xPosition) || plugin.settings.xPosition;
     const contentStartPosition = getFrontmatterValue(frontmatter, plugin.settings.customContentStartField) || (folderSpecific == null ? void 0 : folderSpecific.contentStartPosition) || plugin.settings.contentStartPosition;
     addPixelBanner(plugin, ctx.containerEl, {
       frontmatter,
-      file: file2,
+      file,
       isContentChange: false,
       yPosition,
       xPosition,
@@ -34960,15 +35298,15 @@ function getInputType(input, sourcePath = "") {
     new URL(cleanedInput);
     return "url";
   } catch (_) {
-    const file2 = this.app.vault.getAbstractFileByPath(cleanedInput);
-    if (file2 && "extension" in file2) {
-      if (file2.extension.match(/^(jpg|jpeg|png|gif|bmp|svg)$/i)) {
+    const file = this.app.vault.getAbstractFileByPath(cleanedInput);
+    if (file && "extension" in file) {
+      if (file.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|avif)$/i)) {
         return "vaultPath";
       }
     }
     const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(cleanedInput, sourcePath);
     if (resolvedFile && "extension" in resolvedFile) {
-      if (resolvedFile.extension.match(/^(jpg|jpeg|png|gif|bmp|svg)$/i)) {
+      if (resolvedFile.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|avif)$/i)) {
         return "vaultPath";
       }
     }
@@ -34998,13 +35336,13 @@ function getPathFromMarkdownImage(link) {
   return null;
 }
 async function getVaultImageUrl(path) {
-  const file2 = this.app.vault.getAbstractFileByPath(path);
-  if (file2 && "extension" in file2) {
+  const file = this.app.vault.getAbstractFileByPath(path);
+  if (file && "extension" in file) {
     try {
-      const fileExt = file2.extension.toLowerCase();
+      const fileExt = file.extension.toLowerCase();
       const videoExtensions = ["mp4", "mov"];
       if (videoExtensions.includes(fileExt)) {
-        const resourcePath = this.app.vault.getResourcePath(file2);
+        const resourcePath = this.app.vault.getResourcePath(file);
         return {
           url: resourcePath,
           isVideo: true,
@@ -35013,7 +35351,7 @@ async function getVaultImageUrl(path) {
           originalPath: path
         };
       }
-      const arrayBuffer = await this.app.vault.readBinary(file2);
+      const arrayBuffer = await this.app.vault.readBinary(file);
       const mimeType = fileExt === "svg" ? "image/svg+xml" : `image/${fileExt}`;
       const blob = new Blob([arrayBuffer], { type: mimeType });
       const url = URL.createObjectURL(blob);
@@ -35036,6 +35374,43 @@ function preloadImage(url) {
     img.onerror = reject;
     img.src = url;
   });
+}
+function getIconImageInputType(input, sourcePath = "") {
+  if (Array.isArray(input)) {
+    input = input.flat()[0];
+  }
+  if (typeof input !== "string") {
+    return "invalid";
+  }
+  let cleanedInput = input.trim().replace(/^["'](.*)["']$/, "$1");
+  cleanedInput = cleanedInput.replace(/^!\[\[(.*)\]\]$/, "$1").replace(/^\[\[(.*)\]\]$/, "$1");
+  if (cleanedInput.includes("file:///")) {
+    return "fileUrl";
+  }
+  if (input.match(/^!?\[{2}.*\]{2}$/) || input.match(/^"?!?\[{2}.*\]{2}"?$/)) {
+    return "obsidianLink";
+  }
+  if (input.match(/^!\[\]\(.*\)$/) || input.match(/^"?!\[\]\(.*\)"?$/)) {
+    return "markdownImage";
+  }
+  try {
+    new URL(cleanedInput);
+    return "url";
+  } catch (_) {
+    const file = this.app.vault.getAbstractFileByPath(cleanedInput);
+    if (file && "extension" in file) {
+      if (file.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|avif)$/i)) {
+        return "vaultPath";
+      }
+    }
+    const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(cleanedInput, sourcePath);
+    if (resolvedFile && "extension" in resolvedFile) {
+      if (resolvedFile.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|avif)$/i)) {
+        return "vaultPath";
+      }
+    }
+    return "keyword";
+  }
 }
 function getFolderPath(filePath) {
   if (!filePath) return "/";
@@ -35095,7 +35470,7 @@ function getRandomImageFromFolder(folderPath) {
     const folder = this.app.vault.getAbstractFileByPath(folderPath);
     if (!folder || !folder.children) return null;
     const imageFiles = folder.children.filter(
-      (file2) => file2.extension && ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"].includes(file2.extension.toLowerCase())
+      (file) => file.extension && ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"].includes(file.extension.toLowerCase())
     );
     if (imageFiles.length === 0) return null;
     const randomImage = imageFiles[Math.floor(Math.random() * imageFiles.length)];
@@ -35127,8 +35502,8 @@ function getActiveApiProvider() {
   }
   return availableProviders[Math.floor(Math.random() * availableProviders.length)];
 }
-function hasBannerFrontmatter(file2) {
-  const metadata = this.app.metadataCache.getFileCache(file2);
+function hasBannerFrontmatter(file) {
+  const metadata = this.app.metadataCache.getFileCache(file);
   if (!(metadata == null ? void 0 : metadata.frontmatter)) return false;
   return this.settings.customBannerField.some(
     (fieldName) => metadata.frontmatter[fieldName] !== void 0
@@ -35216,7 +35591,7 @@ async function handleActiveLeafChange(leaf) {
           ...this.settings.customBannerIconPaddingXField,
           ...this.settings.customBannerIconPaddingYField,
           ...this.settings.customBannerIconBorderRadiusField,
-          ...this.settings.customBannerIconVeritalOffsetField
+          ...this.settings.customBannerIconVerticalOffsetField
         ];
         const hasRelevantChanges = relevantFields.some(
           (field) => {
@@ -35248,7 +35623,7 @@ async function handleActiveLeafChange(leaf) {
         paddingX: getFrontmatterValue(frontmatter, this.settings.customBannerIconPaddingXField) || this.settings.bannerIconPaddingX,
         paddingY: getFrontmatterValue(frontmatter, this.settings.customBannerIconPaddingYField) || this.settings.bannerIconPaddingY,
         borderRadius: getFrontmatterValue(frontmatter, this.settings.customBannerIconBorderRadiusField) || this.settings.bannerIconBorderRadius,
-        verticalOffset: getFrontmatterValue(frontmatter, this.settings.customBannerIconVeritalOffsetField) || this.settings.bannerIconVeritalOffset
+        verticalOffset: getFrontmatterValue(frontmatter, this.settings.customBannerIconVerticalOffsetField) || this.settings.bannerIconVerticalOffset
       } : null;
       this.bannerStateCache.set(cacheKey, {
         timestamp: currentTime,
@@ -35460,7 +35835,7 @@ function updateFieldVisibility(view) {
     ...this.settings.customBannerIconPaddingXField,
     ...this.settings.customBannerIconPaddingYField,
     ...this.settings.customBannerIconBorderRadiusField,
-    ...this.settings.customBannerIconVeritalOffsetField,
+    ...this.settings.customBannerIconVerticalOffsetField,
     ...this.settings.customFlagColorField
   ];
   const propertiesContainer = view.contentEl.querySelector(".metadata-container");
@@ -35659,8 +36034,8 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
   updateAllBanners() {
     return debouncedUpdateAllBanners(this);
   }
-  updateBannerPosition(file2, position) {
-    return debouncedUpdateBannerPosition(this, file2, position);
+  updateBannerPosition(file, position) {
+    return debouncedUpdateBannerPosition(this, file, position);
   }
   cleanupIconOverlay(view) {
     return cleanupIconOverlay(this, view);
@@ -35670,6 +36045,9 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
   // --------------------------------------------
   getInputType(input, sourcePath = "") {
     return getInputType.call(this, input, sourcePath);
+  }
+  getIconImageInputType(input, sourcePath = "") {
+    return getIconImageInputType.call(this, input, sourcePath);
   }
   getPathFromObsidianLink(link) {
     return getPathFromObsidianLink.call(this, link);
@@ -35698,8 +36076,8 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
   getActiveApiProvider() {
     return getActiveApiProvider.call(this);
   }
-  hasBannerFrontmatter(file2) {
-    return hasBannerFrontmatter.call(this, file2);
+  hasBannerFrontmatter(file) {
+    return hasBannerFrontmatter.call(this, file);
   }
   createFolderImageSettings(folderImage) {
     return createFolderImageSettings.call(this, folderImage);
@@ -35781,13 +36159,13 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       this.app.workspace.on("resize", this.debouncedEnsureBanner.bind(this))
     );
     this.registerEvent(
-      this.app.metadataCache.on("changed", async (file2) => {
+      this.app.metadataCache.on("changed", async (file) => {
         var _a;
-        const frontmatter = (_a = this.app.metadataCache.getFileCache(file2)) == null ? void 0 : _a.frontmatter;
+        const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
         if (!frontmatter) {
           return;
         }
-        const previousFrontmatter = this.lastFrontmatter.get(file2.path);
+        const previousFrontmatter = this.lastFrontmatter.get(file.path);
         if (JSON.stringify(frontmatter) === JSON.stringify(previousFrontmatter)) {
           return;
         }
@@ -35818,7 +36196,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
           ...this.settings.customBannerIconPaddingXField,
           ...this.settings.customBannerIconPaddingYField,
           ...this.settings.customBannerIconBorderRadiusField,
-          ...this.settings.customBannerIconVeritalOffsetField
+          ...this.settings.customBannerIconVerticalOffsetField
         ];
         const changedFields = relevantFields.filter(
           (field) => frontmatter[field] !== (previousFrontmatter == null ? void 0 : previousFrontmatter[field])
@@ -35827,12 +36205,12 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         if (!hasRelevantFieldChange) {
           return;
         }
-        this.lastFrontmatter.set(file2.path, frontmatter);
+        this.lastFrontmatter.set(file.path, frontmatter);
         const leaves = this.app.workspace.getLeavesOfType("markdown");
         for (const leaf of leaves) {
-          if (leaf.view instanceof import_obsidian31.MarkdownView && leaf.view.file === file2) {
-            this.loadedImages.delete(file2.path);
-            this.lastKeywords.delete(file2.path);
+          if (leaf.view instanceof import_obsidian31.MarkdownView && leaf.view.file === file) {
+            this.loadedImages.delete(file.path);
+            this.lastKeywords.delete(file.path);
             await this.updateBanner(leaf.view, true);
           }
         }
@@ -35843,10 +36221,10 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       const isPreview = ctx.containerEl.classList.contains("markdown-preview-view");
       const isHoverPopover = ctx.containerEl.closest(".hover-popover") !== null;
       if (!isPreview && !isHoverPopover) return;
-      const file2 = ctx.sourcePath ? this.app.vault.getAbstractFileByPath(ctx.sourcePath) : null;
-      if (!file2) return;
+      const file = ctx.sourcePath ? this.app.vault.getAbstractFileByPath(ctx.sourcePath) : null;
+      if (!file) return;
       if (isHoverPopover && !this.settings.showBannerInPopoverPreviews) return;
-      const frontmatter = (_a = this.app.metadataCache.getFileCache(file2)) == null ? void 0 : _a.frontmatter;
+      const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
       let bannerImage = null;
       for (const field of this.settings.customBannerField) {
         if (frontmatter == null ? void 0 : frontmatter[field]) {
@@ -35855,20 +36233,20 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         }
       }
       if (!bannerImage) {
-        const folderSpecific2 = this.getFolderSpecificImage(file2.path);
+        const folderSpecific2 = this.getFolderSpecificImage(file.path);
         if (folderSpecific2 == null ? void 0 : folderSpecific2.image) {
           bannerImage = folderSpecific2.image;
         }
       }
       if (!bannerImage) return;
-      const folderSpecific = this.getFolderSpecificImage(file2.path);
+      const folderSpecific = this.getFolderSpecificImage(file.path);
       const yPosition = getFrontmatterValue(frontmatter, this.settings.customYPositionField) || (folderSpecific == null ? void 0 : folderSpecific.yPosition) || this.settings.yPosition;
       const xPosition = getFrontmatterValue(frontmatter, this.settings.customXPositionField) || (folderSpecific == null ? void 0 : folderSpecific.xPosition) || this.settings.xPosition;
       const contentStartPosition = getFrontmatterValue(frontmatter, this.settings.customContentStartField) || (folderSpecific == null ? void 0 : folderSpecific.contentStartPosition) || this.settings.contentStartPosition;
       if (isHoverPopover) {
         this.addPixelBanner(ctx.containerEl, {
           frontmatter,
-          file: file2,
+          file,
           isContentChange: false,
           yPosition,
           xPosition,
@@ -35878,7 +36256,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         });
       } else {
         this.updateBanner({
-          file: file2,
+          file,
           contentEl: ctx.containerEl,
           getMode: () => "preview"
         }, false, this.UPDATE_MODE.ENSURE_VISIBILITY);
@@ -36034,9 +36412,9 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
           const contentEl = leaf.view.contentEl;
           const hasBanner = contentEl.querySelector(".pixel-banner-image");
           if (hasBanner) {
-            const file2 = leaf.view.file;
-            const frontmatter = (_a = this.app.metadataCache.getFileCache(file2)) == null ? void 0 : _a.frontmatter;
-            const previousFrontmatter = this.lastFrontmatter.get(file2.path);
+            const file = leaf.view.file;
+            const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
+            const previousFrontmatter = this.lastFrontmatter.get(file.path);
             if (JSON.stringify(frontmatter) !== JSON.stringify(previousFrontmatter)) {
               this.updateBanner(leaf.view, false);
             }
@@ -36086,9 +36464,9 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       }
     }
     if (type === "obsidianLink") {
-      const file2 = this.getPathFromObsidianLink(input);
-      if (file2) {
-        return this.getVaultImageUrl(file2.path);
+      const file = this.getPathFromObsidianLink(input);
+      if (file) {
+        return this.getVaultImageUrl(file.path);
       }
       return null;
     }
@@ -36108,8 +36486,8 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       return null;
     }
     if (type === "vaultPath") {
-      let file2 = this.app.vault.getAbstractFileByPath(input);
-      if (file2 && "extension" in file2) {
+      let file = this.app.vault.getAbstractFileByPath(input);
+      if (file && "extension" in file) {
         return this.getVaultImageUrl(input);
       }
       const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(input, sourcePath);
@@ -36256,7 +36634,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
             ...this.settings.customBannerIconPaddingXField,
             ...this.settings.customBannerIconPaddingYField,
             ...this.settings.customBannerIconBorderRadiusField,
-            ...this.settings.customBannerIconVeritalOffsetField
+            ...this.settings.customBannerIconVerticalOffsetField
           ];
           const rows = frontmatterEl.querySelectorAll(".frontmatter-container .frontmatter-section-label");
           rows.forEach((row) => {
@@ -36308,15 +36686,15 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         return { cleaned };
       }
       const imageExtensions = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "avif"];
-      const pinnedImages = pinnedFolder.children.filter((file2) => imageExtensions.includes(file2.extension.toLowerCase())).map((file2) => file2.path);
+      const pinnedImages = pinnedFolder.children.filter((file) => imageExtensions.includes(file.extension.toLowerCase())).map((file) => file.path);
       if (!pinnedImages.length) {
         return { cleaned };
       }
       const markdownFiles = this.app.vault.getMarkdownFiles();
       const bannerFields = this.settings.customBannerField;
       const referencedImages = /* @__PURE__ */ new Set();
-      for (const file2 of markdownFiles) {
-        const frontmatter = (_a = this.app.metadataCache.getFileCache(file2)) == null ? void 0 : _a.frontmatter;
+      for (const file of markdownFiles) {
+        const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
         if (frontmatter) {
           for (const field of bannerFields) {
             const bannerValue = frontmatter[field];
@@ -36328,7 +36706,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
                 cleanPath = bannerValue.replace(/["']/g, "");
               }
               if (!cleanPath.startsWith(folderPath)) {
-                const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(cleanPath, file2.path);
+                const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(cleanPath, file.path);
                 if (resolvedFile) {
                   cleanPath = resolvedFile.path;
                 }

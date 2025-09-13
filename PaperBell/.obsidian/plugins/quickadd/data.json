@@ -311,7 +311,13 @@
               "openFile": true,
               "openFileInMode": "default",
               "fileExistsMode": "Nothing",
-              "setFileExistsBehavior": true
+              "setFileExistsBehavior": true,
+              "fileOpening": {
+                "location": "tab",
+                "direction": "vertical",
+                "mode": "default",
+                "focus": true
+              }
             }
           },
           {
@@ -541,7 +547,9 @@
   "devMode": false,
   "templateFolderPath": "40 - Obsidian/模板",
   "announceUpdates": true,
-  "version": "2.1.0",
+  "version": "2.3.0",
+  "globalVariables": {},
+  "onePageInputEnabled": false,
   "disableOnlineFeatures": false,
   "enableRibbonIcon": false,
   "showCaptureNotification": true,

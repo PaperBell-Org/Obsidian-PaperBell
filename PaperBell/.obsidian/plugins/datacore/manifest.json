@@ -1,0 +1,10 @@
+{
+  "id": "datacore",
+  "name": "Datacore",
+  "version": "0.1.24",
+  "minAppVersion": "1.4.11",
+  "description": "Reactive data engine for Obsidian.md.",
+  "author": "Michael Brenan",
+  "authorUrl": "https://github.com/blacksmithgu",
+  "isDesktopOnly": false
+}

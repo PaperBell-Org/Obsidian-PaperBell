@@ -94,7 +94,7 @@
   "customBannerIconBorderRadiusField": [
     "icon-border-radius"
   ],
-  "customBannerIconVeritalOffsetField": [
+  "customBannerIconVerticalOffsetField": [
     "icon-y"
   ],
   "customBannerIconImageAlignmentField": [
@@ -134,7 +134,7 @@
   "pinnedImageFilename": "pixel-banner-image",
   "imagePropertyFormat": "![[image]]",
   "showReleaseNotes": true,
-  "lastVersion": "3.6.9",
+  "lastVersion": "3.6.13",
   "showRefreshIcon": false,
   "showViewImageIcon": false,
   "hidePixelBannerFields": true,
@@ -162,8 +162,12 @@
   "bannerIconPaddingX": "10",
   "bannerIconPaddingY": "10",
   "bannerIconBorderRadius": "17",
-  "bannerIconVeritalOffset": "0",
+  "bannerIconVerticalOffset": "0",
   "bannerIconImageAlignment": "left",
   "openTargetingModalAfterSelectingBannerOrIcon": true,
-  "enableDailyGame": false
+  "enableDailyGame": false,
+  "customBannerIconVeritalOffsetField": [
+    "icon-y"
+  ],
+  "bannerIconVeritalOffset": "0"
 }
