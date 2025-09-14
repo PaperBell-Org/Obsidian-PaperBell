@@ -1,0 +1,29 @@
+filters:
+  and:
+    - file.path.startsWith("Persons/Scholars")
+formulas:
+  当前机构: institute[0]
+  最近机构: institute[-1]
+views:
+  - type: cards
+    name: 学者列表
+    order:
+      - file.name
+      - formula.最近机构
+    cardSize: 170
+    image: note.photo
+    imageAspectRatio: 1.4
+  - type: table
+    name: 机构筛选
+    filters:
+      or:
+        - institute.containsAny(this.aliases)
+        - institute.containsAny(this.name)
+    order:
+      - file.name
+      - formula.最近机构
+    cardSize: 170
+    image: note.photo
+    imageAspectRatio: 1.4
+    columnSize:
+      file.name: 89

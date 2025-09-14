@@ -114,6 +114,15 @@ settings:
         default-light: '#ffffff8c'
         default-dark: '#202020c4'
     - 
+        id: heading-color-indicator
+        title: heading color next to indicator bar
+        title.zh: 指示条旁边显示标题的背景色
+        type: variable-themed-color
+        format: hex
+        opacity: true
+        default-light: '#ffffff8c'
+        default-dark: '#202020c4'
+    - 
         id: floating-toc-background-color
         title:  toc background color
         title.zh: 目录背景色
@@ -290,7 +299,7 @@ settings:
   --focus-heading: 0.9;
   --floating-toc-line-width: 18rem;
   --actual-toc-width: 18rem;
-
+  --heading-color-indicator:var(--background-secondary);
 
 }
 
@@ -435,11 +444,11 @@ body.enable-heading-nowrap .heading-list-item .text-wrap .text {
   text-overflow: ellipsis;
 }
 body.enable-bar-heading-text .floating-toc-div:not(:is(:hover, .pin)).floating-left .heading-list-item .text-wrap {
-  margin-left: 1.8rem;
+  margin-left: 1.5rem !important;
 
 }
 body.enable-bar-heading-text .floating-toc-div:not(:is(:hover, .pin)).floating-right .heading-list-item .text-wrap {
-  margin-right: 1.5rem;
+  margin-right: 1.8rem;
 }
 .heading-list-item .text-wrap .text:hover {
   color: var(--floating-toc-hover-color);
@@ -527,7 +536,7 @@ body.enable-bold-bar .floating-toc-div.floating-right .heading-list-item .line-w
 }
  
 body.enable-bold-bar.enable-bar-heading-text .floating-toc-div:not(:is(:hover, .pin)).floating-left .heading-list-item .text-wrap .text {
-  margin-left: 1rem;
+  margin-left: 0rem;
 }
 
 
@@ -692,7 +701,7 @@ body.enable-bold-bar .floating-toc-div:hover .heading-list-item>.line-wrap {
   max-height: calc(100% - 135px);
   left: var(--floating-toc-position);
   padding-top: 0.5rem;
-  padding-bottom: 0.5rem;
+  padding-bottom: 1.5rem;
   -ms-overflow-style: none;
   scrollbar-width: none;
  
@@ -808,6 +817,10 @@ display: none;
 }
 .workspace-leaf-content .floating-toc-div.pin.floating-right~.markdown-reading-view .markdown-preview-sizer {
   padding-right: calc(min(var(--floating-toc-line-width), var(--actual-toc-width)) - 2rem);
+}
+/* 修复：排除嵌入的笔记 */
+.workspace-leaf-content .floating-toc-div.pin.floating-right~.markdown-reading-view .markdown-preview-sizer .markdown-embed .markdown-preview-sizer {
+  padding-right: 0 !important;
 }
 
 .floating-toc-div:is(.floating-left, .floating-both)+.markdown-source-view .cm-panels {
@@ -1097,8 +1110,9 @@ body.enable-bar-heading-text .floating-toc-div:not(:is(:hover, .pin)) .heading-l
   opacity: 1;
   
 }
-body.enable-bar-heading-text .heading-list-item:is(.located, .focus) .text-wrap .text{
- background-color: var(--background-secondary);
+body.enable-bar-heading-text .heading-list-item:is(.located, .focus) .text-wrap{
+ background-color: var(--heading-color-indicator);
+ border-radius: 0.5rem;
 }
 
 body.enable-bar-heading-text .floating-toc-div:not(:is(:hover, .pin)) .heading-list-item:is(.located, .focus) .text-wrap .text {
@@ -1107,6 +1121,12 @@ body.enable-bar-heading-text .floating-toc-div:not(:is(:hover, .pin)) .heading-l
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-normal);
+  margin-left: 0;
+
+}
+body.enable-bar-heading-text.theme-dark .floating-toc-div:not(:is(:hover, .pin)) .heading-list-item:is(.located, .focus) .text-wrap .text {
+
+  mix-blend-mode: difference;
 }
 
 body.enable-bar-heading-text .floating-toc-div:not(:is(:hover, .pin)) .heading-list-item:is(.located, .focus) .text-wrap .text::before {
@@ -1969,4 +1989,220 @@ body.float-outline-style.enable-bold-bar .heading-list-item::before
 
 .floating-toc-tabs .setting-item {
  border-top: none;
+}
+
+
+
+/* 搜索容器 */
+.floating-right .floating-toc-search-container
+{
+  left: unset;
+  right: 0;
+}
+.floating-toc-search-container {
+  gap: 0;
+  position: absolute;
+  top: 60px;
+  left: 0px;
+  z-index: 1000;
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  padding: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+/* 搜索激活时，工具栏和浮动目录下移 */
+.floating-toc-div:has(.floating-toc-search-container:not([style*="display: none"])) .toolbar {
+  top: 100px !important;
+  transition: top 0.3s ease;
+}
+
+.floating-toc-div:has(.floating-toc-search-container:not([style*="display: none"])) .floating-toc {
+  top: 120px !important;
+  transition: top 0.3s ease;
+}
+
+/* 搜索输入框 */
+.floating-toc-search-input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 4px;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  font-size: 0.9em;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.floating-toc-search-input:focus {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-hsl), 0.2);
+}
+
+.floating-toc-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* 关闭按钮样式 */
+.floating-toc-search-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 3px;
+  font-size: 14px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  min-width: 20px;
+  height: 20px;
+}
+
+.floating-toc-search-close:hover {
+  background-color: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.floating-toc-search-close:active {
+  background-color: var(--background-modifier-active);
+}
+
+/* 搜索结果高亮样式 */
+.heading-list-item.search-highlight .text {
+  border-bottom: 1px solid rgba(var(--interactive-accent-rgb), 0.5);
+  transition: background-color 0.2s ease;
+  border-radius: 0px;
+}
+
+.heading-list-item.search-highlight .text {
+  color: var(--text-normal);
+}
+
+/* 当前选中项样式 */
+.heading-list-item.search-current .text {
+  border-bottom: 1px solid var(--interactive-accent);
+  border-radius: 0px;
+}
+
+
+.heading-list-item.search-current .text {
+  color: var(--interactive-accent);
+  font-weight: bold;
+}
+
+ 
+
+/* 搜索结果计数 */
+.floating-toc-search-container::after {
+  content: attr(data-result-count);
+  position: absolute;
+  top: 14px;
+  right: 30px;
+  font-size: 0.7em;
+  color: var(--text-muted);
+  padding: 2px 6px;
+
+}
+
+/* 搜索框动画 */
+.floating-toc-search-container {
+  animation: searchSlideIn 0.2s ease-out;
+}
+
+@keyframes searchSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 搜索结果高亮动画 */
+.heading-list-item.search-highlight {
+  animation: searchHighlight 0.3s ease-out;
+}
+
+@keyframes searchHighlight {
+  from {
+    background-color: rgba(var(--interactive-accent-hsl), 0.3);
+  }
+  to {
+    background-color: rgba(var(--interactive-accent-hsl), 0.1);
+  }
+}
+
+/* 当前选中项动画 */
+.heading-list-item.search-current {
+  animation: searchCurrent 0.2s ease-out;
+}
+
+@keyframes searchCurrent {
+  from {
+    transform: scale(1.02);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .floating-toc-search-container {
+    top: 5px;
+    left: 5px;
+    right: 5px;
+    padding: 6px;
+  }
+  
+  .floating-toc-search-input {
+    font-size: 1em;
+    padding: 8px;
+  }
+}
+
+/* 深色主题适配 */
+.theme-dark .floating-toc-search-container {
+  background: var(--background-secondary);
+  border-color: var(--background-modifier-border);
+}
+
+.theme-dark .floating-toc-search-input {
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+/* 搜索无结果时的样式 */
+.heading-list-item.search-highlight:not(.search-current) {
+  opacity: 0.6;
+}
+
+/* 搜索时的滚动条样式 */
+.floating-toc:has(.search-highlight) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb-bg) var(--scrollbar-bg);
+}
+
+.floating-toc:has(.search-highlight)::-webkit-scrollbar {
+  width: 6px;
+}
+
+.floating-toc:has(.search-highlight)::-webkit-scrollbar-track {
+  background: var(--scrollbar-bg);
+}
+
+.floating-toc:has(.search-highlight)::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb-bg);
+  border-radius: 3px;
 }

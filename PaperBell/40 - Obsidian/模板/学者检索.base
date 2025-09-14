@@ -1,0 +1,28 @@
+filters:
+  and:
+    - file.path.startsWith("Persons/Scholars")
+formulas:
+  当前机构: institute[0]
+  最近机构: institute[-1]
+properties:
+  note.title:
+    displayName: 称呼
+  note.email:
+    displayName: 邮箱
+views:
+  - type: table
+    name: 机构筛选
+    filters:
+      or:
+        - institute.containsAny(this.aliases)
+        - institute.containsAny(this.name)
+    order:
+      - file.name
+      - title
+      - email
+      - file.ctime
+    cardSize: 170
+    image: note.photo
+    imageAspectRatio: 1.4
+    columnSize:
+      file.name: 89
