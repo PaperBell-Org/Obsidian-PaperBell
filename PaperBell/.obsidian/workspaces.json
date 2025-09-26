@@ -322,8 +322,8 @@
                 "state": {
                   "type": "section-view",
                   "state": {},
-                  "icon": "layout-dashboard",
-                  "title": "Section View"
+                  "icon": "lucide-ghost",
+                  "title": "section-view"
                 }
               },
               {
@@ -594,7 +594,6 @@
           "bases:创建新数据库": false,
           "pexels-banner:🚩 Pixel Banner Menu": false,
           "paperbell:Search institution": false,
-          "obsidian-projects:打开项目": false,
           "daily-notes:打开/创建今天的日记": false,
           "homepage:Open homepage": false,
           "obsidian-memos:Thino": false,
@@ -611,7 +610,7 @@
         }
       },
       "active": "0fe3999b908523ec",
-      "mtime": "2025-09-26T16:05:59+02:00"
+      "mtime": "2025-09-26T22:28:34+02:00"
     }
   },
   "active": "主工作区"
