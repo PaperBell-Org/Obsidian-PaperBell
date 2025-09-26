@@ -12,7 +12,6 @@
   "obsidian-sortable",
   "obsidian-dynamic-toc",
   "obsidian-minimal-settings",
-  "obsidian-map-view",
   "tag-wrangler",
   "obsidian-pandoc-reference-list",
   "zotlit",
@@ -24,9 +23,9 @@
   "obsidian-enhancing-export",
   "floating-toc",
   "obsidian-tracker",
-  "paperbell",
   "obsidian-task-progress-bar",
   "pexels-banner",
-  "obsidian-projects",
-  "datacore"
+  "datacore",
+  "paperbell",
+  "obsidian-map-view"
 ]

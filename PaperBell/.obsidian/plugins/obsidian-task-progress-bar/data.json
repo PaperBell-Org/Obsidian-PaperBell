@@ -130,17 +130,18 @@
     "incompletedDefaultHeadingName": "Incomplete Tasks"
   },
   "quickCapture": {
-    "enableQuickCapture": false,
+    "enableQuickCapture": true,
     "targetFile": "Inbox/Tasks",
     "placeholder": "您今天想做什么？...",
     "appendToFile": "append",
-    "targetType": "fixed",
+    "targetType": "daily-note",
     "targetHeading": "",
     "dailyNoteSettings": {
       "format": "YYYY年MM月DD日",
       "folder": "00 - 每日日记/DailyNote",
       "template": "40 - Obsidian/模板/每日日记模板"
-    }
+    },
+    "enableMinimalMode": true
   },
   "workflow": {
     "enableWorkflow": false,
@@ -240,7 +241,8 @@
     "pathMappings": [],
     "metadataConfig": {
       "metadataKey": "project",
-      "enabled": false
+      "enabled": true,
+      "detectionMethods": []
     },
     "configFile": {
       "fileName": "project.md",
@@ -504,7 +506,16 @@
   "reviewSettings": {
     "PaperBell": {
       "frequency": "weekly",
-      "reviewedTaskIds": []
+      "reviewedTaskIds": [
+        "Projects/PaperBell.md-L24",
+        "Projects/PaperBell.md-L25",
+        "Projects/PaperBell.md-L26",
+        "Projects/PaperBell.md-L27",
+        "Projects/PaperBell.md-L28",
+        "00 - 每日日记/DailyNote/2025年06月30日.md-L15",
+        "00 - 每日日记/DailyNote/2025年06月30日.md-L16"
+      ],
+      "lastReviewed": 1758915663945
     }
   },
   "rewards": {
@@ -514,7 +525,7 @@
         "id": "reward-series-episode",
         "name": "观看一集喜欢的剧集",
         "occurrence": "普通",
-        "inventory": 20
+        "inventory": 19
       },
       {
         "id": "reward-champagne-project",

@@ -18,7 +18,7 @@
         "prefix": "fas",
         "icon": "fa-circle",
         "markerColor": "blue",
-        "innerHTML": "<svg class=\"map-view-icon\"><use xlink:href=\"#icon-1804148836\"></use></svg>"
+        "innerHTML": "<svg aria-hidden=\"true\" focusable=\"false\" data-prefix=\"fas\" data-icon=\"circle\" class=\"svg-inline--fa fa-circle\" role=\"img\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\" style=\"color: white;\"><path fill=\"currentColor\" d=\"M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z\"></path></svg>"
       }
     },
     {
@@ -48,9 +48,13 @@
   "openMapBehavior": "replaceCurrent",
   "openMapCtrlClickBehavior": "dedicatedPane",
   "openMapMiddleClickBehavior": "dedicatedTab",
+  "newPaneSplitDirection": "vertical",
   "newNoteNameFormat": "Location added on {{date:YYYY-MM-DD}}T{{date:HH-mm}}",
+  "newNotePath": "",
+  "newNoteTemplate": "",
   "showNoteNamePopup": true,
   "showLinkNameInPopup": "mobileOnly",
+  "showNativeObsidianHoverPopup": false,
   "showNotePreview": true,
   "showClusterPreview": false,
   "debug": false,
@@ -87,6 +91,9 @@
   },
   "maxClusterRadiusPixels": 20,
   "searchProvider": "osm",
+  "osmUser": "songshgeo@gmail.com",
+  "searchDelayMs": 250,
+  "geocodingApiKey": "",
   "useGooglePlaces": false,
   "mapSources": [
     {
@@ -102,11 +109,17 @@
   "queryForFollowActiveNote": "path:\"$PATH$\"",
   "supportRealTimeGeolocation": false,
   "fixFrontMatterOnPaste": true,
+  "geoHelperPreferApp": false,
   "geoHelperType": "url",
   "geoHelperCommand": "chrome",
   "geoHelperUrl": "https://esm7.github.io/obsidian-geo-helper/",
+  "tagForGeolocationNotes": "",
   "handleGeolinksInNotes": true,
   "showGeolinkPreview": false,
   "zoomOnGeolinkPreview": 10,
-  "routingUrl": "https://www.google.com/maps/dir/?api=1&origin={x0},{y0}&destination={x1},{y1}"
+  "handleGeolinkContextMenu": true,
+  "routingUrl": "https://www.google.com/maps/dir/?api=1&origin={x0},{y0}&destination={x1},{y1}",
+  "cacheAllTiles": true,
+  "offlineMaxTileAgeMonths": 6,
+  "offlineMaxStorageGb": 2
 }

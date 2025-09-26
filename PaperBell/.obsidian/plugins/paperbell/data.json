@@ -1,11 +1,275 @@
 {
-  "registrationId": "",
+  "registrationId": "PB-p0001-3755-2042",
   "noteLocation": "Locations/Institutes",
   "institutionNoteTemplate": "40 - Obsidian/模板/机构模板pro",
   "autoGenerateInstitutionNotes": true,
   "openInstitutionAfterCreation": true,
   "listenToFileCreatedInPath": "Persons/Scholars",
   "enableUpdater": false,
+  "landing": {
+    "firstLoad": false,
+    "completedSteps": {
+      "renameRepo": false,
+      "configurePlugins": {
+        "obsidian-pandoc-reference-list": false,
+        "obsidian-memos": false,
+        "zotlit": false,
+        "soundscapes": false
+      },
+      "customizeTheme": false
+    }
+  },
+  "componentDataSources": {
+    "academicOverview": {
+      "type": "folder",
+      "displayName": "学术概览",
+      "description": "展示学术研究的整体概况和统计信息",
+      "useMockData": false,
+      "refreshInterval": 0,
+      "cacheTimeout": 5000,
+      "metricsSource": "calculated",
+      "metrics": {
+        "literatureTotalSource": "zotero",
+        "draftsSource": "frontmatter",
+        "publishedSource": "frontmatter",
+        "manual": {},
+        "external": {},
+        "draftsFrontmatter": "published: false",
+        "publishedFrontmatter": "published: true",
+        "progressSource": "folder",
+        "progressFolderPath": "Outputs"
+      },
+      "recursive": true,
+      "folderPath": "Inputs/Zotero"
+    },
+    "todayFocus": {
+      "type": "folder",
+      "displayName": "今日聚焦",
+      "description": "显示今天需要关注的重要任务和事项",
+      "useMockData": false,
+      "taskSources": [],
+      "priorityField": "priority",
+      "deadlineField": "due",
+      "refreshInterval": 60000,
+      "cacheTimeout": 5000
+    },
+    "recentLiterature": {
+      "type": "folder",
+      "displayName": "最近文献",
+      "description": "展示最近阅读和收集的学术文献",
+      "useMockData": false,
+      "paperFields": {
+        "title": "title",
+        "authors": "authors",
+        "year": "year",
+        "journal": "journal",
+        "doi": "doi",
+        "keywords": "keywords",
+        "abstract": "abstract"
+      },
+      "maxAge": 30,
+      "refreshInterval": 300000,
+      "cacheTimeout": 60000,
+      "folderPath": "Inputs/Zotero"
+    },
+    "researchFocusMap": {
+      "type": "folder",
+      "displayName": "研究焦点地图",
+      "description": "可视化展示研究领域和关注重点",
+      "useMockData": false,
+      "topicField": "topic",
+      "weightField": "weight",
+      "refreshInterval": 0,
+      "cacheTimeout": 60000,
+      "trackingTags": [
+        "project"
+      ],
+      "folderPath": "Cards/Concepts",
+      "recursive": true
+    },
+    "projectBaseManager": {
+      "type": "folder",
+      "displayName": "项目管理",
+      "description": "管理和跟踪研究项目的进展状态",
+      "useMockData": false,
+      "statusField": "status",
+      "progressField": "progress",
+      "teamField": "team",
+      "refreshInterval": 60000,
+      "cacheTimeout": 5000,
+      "identifyMode": "frontmatter",
+      "frontmatterKey": "project",
+      "typeValues": [
+        "project"
+      ]
+    },
+    "papersManager": {
+      "type": "folder",
+      "displayName": "研究论文",
+      "description": "论文写作、审核状态和发表进度管理",
+      "useMockData": false,
+      "paperFields": {
+        "title": "title",
+        "authors": "authors",
+        "status": "status",
+        "journal": "journal",
+        "year": "year"
+      },
+      "refreshInterval": 300000,
+      "cacheTimeout": 60000,
+      "identifyMode": "frontmatter",
+      "frontmatterKey": "read",
+      "typeValues": [
+        "✅初读",
+        "👀浏览",
+        "🤔精读"
+      ],
+      "folderPath": "Inputs/Zotero",
+      "tagIdentifier": "read"
+    },
+    "experimentsManager": {
+      "type": "folder",
+      "displayName": "实验数据",
+      "description": "实验设计、数据收集和结果分析",
+      "useMockData": false,
+      "experimentFields": {
+        "title": "title",
+        "status": "status",
+        "startDate": "startDate",
+        "endDate": "endDate",
+        "description": "description"
+      },
+      "refreshInterval": 180000,
+      "cacheTimeout": 30000,
+      "identifyMode": "frontmatter",
+      "frontmatterKey": "experiment",
+      "typeValues": [
+        "experiment",
+        "experimental-data"
+      ]
+    },
+    "tasksManager": {
+      "type": "folder",
+      "displayName": "科研课题",
+      "description": "课题管理、任务分解和进度跟踪",
+      "useMockData": false,
+      "taskFields": {
+        "title": "title",
+        "status": "status",
+        "priority": "priority",
+        "deadline": "deadline",
+        "assignee": "assignee"
+      },
+      "refreshInterval": 120000,
+      "cacheTimeout": 15000,
+      "identifyMode": "frontmatter",
+      "frontmatterKey": "task",
+      "typeValues": [
+        "task",
+        "research-task"
+      ],
+      "folderPath": "Projects"
+    },
+    "resourcesManager": {
+      "type": "folder",
+      "displayName": "学术资源",
+      "description": "文献、工具、数据集和参考资料",
+      "useMockData": false,
+      "resourceFields": {
+        "title": "title",
+        "type": "type",
+        "url": "url",
+        "description": "description",
+        "tags": "tags"
+      },
+      "refreshInterval": 600000,
+      "cacheTimeout": 120000,
+      "identifyMode": "folder",
+      "frontmatterKey": "source",
+      "typeValues": [],
+      "filePath": "Inputs/scholar_links.md",
+      "folderPath": "Inputs/Links",
+      "tagIdentifier": "source"
+    },
+    "bookShelf": {
+      "type": "folder",
+      "displayName": "书架",
+      "description": "展示个人图书收藏和阅读进度",
+      "useMockData": false,
+      "bookFields": {
+        "title": "title",
+        "author": "author",
+        "cover": "cover",
+        "rating": "rating",
+        "progress": "progress",
+        "category": "category",
+        "tags": "tags"
+      },
+      "refreshInterval": 0,
+      "cacheTimeout": 30000,
+      "folderPath": "Inputs/Books"
+    },
+    "todoManager": {
+      "type": "folder",
+      "displayName": "待办管理",
+      "description": "管理和跟踪个人待办事项",
+      "useMockData": false,
+      "todoPattern": "- [ ]",
+      "completedPattern": "- [x]",
+      "priorityMarkers": {
+        "high": "!!!",
+        "medium": "!!",
+        "low": "!"
+      },
+      "refreshInterval": 30000,
+      "cacheTimeout": 5000
+    },
+    "recentBooks": {
+      "type": "folder",
+      "displayName": "最近阅读",
+      "description": "展示最近阅读的书籍和进度",
+      "useMockData": false,
+      "daysToConsider": 30,
+      "progressTracking": true,
+      "refreshInterval": 60000,
+      "cacheTimeout": 10000
+    },
+    "readingAnalytics": {
+      "type": "folder",
+      "displayName": "阅读分析",
+      "description": "分析和统计个人阅读习惯和数据",
+      "useMockData": false,
+      "trackingMethod": "automatic",
+      "metricsToTrack": [
+        "pages",
+        "time",
+        "books"
+      ],
+      "refreshInterval": 300000,
+      "cacheTimeout": 60000
+    }
+  },
+  "dataServiceConfig": {
+    "userProfile": {
+      "name": "PaperBell",
+      "title": "Scholar",
+      "email": "researcher@example.com",
+      "institution": "PaperBell Pro",
+      "avatar": ""
+    },
+    "dataSources": {
+      "booksFolder": "Books",
+      "projectsFolder": "Projects",
+      "papersFolder": "Papers",
+      "notesFolder": "Notes",
+      "literatureFolder": "Inputs/Zotero",
+      "experimentsFolder": "Drafts",
+      "resourcesFolder": "Inputs",
+      "todosSource": "dataview",
+      "todosFolder": "Tasks"
+    },
+    "componentSettings": {}
+  },
   "updater": {
     "repository": "PaperBell-Org/Obsidian-PaperBell",
     "excludePatterns": [
@@ -19,6 +283,124 @@
       "themes": "prompt",
       "snippets": "prompt",
       "plugins": "prompt"
+    }
+  },
+  "userProfile": {
+    "name": "PaperBell",
+    "title": "Scholar",
+    "email": "user@example.com",
+    "institution": "PaperBell Pro",
+    "avatar": "https://avatars.githubusercontent.com/u/196615410?s=400&u=7f34975ce8ebc7e3247d85ab1a0c560012ec4892&v=4"
+  },
+  "displaySettings": {
+    "titleWrap": true,
+    "authorWrap": true,
+    "keywordsWrap": true,
+    "tagsWrap": true
+  },
+  "heatmapSettings": {
+    "gridSize": 50,
+    "borderRadius": 4
+  },
+  "researchFocusSettings": {
+    "trackingTags": [
+      "project"
+    ],
+    "gridSize": 50,
+    "borderRadius": 4
+  },
+  "componentSettings": {
+    "academicOverview": {
+      "showCitations": true,
+      "showTrends": true,
+      "trendDays": 30
+    },
+    "todayFocus": {
+      "maxItems": 5,
+      "showProgress": true,
+      "showDeadlines": true
+    },
+    "recentLiterature": {
+      "maxPapers": 10,
+      "showAbstract": false,
+      "showKeywords": true,
+      "sortBy": "date"
+    },
+    "researchFocus": {
+      "showLabels": true,
+      "maxTopics": 20,
+      "colorScheme": "default"
+    },
+    "projectManager": {
+      "defaultView": "grid",
+      "showArchived": false,
+      "taskFilters": true
+    },
+    "bookShelf": {
+      "viewMode": "covers",
+      "sortBy": "recent",
+      "showProgress": true
+    },
+    "todoManager": {
+      "showCompleted": false,
+      "maxDays": 7,
+      "priorities": true
+    },
+    "readingAnalytics": {
+      "chartType": "line",
+      "timeRange": "week",
+      "showGoals": true
+    }
+  },
+  "themeColors": {
+    "light": {
+      "primary": "#648EC0",
+      "secondary": "#B0D2EC",
+      "muted": "#B5ACA3",
+      "muted-foreground": "#849DBB",
+      "foreground": "#533A33",
+      "background": "#ffffff",
+      "ticket-bg-start": "#FFF4E6",
+      "ticket-bg-end": "#FFE7CC",
+      "ticket-border": "#fed7aa",
+      "ticket-accent": "#FFB86A",
+      "ticket-text": "#92400e",
+      "ticket-text-muted": "#9ca3af"
+    },
+    "dark": {
+      "primary": "#8b5cf6",
+      "secondary": "#3730a3",
+      "muted": "#262640",
+      "muted-foreground": "#94a3b8",
+      "foreground": "#e2e8f0",
+      "background": "#0f0f23",
+      "ticket-bg-start": "#262640",
+      "ticket-bg-end": "#1a1a35",
+      "ticket-border": "#374151",
+      "ticket-accent": "#8b5cf6",
+      "ticket-text": "#e2e8f0",
+      "ticket-text-muted": "#94a3b8"
+    }
+  },
+  "themeModePreference": "system",
+  "darkMode": false,
+  "pomodoroSettings": {
+    "workDuration": 25,
+    "shortBreakDuration": 5,
+    "longBreakDuration": 15,
+    "longBreakInterval": 4,
+    "enableNotifications": true,
+    "enableStatusBar": true,
+    "autoStartBreaks": false,
+    "autoStartWork": false
+  },
+  "literatureSettings": {
+    "folderPath": "Inputs/Zotero",
+    "displaySettings": {
+      "titleWrap": true,
+      "authorWrap": true,
+      "keywordsWrap": true,
+      "tagsWrap": true
     }
   },
   "ZotLitColors": {

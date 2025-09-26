@@ -1,1 +1,11 @@
-{"id":"paperbell","name":"PaperBell","description":"Supercharges your academic writing workflow.","version":"0.2.6","author":"Paperbell","authorUrl":"https://github.com/paperbell-org","isDesktopOnly":false,"minAppVersion":"1.0.0"}
+{
+	"id": "paperbell",
+	"name": "Paperbell",
+	"version": "0.0.1",
+	"minAppVersion": "0.15.0",
+	"description": "Supercharges your academic writing workflow.",
+	"author": "Paperbell",
+	"authorUrl": "https://github.com/paperbell-group",
+	"fundingUrl": {},
+	"isDesktopOnly": false
+}

@@ -302,7 +302,7 @@
             "type": "tabs",
             "children": [
               {
-                "id": "09485baf3a99e2db",
+                "id": "0fe3999b908523ec",
                 "type": "leaf",
                 "state": {
                   "type": "markdown",
@@ -314,6 +314,16 @@
                   },
                   "icon": "lucide-file",
                   "title": "00. 主页"
+                }
+              },
+              {
+                "id": "09485baf3a99e2db",
+                "type": "leaf",
+                "state": {
+                  "type": "section-view",
+                  "state": {},
+                  "icon": "layout-dashboard",
+                  "title": "Section View"
                 }
               },
               {
@@ -332,8 +342,8 @@
                 "state": {
                   "type": "task-genius-view",
                   "state": {},
-                  "icon": "inbox",
-                  "title": "收件箱"
+                  "icon": "folders",
+                  "title": "项目"
                 }
               }
             ]
@@ -580,6 +590,9 @@
       },
       "left-ribbon": {
         "hiddenItems": {
+          "paperbell:Open Section View Dashboard": false,
+          "bases:创建新数据库": false,
+          "pexels-banner:🚩 Pixel Banner Menu": false,
           "paperbell:Search institution": false,
           "obsidian-projects:打开项目": false,
           "daily-notes:打开/创建今天的日记": false,
@@ -597,8 +610,8 @@
           "obsidian-task-progress-bar:打开 Task Genius 视图": false
         }
       },
-      "active": "09485baf3a99e2db",
-      "mtime": "2025-07-06T11:07:33+02:00"
+      "active": "0fe3999b908523ec",
+      "mtime": "2025-09-26T16:05:59+02:00"
     }
   },
   "active": "主工作区"
