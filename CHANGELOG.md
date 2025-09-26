@@ -86,6 +86,13 @@
 - 修复了一些已知问题 📅 2024-05-13
 
 <a id='changelog-0.1.0'></a>
+## [4.3.2](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.1...v4.3.2) (2025-09-26)
+
+
+### Bug Fixes
+
+* **daily-note:** Add a quick note for section view feature announcement and feedback request ([339d1b3](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/339d1b3b4f5c6062f9c8de687c366a394f4f3455))
+
 ## [4.3.1](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.0...v4.3.1) (2025-09-26)
 
 
