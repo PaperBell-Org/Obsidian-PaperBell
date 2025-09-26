@@ -33,513 +33,526 @@
         "focus": true
       },
       "openFile": false,
-      "openFileInMode": "default"
+      "openFileInMode": "default",
+      "fileOpening": {
+        "location": "tab",
+        "direction": "vertical",
+        "focus": true,
+        "mode": "default"
+      }
     },
     {
       "id": "70bc3b46-36b1-4ec1-9242-439eaba8f069",
       "name": "打开文件",
       "type": "Macro",
       "command": true,
-      "macroId": "e8c5951d-5def-4d6f-8511-1e5bd1f303b2"
+      "macro": {
+        "id": "e8c5951d-5def-4d6f-8511-1e5bd1f303b2",
+        "name": "打开任务面板",
+        "commands": [
+          {
+            "name": "test",
+            "type": "UserScript",
+            "id": "62ff79ae-122e-49dc-a491-b10c8e6fa7f2",
+            "path": "40 - Obsidian/脚本/QuickAdd/test.js",
+            "settings": {}
+          }
+        ]
+      },
+      "runOnStartup": false
     },
     {
       "id": "4c196a45-7fd7-44e4-81e1-77ca0a8ed850",
       "name": "添加学者",
       "type": "Macro",
       "command": true,
-      "macroId": "aebaddb8-d6ca-4460-b3e4-9ef9a4613ec8"
+      "macro": {
+        "id": "aebaddb8-d6ca-4460-b3e4-9ef9a4613ec8",
+        "name": "添加学者",
+        "commands": [
+          {
+            "name": "添加学者",
+            "type": "NestedChoice",
+            "id": "760fc219-b57e-4c88-839c-8f8d228db9de",
+            "choice": {
+              "id": "59302970-47f9-486a-85c6-4a5225207799",
+              "name": "添加学者",
+              "type": "Template",
+              "command": false,
+              "templatePath": "40 - Obsidian/模板/学者模板.md",
+              "fileNameFormat": {
+                "enabled": true,
+                "format": "{{name}}"
+              },
+              "folder": {
+                "enabled": true,
+                "folders": [
+                  "Persons/Scholars"
+                ],
+                "chooseWhenCreatingNote": false,
+                "createInSameFolderAsActiveFile": false,
+                "chooseFromSubfolders": false
+              },
+              "appendLink": false,
+              "openFileInNewTab": {
+                "enabled": false,
+                "direction": "vertical",
+                "focus": true
+              },
+              "openFile": true,
+              "openFileInMode": "source",
+              "fileExistsMode": "Nothing",
+              "setFileExistsBehavior": false
+            }
+          },
+          {
+            "name": "Wait",
+            "type": "Wait",
+            "id": "ff7a0b96-7a9c-4d97-97a2-441e467d7fa1",
+            "time": 100
+          },
+          {
+            "name": "添加YAML",
+            "type": "NestedChoice",
+            "id": "60c5a6d8-410c-4cf4-939d-5cae6e63acb6",
+            "choice": {
+              "id": "55395608-33b7-43d2-9156-45ec08488cd4",
+              "name": "添加YAML",
+              "type": "Capture",
+              "command": false,
+              "appendLink": false,
+              "captureTo": "",
+              "captureToActiveFile": true,
+              "createFileIfItDoesntExist": {
+                "enabled": false,
+                "createWithTemplate": false,
+                "template": ""
+              },
+              "format": {
+                "enabled": true,
+                "format": "aliases:\ngender: {{VALUE:性别}}\nbirthday:\nemail: \n- {{VALUE:邮箱}}\ntitle:\n- {{VALUE:称谓}}\nwebsite: {{VALUE:主页链接}}\nphoto: \"{{VALUE:照片链接}}\"\ntags: scholar\ninstitute:\n- {{VALUE:所在机构}}\n"
+              },
+              "insertAfter": {
+                "enabled": true,
+                "after": "---",
+                "insertAtEnd": false,
+                "considerSubsections": false,
+                "createIfNotFound": false,
+                "createIfNotFoundLocation": "top"
+              },
+              "prepend": false,
+              "task": false,
+              "openFileInNewTab": {
+                "enabled": false,
+                "direction": "vertical",
+                "focus": true
+              },
+              "openFile": false,
+              "openFileInMode": "default"
+            }
+          },
+          {
+            "name": "Wait",
+            "type": "Wait",
+            "id": "7121dbd9-9074-4ccd-a800-7ceaa48c058e",
+            "time": 100
+          },
+          {
+            "name": "切换编辑/预览视图",
+            "type": "Obsidian",
+            "id": "936eb250-6661-473b-8956-b1b6681135b1",
+            "commandId": "markdown:toggle-preview"
+          }
+        ]
+      },
+      "runOnStartup": false
     },
     {
       "id": "3a8c386c-c609-4ed3-b538-bc93d38dcc4a",
       "name": "添加机构",
       "type": "Macro",
       "command": true,
-      "macroId": "ab5afef8-da82-4356-8c45-e7d89441273a"
+      "macro": {
+        "id": "ab5afef8-da82-4356-8c45-e7d89441273a",
+        "name": "添加机构",
+        "commands": [
+          {
+            "name": "创建文件",
+            "type": "NestedChoice",
+            "id": "c6d53609-92ec-491f-9205-e3862fc880c3",
+            "choice": {
+              "id": "92e63ad1-8c05-4ac9-be36-44945814717f",
+              "name": "创建文件",
+              "type": "Template",
+              "command": false,
+              "templatePath": "40 - Obsidian/模板/机构模板.md",
+              "fileNameFormat": {
+                "enabled": true,
+                "format": "{{name}}"
+              },
+              "folder": {
+                "enabled": true,
+                "folders": [
+                  "Locations/Institutes"
+                ],
+                "chooseWhenCreatingNote": false,
+                "createInSameFolderAsActiveFile": false,
+                "chooseFromSubfolders": false
+              },
+              "appendLink": false,
+              "openFileInNewTab": {
+                "enabled": false,
+                "direction": "vertical",
+                "focus": true
+              },
+              "openFile": true,
+              "openFileInMode": "preview",
+              "fileExistsMode": "Nothing",
+              "setFileExistsBehavior": true
+            }
+          }
+        ]
+      },
+      "runOnStartup": false
     },
     {
       "id": "17482caf-7b7c-43cf-a81d-4944cc8c19cc",
       "name": "豆瓣读书",
       "type": "Macro",
       "command": true,
-      "macroId": "37101f53-b505-422d-a356-0694b31c0d67"
+      "macro": {
+        "id": "37101f53-b505-422d-a356-0694b31c0d67",
+        "name": "Douban Book",
+        "commands": [
+          {
+            "name": "bookfromdouban",
+            "type": "UserScript",
+            "id": "af736b53-cac6-4de3-be70-04a4b5c83eb1",
+            "path": "40 - Obsidian/脚本/QuickAdd/bookfromdouban.js",
+            "settings": {}
+          },
+          {
+            "name": "豆瓣读书笔记",
+            "type": "NestedChoice",
+            "id": "e1ccd4be-bf0b-4fa1-80f0-264fdb011ba7",
+            "choice": {
+              "id": "0d2c6a3a-f8c2-40ec-96f5-d7f55cc59e54",
+              "name": "豆瓣读书笔记",
+              "type": "Template",
+              "command": false,
+              "templatePath": "40 - Obsidian/模板/douban_book.md",
+              "fileNameFormat": {
+                "enabled": true,
+                "format": "{{VALUE:bookname}}"
+              },
+              "folder": {
+                "enabled": true,
+                "folders": [
+                  "Inputs/Books"
+                ],
+                "chooseWhenCreatingNote": false,
+                "createInSameFolderAsActiveFile": false,
+                "chooseFromSubfolders": false
+              },
+              "appendLink": false,
+              "openFileInNewTab": {
+                "enabled": true,
+                "direction": "vertical",
+                "focus": true
+              },
+              "openFile": true,
+              "openFileInMode": "default",
+              "fileExistsMode": "Increment the file name",
+              "setFileExistsBehavior": true
+            }
+          }
+        ]
+      },
+      "runOnStartup": false
     },
     {
       "id": "e6b084c1-451d-47fb-b1df-82a93b7163a8",
       "name": "添加术语",
       "type": "Macro",
       "command": true,
-      "macroId": "e3f026bd-2ae8-4fea-aa51-8033b4bed5d5"
+      "macro": {
+        "id": "e3f026bd-2ae8-4fea-aa51-8033b4bed5d5",
+        "name": "添加术语",
+        "commands": [
+          {
+            "name": "创建术语模板",
+            "type": "NestedChoice",
+            "id": "963bff7f-00e0-4acf-8dbe-16d353e08d3c",
+            "choice": {
+              "id": "2c0ef45d-2434-4b6d-83cf-28614bdce6be",
+              "name": "创建术语模板",
+              "type": "Template",
+              "command": false,
+              "templatePath": "40 - Obsidian/模板/术语模板.md",
+              "fileNameFormat": {
+                "enabled": true,
+                "format": "{{VALUE:name}}"
+              },
+              "folder": {
+                "enabled": true,
+                "folders": [
+                  "Cards/Concepts"
+                ],
+                "chooseWhenCreatingNote": false,
+                "createInSameFolderAsActiveFile": false,
+                "chooseFromSubfolders": false
+              },
+              "appendLink": false,
+              "openFileInNewTab": {
+                "enabled": false,
+                "direction": "vertical",
+                "focus": true
+              },
+              "openFile": true,
+              "openFileInMode": "default",
+              "fileExistsMode": "Nothing",
+              "setFileExistsBehavior": true,
+              "fileOpening": {
+                "location": "tab",
+                "direction": "vertical",
+                "mode": "default",
+                "focus": true
+              }
+            }
+          },
+          {
+            "name": "Wait",
+            "type": "Wait",
+            "id": "5e123e2b-758b-40d7-96de-88f2b49dc4b5",
+            "time": 100
+          },
+          {
+            "name": "添加元信息",
+            "type": "NestedChoice",
+            "id": "b6c03612-3b4e-4715-bf34-6c006a9196a6",
+            "choice": {
+              "id": "ba5784cd-efbc-4f4e-9296-006a1492155e",
+              "name": "添加元信息",
+              "type": "Capture",
+              "command": false,
+              "appendLink": false,
+              "captureTo": "",
+              "captureToActiveFile": true,
+              "createFileIfItDoesntExist": {
+                "enabled": false,
+                "createWithTemplate": false,
+                "template": ""
+              },
+              "format": {
+                "enabled": true,
+                "format": "name: {{VALUE:name}}\nalias:\nch: {{VALUE:中文名}}\nframework:\n"
+              },
+              "insertAfter": {
+                "enabled": true,
+                "after": "---",
+                "insertAtEnd": false,
+                "considerSubsections": false,
+                "createIfNotFound": true,
+                "createIfNotFoundLocation": "top"
+              },
+              "prepend": false,
+              "task": false,
+              "openFileInNewTab": {
+                "enabled": false,
+                "direction": "vertical",
+                "focus": true
+              },
+              "openFile": false,
+              "openFileInMode": "default"
+            }
+          }
+        ]
+      },
+      "runOnStartup": false
     },
     {
       "id": "cb4f9238-71e9-4a94-94b2-b9bae146cb6b",
       "name": "智能术语",
       "type": "Macro",
       "command": true,
-      "macroId": "da41a0be-b1a8-466c-86c8-871dfcf75915"
-    }
-  ],
-  "macros": [
-    {
-      "name": "打开任务面板",
-      "id": "e8c5951d-5def-4d6f-8511-1e5bd1f303b2",
-      "commands": [
-        {
-          "name": "test",
-          "type": "UserScript",
-          "id": "62ff79ae-122e-49dc-a491-b10c8e6fa7f2",
-          "path": "40 - Obsidian/脚本/QuickAdd/test.js",
-          "settings": {}
-        }
-      ],
-      "runOnStartup": false
-    },
-    {
-      "name": "添加学者",
-      "id": "aebaddb8-d6ca-4460-b3e4-9ef9a4613ec8",
-      "commands": [
-        {
-          "name": "添加学者",
-          "type": "NestedChoice",
-          "id": "760fc219-b57e-4c88-839c-8f8d228db9de",
-          "choice": {
-            "id": "59302970-47f9-486a-85c6-4a5225207799",
-            "name": "添加学者",
-            "type": "Template",
-            "command": false,
-            "templatePath": "40 - Obsidian/模板/学者模板.md",
-            "fileNameFormat": {
-              "enabled": true,
-              "format": "{{name}}"
-            },
-            "folder": {
-              "enabled": true,
-              "folders": [
-                "Persons/Scholars"
-              ],
-              "chooseWhenCreatingNote": false,
-              "createInSameFolderAsActiveFile": false,
-              "chooseFromSubfolders": false
-            },
-            "appendLink": false,
-            "openFileInNewTab": {
-              "enabled": false,
-              "direction": "vertical",
-              "focus": true
-            },
-            "openFile": true,
-            "openFileInMode": "source",
-            "fileExistsMode": "Nothing",
-            "setFileExistsBehavior": false
-          }
-        },
-        {
-          "name": "Wait",
-          "type": "Wait",
-          "id": "ff7a0b96-7a9c-4d97-97a2-441e467d7fa1",
-          "time": 100
-        },
-        {
-          "name": "添加YAML",
-          "type": "NestedChoice",
-          "id": "60c5a6d8-410c-4cf4-939d-5cae6e63acb6",
-          "choice": {
-            "id": "55395608-33b7-43d2-9156-45ec08488cd4",
-            "name": "添加YAML",
-            "type": "Capture",
-            "command": false,
-            "appendLink": false,
-            "captureTo": "",
-            "captureToActiveFile": true,
-            "createFileIfItDoesntExist": {
-              "enabled": false,
-              "createWithTemplate": false,
-              "template": ""
-            },
-            "format": {
-              "enabled": true,
-              "format": "aliases:\ngender: {{VALUE:性别}}\nbirthday:\nemail: \n- {{VALUE:邮箱}}\ntitle:\n- {{VALUE:称谓}}\nwebsite: {{VALUE:主页链接}}\nphoto: \"{{VALUE:照片链接}}\"\ntags: scholar\ninstitute:\n- {{VALUE:所在机构}}\n"
-            },
-            "insertAfter": {
-              "enabled": true,
-              "after": "---",
-              "insertAtEnd": false,
-              "considerSubsections": false,
-              "createIfNotFound": false,
-              "createIfNotFoundLocation": "top"
-            },
-            "prepend": false,
-            "task": false,
-            "openFileInNewTab": {
-              "enabled": false,
-              "direction": "vertical",
-              "focus": true
-            },
-            "openFile": false,
-            "openFileInMode": "default"
-          }
-        },
-        {
-          "name": "Wait",
-          "type": "Wait",
-          "id": "7121dbd9-9074-4ccd-a800-7ceaa48c058e",
-          "time": 100
-        },
-        {
-          "name": "切换编辑/预览视图",
-          "type": "Obsidian",
-          "id": "936eb250-6661-473b-8956-b1b6681135b1",
-          "commandId": "markdown:toggle-preview"
-        }
-      ],
-      "runOnStartup": false
-    },
-    {
-      "name": "添加机构",
-      "id": "ab5afef8-da82-4356-8c45-e7d89441273a",
-      "commands": [
-        {
-          "name": "创建文件",
-          "type": "NestedChoice",
-          "id": "c6d53609-92ec-491f-9205-e3862fc880c3",
-          "choice": {
-            "id": "92e63ad1-8c05-4ac9-be36-44945814717f",
-            "name": "创建文件",
-            "type": "Template",
-            "command": false,
-            "templatePath": "40 - Obsidian/模板/机构模板.md",
-            "fileNameFormat": {
-              "enabled": true,
-              "format": "{{name}}"
-            },
-            "folder": {
-              "enabled": true,
-              "folders": [
-                "Locations/Institutes"
-              ],
-              "chooseWhenCreatingNote": false,
-              "createInSameFolderAsActiveFile": false,
-              "chooseFromSubfolders": false
-            },
-            "appendLink": false,
-            "openFileInNewTab": {
-              "enabled": false,
-              "direction": "vertical",
-              "focus": true
-            },
-            "openFile": true,
-            "openFileInMode": "preview",
-            "fileExistsMode": "Nothing",
-            "setFileExistsBehavior": true
-          }
-        }
-      ],
-      "runOnStartup": false
-    },
-    {
-      "name": "添加学术项目",
-      "id": "38b50e25-951b-4c63-a1ec-e63e205d89cd",
-      "commands": [
-        {
-          "name": "创建项目文档",
-          "type": "NestedChoice",
-          "id": "b8db7c15-93e0-4980-88a2-b69a70a92af2",
-          "choice": {
-            "id": "5fa56c88-f5d8-4e24-9268-c710d0f3b0b3",
-            "name": "创建项目文档",
-            "type": "Template",
-            "command": false,
-            "templatePath": "40 - Obsidian/模板/项目模板.md",
-            "fileNameFormat": {
-              "enabled": true,
-              "format": "{{name}}"
-            },
-            "folder": {
-              "enabled": true,
-              "folders": [
-                "Projects/Scholar"
-              ],
-              "chooseWhenCreatingNote": false,
-              "createInSameFolderAsActiveFile": false,
-              "chooseFromSubfolders": false
-            },
-            "appendLink": false,
-            "openFileInNewTab": {
-              "enabled": false,
-              "direction": "vertical",
-              "focus": true
-            },
-            "openFile": true,
-            "openFileInMode": "default",
-            "fileExistsMode": "Nothing",
-            "setFileExistsBehavior": true
-          }
-        },
-        {
-          "name": "Wait",
-          "type": "Wait",
-          "id": "628a8415-dce8-4574-a133-5a37b75808a1",
-          "time": 100
-        },
-        {
-          "name": "添加元数据",
-          "type": "NestedChoice",
-          "id": "9c5e83df-f44e-4e48-83e1-d0c02cf2f960",
-          "choice": {
-            "id": "19ad923e-a846-46f9-84eb-26c097ea0fbc",
-            "name": "添加元数据",
-            "type": "Capture",
-            "command": false,
-            "appendLink": false,
-            "captureTo": "",
-            "captureToActiveFile": true,
-            "createFileIfItDoesntExist": {
-              "enabled": false,
-              "createWithTemplate": false,
-              "template": ""
-            },
-            "format": {
-              "enabled": true,
-              "format": "---\nuid: SC-{{DATE:YYYYMMDD}}-{{VALUE:项目缩写}}\nabbr: {{VALUE:项目缩写}}\nalias:\n- SC-{{DATE:YYYYMMDD}}-{{VALUE:项目缩写}}\nfunding: {{VALUE:资助来源}}\nprincipal: {{VALUE:负责人}}\nparticipants:\nstart: {{date}}\nend: \nstatus: {{VALUE:状态}}\nfounding_no: \ntags:\n- project/scholar\n- project/open\n"
-            },
-            "insertAfter": {
-              "enabled": true,
-              "after": "",
-              "insertAtEnd": false,
-              "considerSubsections": false,
-              "createIfNotFound": false,
-              "createIfNotFoundLocation": "top"
-            },
-            "prepend": false,
-            "task": false,
-            "openFileInNewTab": {
-              "enabled": false,
-              "direction": "vertical",
-              "focus": true
-            },
-            "openFile": false,
-            "openFileInMode": "default"
-          }
-        }
-      ],
-      "runOnStartup": false
-    },
-    {
-      "name": "Douban Book",
-      "id": "37101f53-b505-422d-a356-0694b31c0d67",
-      "commands": [
-        {
-          "name": "bookfromdouban",
-          "type": "UserScript",
-          "id": "af736b53-cac6-4de3-be70-04a4b5c83eb1",
-          "path": "40 - Obsidian/脚本/QuickAdd/bookfromdouban.js",
-          "settings": {}
-        },
-        {
-          "name": "豆瓣读书笔记",
-          "type": "NestedChoice",
-          "id": "e1ccd4be-bf0b-4fa1-80f0-264fdb011ba7",
-          "choice": {
-            "id": "0d2c6a3a-f8c2-40ec-96f5-d7f55cc59e54",
-            "name": "豆瓣读书笔记",
-            "type": "Template",
-            "command": false,
-            "templatePath": "40 - Obsidian/模板/douban_book.md",
-            "fileNameFormat": {
-              "enabled": true,
-              "format": "{{VALUE:bookname}}"
-            },
-            "folder": {
-              "enabled": true,
-              "folders": [
-                "Inputs/Books"
-              ],
-              "chooseWhenCreatingNote": false,
-              "createInSameFolderAsActiveFile": false,
-              "chooseFromSubfolders": false
-            },
-            "appendLink": false,
-            "openFileInNewTab": {
-              "enabled": true,
-              "direction": "vertical",
-              "focus": true
-            },
-            "openFile": true,
-            "openFileInMode": "default",
-            "fileExistsMode": "Increment the file name",
-            "setFileExistsBehavior": true
-          }
-        }
-      ],
-      "runOnStartup": false
-    },
-    {
-      "name": "添加术语",
-      "id": "e3f026bd-2ae8-4fea-aa51-8033b4bed5d5",
-      "commands": [
-        {
-          "name": "创建术语模板",
-          "type": "NestedChoice",
-          "id": "963bff7f-00e0-4acf-8dbe-16d353e08d3c",
-          "choice": {
-            "id": "2c0ef45d-2434-4b6d-83cf-28614bdce6be",
-            "name": "创建术语模板",
-            "type": "Template",
-            "command": false,
-            "templatePath": "40 - Obsidian/模板/术语模板.md",
-            "fileNameFormat": {
-              "enabled": true,
-              "format": "{{VALUE:name}}"
-            },
-            "folder": {
-              "enabled": true,
-              "folders": [
-                "Cards/Concepts"
-              ],
-              "chooseWhenCreatingNote": false,
-              "createInSameFolderAsActiveFile": false,
-              "chooseFromSubfolders": false
-            },
-            "appendLink": false,
-            "openFileInNewTab": {
-              "enabled": false,
-              "direction": "vertical",
-              "focus": true
-            },
-            "openFile": true,
-            "openFileInMode": "default",
-            "fileExistsMode": "Nothing",
-            "setFileExistsBehavior": true
-          }
-        },
-        {
-          "name": "Wait",
-          "type": "Wait",
-          "id": "5e123e2b-758b-40d7-96de-88f2b49dc4b5",
-          "time": 100
-        },
-        {
-          "name": "添加元信息",
-          "type": "NestedChoice",
-          "id": "b6c03612-3b4e-4715-bf34-6c006a9196a6",
-          "choice": {
-            "id": "ba5784cd-efbc-4f4e-9296-006a1492155e",
-            "name": "添加元信息",
-            "type": "Capture",
-            "command": false,
-            "appendLink": false,
-            "captureTo": "",
-            "captureToActiveFile": true,
-            "createFileIfItDoesntExist": {
-              "enabled": false,
-              "createWithTemplate": false,
-              "template": ""
-            },
-            "format": {
-              "enabled": true,
-              "format": "name: {{VALUE:name}}\nalias:\nch: {{VALUE:中文名}}\nframework:\n"
-            },
-            "insertAfter": {
-              "enabled": true,
-              "after": "---",
-              "insertAtEnd": false,
-              "considerSubsections": false,
-              "createIfNotFound": true,
-              "createIfNotFoundLocation": "top"
-            },
-            "prepend": false,
-            "task": false,
-            "openFileInNewTab": {
-              "enabled": false,
-              "direction": "vertical",
-              "focus": true
-            },
-            "openFile": false,
-            "openFileInMode": "default"
-          }
-        }
-      ],
-      "runOnStartup": false
-    },
-    {
-      "name": "智能术语",
-      "id": "da41a0be-b1a8-466c-86c8-871dfcf75915",
-      "commands": [
-        {
-          "name": "get_filename",
-          "type": "UserScript",
-          "id": "74edc8da-c709-4f2c-8f04-6be2c80b92be",
-          "path": "40 - Obsidian/脚本/QuickAdd/get_filename.js",
-          "settings": {}
-        },
-        {
-          "name": "AI Assistant",
-          "type": "AIAssistant",
-          "id": "2fda7929-cf7c-46bb-8be4-21c1a3567e2b",
-          "model": "gpt-3.5-turbo",
-          "systemPrompt": "As an AI assistant within Obsidian, your primary goal is to help users manage their ideas and knowledge more effectively. Format your responses using Markdown syntax. Please use the [[Obsidian]] link format. You can write aliases for the links by writing [[Obsidian|the alias after the pipe symbol]]. To use mathematical notation, use LaTeX syntax. LaTeX syntax for larger equations should be on separate lines, surrounded with double dollar signs ($$). You can also inline math expressions by wrapping it in $ symbols. For example, use $$w_{ij}^{\text{new}}:=w_{ij}^{\text{current}}+etacdotdelta_jcdot x_{ij}$$ on a separate line, but you can write \"($eta$ = learning rate, $delta_j$ = error term, $x_{ij}$ = input)\" inline.",
-          "outputVariableName": "output",
-          "promptTemplate": {
-            "enable": true,
-            "name": "询问定义提示词.md"
+      "macro": {
+        "id": "da41a0be-b1a8-466c-86c8-871dfcf75915",
+        "name": "智能术语",
+        "commands": [
+          {
+            "name": "get_filename",
+            "type": "UserScript",
+            "id": "74edc8da-c709-4f2c-8f04-6be2c80b92be",
+            "path": "40 - Obsidian/脚本/QuickAdd/get_filename.js",
+            "settings": {}
           },
-          "modelParameters": {
-            "temperature": 1,
-            "top_p": 1,
-            "frequency_penalty": 0,
-            "presence_penalty": 0
-          }
-        },
-        {
-          "name": "添加定义",
-          "type": "NestedChoice",
-          "id": "fb7c006d-e89f-4b8f-8892-edb41744daea",
-          "choice": {
-            "id": "ff8f02d1-0bdb-483e-8db5-3ecbd129d2bb",
+          {
+            "name": "AI Assistant",
+            "type": "AIAssistant",
+            "id": "2fda7929-cf7c-46bb-8be4-21c1a3567e2b",
+            "model": "gpt-3.5-turbo",
+            "systemPrompt": "As an AI assistant within Obsidian, your primary goal is to help users manage their ideas and knowledge more effectively. Format your responses using Markdown syntax. Please use the [[Obsidian]] link format. You can write aliases for the links by writing [[Obsidian|the alias after the pipe symbol]]. To use mathematical notation, use LaTeX syntax. LaTeX syntax for larger equations should be on separate lines, surrounded with double dollar signs ($$). You can also inline math expressions by wrapping it in $ symbols. For example, use $$w_{ij}^{\text{new}}:=w_{ij}^{\text{current}}+etacdotdelta_jcdot x_{ij}$$ on a separate line, but you can write \"($eta$ = learning rate, $delta_j$ = error term, $x_{ij}$ = input)\" inline.",
+            "outputVariableName": "output",
+            "promptTemplate": {
+              "enable": true,
+              "name": "询问定义提示词.md"
+            },
+            "modelParameters": {
+              "temperature": 1,
+              "top_p": 1,
+              "frequency_penalty": 0,
+              "presence_penalty": 0
+            }
+          },
+          {
             "name": "添加定义",
-            "type": "Capture",
-            "command": false,
-            "appendLink": false,
-            "captureTo": "",
-            "captureToActiveFile": true,
-            "createFileIfItDoesntExist": {
-              "enabled": false,
-              "createWithTemplate": false,
-              "template": ""
-            },
-            "format": {
-              "enabled": true,
-              "format": ">[!bot]\n> {{value:output}}"
-            },
-            "insertAfter": {
-              "enabled": true,
-              "after": "## 定义",
-              "insertAtEnd": false,
-              "considerSubsections": false,
-              "createIfNotFound": false,
-              "createIfNotFoundLocation": "top"
-            },
-            "prepend": false,
-            "task": false,
-            "openFileInNewTab": {
-              "enabled": false,
-              "direction": "vertical",
-              "focus": true
-            },
-            "openFile": false,
-            "openFileInMode": "default"
+            "type": "NestedChoice",
+            "id": "fb7c006d-e89f-4b8f-8892-edb41744daea",
+            "choice": {
+              "id": "ff8f02d1-0bdb-483e-8db5-3ecbd129d2bb",
+              "name": "添加定义",
+              "type": "Capture",
+              "command": false,
+              "appendLink": false,
+              "captureTo": "",
+              "captureToActiveFile": true,
+              "createFileIfItDoesntExist": {
+                "enabled": false,
+                "createWithTemplate": false,
+                "template": ""
+              },
+              "format": {
+                "enabled": true,
+                "format": ">[!bot]\n> {{value:output}}"
+              },
+              "insertAfter": {
+                "enabled": true,
+                "after": "## 定义",
+                "insertAtEnd": false,
+                "considerSubsections": false,
+                "createIfNotFound": false,
+                "createIfNotFoundLocation": "top"
+              },
+              "prepend": false,
+              "task": false,
+              "openFileInNewTab": {
+                "enabled": false,
+                "direction": "vertical",
+                "focus": true
+              },
+              "openFile": false,
+              "openFileInMode": "default"
+            }
           }
-        }
-      ],
+        ]
+      },
       "runOnStartup": false
+    },
+    {
+      "id": "43fee6ee-f621-4eb8-add7-474c26cde5e2",
+      "name": "添加学术项目",
+      "type": "Macro",
+      "command": false,
+      "runOnStartup": false,
+      "macro": {
+        "id": "38b50e25-951b-4c63-a1ec-e63e205d89cd",
+        "name": "添加学术项目",
+        "commands": [
+          {
+            "name": "创建项目文档",
+            "type": "NestedChoice",
+            "id": "b8db7c15-93e0-4980-88a2-b69a70a92af2",
+            "choice": {
+              "id": "5fa56c88-f5d8-4e24-9268-c710d0f3b0b3",
+              "name": "创建项目文档",
+              "type": "Template",
+              "command": false,
+              "templatePath": "40 - Obsidian/模板/项目模板.md",
+              "fileNameFormat": {
+                "enabled": true,
+                "format": "{{name}}"
+              },
+              "folder": {
+                "enabled": true,
+                "folders": [
+                  "Projects/Scholar"
+                ],
+                "chooseWhenCreatingNote": false,
+                "createInSameFolderAsActiveFile": false,
+                "chooseFromSubfolders": false
+              },
+              "appendLink": false,
+              "openFileInNewTab": {
+                "enabled": false,
+                "direction": "vertical",
+                "focus": true
+              },
+              "openFile": true,
+              "openFileInMode": "default",
+              "fileExistsMode": "Nothing",
+              "setFileExistsBehavior": true
+            }
+          },
+          {
+            "name": "Wait",
+            "type": "Wait",
+            "id": "628a8415-dce8-4574-a133-5a37b75808a1",
+            "time": 100
+          },
+          {
+            "name": "添加元数据",
+            "type": "NestedChoice",
+            "id": "9c5e83df-f44e-4e48-83e1-d0c02cf2f960",
+            "choice": {
+              "id": "19ad923e-a846-46f9-84eb-26c097ea0fbc",
+              "name": "添加元数据",
+              "type": "Capture",
+              "command": false,
+              "appendLink": false,
+              "captureTo": "",
+              "captureToActiveFile": true,
+              "createFileIfItDoesntExist": {
+                "enabled": false,
+                "createWithTemplate": false,
+                "template": ""
+              },
+              "format": {
+                "enabled": true,
+                "format": "---\nuid: SC-{{DATE:YYYYMMDD}}-{{VALUE:项目缩写}}\nabbr: {{VALUE:项目缩写}}\nalias:\n- SC-{{DATE:YYYYMMDD}}-{{VALUE:项目缩写}}\nfunding: {{VALUE:资助来源}}\nprincipal: {{VALUE:负责人}}\nparticipants:\nstart: {{date}}\nend: \nstatus: {{VALUE:状态}}\nfounding_no: \ntags:\n- project/scholar\n- project/open\n"
+              },
+              "insertAfter": {
+                "enabled": true,
+                "after": "",
+                "insertAtEnd": false,
+                "considerSubsections": false,
+                "createIfNotFound": false,
+                "createIfNotFoundLocation": "top"
+              },
+              "prepend": false,
+              "task": false,
+              "openFileInNewTab": {
+                "enabled": false,
+                "direction": "vertical",
+                "focus": true
+              },
+              "openFile": false,
+              "openFileInMode": "default"
+            }
+          }
+        ]
+      }
     }
   ],
   "inputPrompt": "single-line",
   "devMode": false,
   "templateFolderPath": "40 - Obsidian/模板",
   "announceUpdates": true,
-  "version": "1.13.3",
+  "version": "2.4.0",
+  "globalVariables": {},
+  "onePageInputEnabled": false,
   "disableOnlineFeatures": false,
   "enableRibbonIcon": false,
+  "showCaptureNotification": true,
   "ai": {
     "defaultModel": "Ask me",
     "defaultSystemPrompt": "As an AI assistant within Obsidian, your primary goal is to help users manage their ideas and knowledge more effectively. Format your responses using Markdown syntax. Please use the [[Obsidian]] link format. You can write aliases for the links by writing [[Obsidian|the alias after the pipe symbol]]. To use mathematical notation, use LaTeX syntax. LaTeX syntax for larger equations should be on separate lines, surrounded with double dollar signs ($$). You can also inline math expressions by wrapping it in $ symbols. For example, use $$w_{ij}^{\text{new}}:=w_{ij}^{\text{current}}+etacdotdelta_jcdot x_{ij}$$ on a separate line, but you can write \"($eta$ = learning rate, $delta_j$ = error term, $x_{ij}$ = input)\" inline.",
@@ -589,6 +602,8 @@
     "incrementFileNameSettingMoveToDefaultBehavior": true,
     "mutualExclusionInsertAfterAndWriteToBottomOfFile": true,
     "setVersionAfterUpdateModalRelease": true,
-    "addDefaultAIProviders": true
+    "addDefaultAIProviders": true,
+    "removeMacroIndirection": true,
+    "migrateFileOpeningSettings": true
   }
 }

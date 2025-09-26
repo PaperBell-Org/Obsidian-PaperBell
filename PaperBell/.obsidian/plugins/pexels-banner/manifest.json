@@ -1,0 +1,11 @@
+{
+    "id": "pexels-banner",
+    "name": "Pixel Banner",
+    "version": "3.6.14",
+    "minAppVersion": "1.6.0",
+    "description": "Enhance your notes with customizable banner images, including AI-generated designs and a curated store of downloadable banners. Transform your workspace with visually stunning headers that add context, improve aesthetics, and take your note-taking beyond the ordinary.",
+    "author": "Justin Parker (eQui\\\\ Labs)",
+    "authorUrl": "https://www.equilllabs.com",
+    "fundingUrl": "https://ko-fi.com/jparkerweb", 
+    "isDesktopOnly": false
+}

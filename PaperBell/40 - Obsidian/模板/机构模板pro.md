@@ -20,13 +20,4 @@ tags:
 
 ## Affiliated Scholars
 
-```dataviewjs
-let name = dv.current().name
-
-dv.table(["Name", "Title", "Website", "Email"],
-dv.pages(`#scholar`)
-  .where(b => b.institute.includes(name))
-  .map(b => [b.file.link, b.title, ("[🔗]("+b.website+")"), b.email])
-  .sort(b => b.paper_date, 'desc')
-)
-```
+![[学者检索.base]]

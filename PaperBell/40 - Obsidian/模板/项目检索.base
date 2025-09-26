@@ -1,0 +1,6 @@
+views:
+  - type: table
+    name: 表格
+    filters:
+      and:
+        - file.tags.contains("project/PaperBell")

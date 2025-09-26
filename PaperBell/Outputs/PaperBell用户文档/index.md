@@ -15,6 +15,8 @@ longform:
   ignoredFiles:
     - PaperBell用户手册
 title: PaperBell 用户文档
+published: "true"
+project: PaperBell
 ---
 
 > [!note] 🌱 您正在阅读用户文档

@@ -11,12 +11,16 @@
   "auto_jump_to_cursor": false,
   "enable_system_commands": false,
   "shell_path": "",
-  "user_scripts_folder": "",
+  "user_scripts_folder": "40 - Obsidian/脚本/templator",
   "enable_folder_templates": true,
   "folder_templates": [
     {
       "folder": "Cards",
       "template": "40 - Obsidian/模板/术语模板.md"
+    },
+    {
+      "folder": "00 - 每日日记/DailyNote",
+      "template": "40 - Obsidian/模板/每日日记模板.md"
     }
   ],
   "enable_file_templates": false,
@@ -34,5 +38,6 @@
   "startup_templates": [
     ""
   ],
+  "intellisense_render": 1,
   "enable_ribbon_icon": true
 }
