@@ -86,6 +86,13 @@
 - 修复了一些已知问题 📅 2024-05-13
 
 <a id='changelog-0.1.0'></a>
+## [4.3.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.2.1...v4.3.0) (2025-09-26)
+
+
+### Features
+
+* **project:** 🚀 Major plugins and templates optimization ([#87](https://github.com/PaperBell-Org/Obsidian-PaperBell/issues/87)) ([1eb75ee](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/1eb75eebca23b7eca8f5eec0b74af4a55079614f))
+
 ## [4.2.1](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.2.0...v4.2.1) (2025-06-12)
 
 
