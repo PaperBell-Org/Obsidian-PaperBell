@@ -1,6 +1,6 @@
 filters:
   and:
-    - file.folder == "Inputs/Zotero"
+    - file.folder.startsWith("Inputs/Zotero")
 formulas:
   test: link(file, title)
 properties:

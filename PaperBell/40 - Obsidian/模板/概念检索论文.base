@@ -1,0 +1,26 @@
+filters:
+  and:
+    - file.path.startsWith("Inputs/Zotero")
+    - concepts.containsAny(this.aliases)
+properties:
+  note.title:
+    displayName: 论文题目
+  note.citekey:
+    displayName: CiteKey
+  file.links:
+    displayName: 内链
+  file.tags:
+    displayName: 标签
+views:
+  - type: table
+    name: 概念检索论文
+    order:
+      - title
+      - citekey
+      - file.links
+      - file.tags
+    rowHeight: medium
+    columnSize:
+      note.title: 278
+      note.citekey: 94
+      file.links: 84
