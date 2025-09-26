@@ -86,6 +86,13 @@
 - 修复了一些已知问题 📅 2024-05-13
 
 <a id='changelog-0.1.0'></a>
+## [4.3.1](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.0...v4.3.1) (2025-09-26)
+
+
+### Bug Fixes
+
+* **feature:** 🐛移除过期的 registration ID ([#96](https://github.com/PaperBell-Org/Obsidian-PaperBell/issues/96)) ([54018c5](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/54018c531ef7acd85e0f4671c62553f8fdf182f0))
+
 ## [4.3.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.2.1...v4.3.0) (2025-09-26)
 
 
