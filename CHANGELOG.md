@@ -86,6 +86,13 @@
 - 修复了一些已知问题 📅 2024-05-13
 
 <a id='changelog-0.1.0'></a>
+## [4.3.3](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.2...v4.3.3) (2025-09-27)
+
+
+### Bug Fixes
+
+* Update main.js for localization and license management improvements ([99fde6d](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/99fde6d37883c1fb59309903fce92be498338e4b))
+
 ## [4.3.2](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.1...v4.3.2) (2025-09-26)
 
 
