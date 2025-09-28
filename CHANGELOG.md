@@ -86,6 +86,14 @@
 - 修复了一些已知问题 📅 2024-05-13
 
 <a id='changelog-0.1.0'></a>
+## [4.3.4](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.3...v4.3.4) (2025-09-28)
+
+
+### Bug Fixes
+
+* Update project tracking link in homepage for accurate navigation ([59d43ed](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/59d43ed1f0edff7d406dce3b80b367400f71e8c9))
+* Update project tracking link in homepage for improved navigation ([f9e694d](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/f9e694dd036be4902178a9130d560dc4c3b85256))
+
 ## [4.3.3](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.2...v4.3.3) (2025-09-27)
 
 
