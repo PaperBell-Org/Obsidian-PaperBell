@@ -1,7 +1,7 @@
 {
 	"id": "paperbell",
 	"name": "Paperbell",
-	"version": "0.0.1",
+	"version": "0.3.1-beta.1",
 	"minAppVersion": "0.15.0",
 	"description": "Supercharges your academic writing workflow.",
 	"author": "Paperbell",
