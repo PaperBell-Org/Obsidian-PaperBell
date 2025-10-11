@@ -30,7 +30,7 @@ filters:
   - ${USERDATA}/filters/preamble.lua
   - ${USERDATA}/filters/highlight.lua
   - pandoc-crossref  #! 交叉引用, 需要安装 pandoc-crossref
-  # - citeproc
+  - citeproc
 
 metadata:
   CJKmainfont: Songti SC
