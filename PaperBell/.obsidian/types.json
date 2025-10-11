@@ -47,6 +47,7 @@
     "TQ_show_tree": "checkbox",
     "TQ_show_urgency": "checkbox",
     "paper_date": "number",
-    "url": "multitext"
+    "url": "multitext",
+    "location": "multitext"
   }
 }

@@ -10,19 +10,25 @@
     "chosenMapSource": 0
   },
   "savedStates": [],
-  "markerIconRules": [
+  "displayRules": [
     {
-      "ruleName": "default",
+      "query": "",
       "preset": true,
       "iconDetails": {
         "prefix": "fas",
         "icon": "fa-circle",
         "markerColor": "blue",
         "innerHTML": "<svg aria-hidden=\"true\" focusable=\"false\" data-prefix=\"fas\" data-icon=\"circle\" class=\"svg-inline--fa fa-circle\" role=\"img\" xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 512 512\" style=\"color: white;\"><path fill=\"currentColor\" d=\"M256 512A256 256 0 1 0 256 0a256 256 0 1 0 0 512z\"></path></svg>"
-      }
+      },
+      "pathOptions": {
+        "color": "blue",
+        "weight": 5,
+        "opacity": 0.8
+      },
+      "badgeOptions": {}
     },
     {
-      "ruleName": "#trip",
+      "query": "tag:#trip",
       "preset": false,
       "iconDetails": {
         "prefix": "fas",
@@ -31,7 +37,7 @@
       }
     },
     {
-      "ruleName": "#university",
+      "query": "tag:#university",
       "preset": false,
       "iconDetails": {
         "prefix": "fas",
@@ -42,6 +48,7 @@
   ],
   "zoomOnGoFromNote": 15,
   "autoZoom": true,
+  "onlyOneExpanded": true,
   "markerClickBehavior": "replaceCurrent",
   "markerCtrlClickBehavior": "dedicatedPane",
   "markerMiddleClickBehavior": "dedicatedTab",
@@ -84,17 +91,21 @@
       "preset": true
     }
   ],
-  "mapControls": {
-    "filtersDisplayed": false,
-    "viewDisplayed": false,
-    "presetsDisplayed": false
+  "mapControlsSections": {
+    "filtersDisplayed": true,
+    "viewDisplayed": true,
+    "linksDisplayed": false,
+    "presetsDisplayed": false,
+    "editDisplayed": false
   },
+  "mapControlsMinimized": false,
   "maxClusterRadiusPixels": 20,
   "searchProvider": "osm",
   "osmUser": "songshgeo@gmail.com",
   "searchDelayMs": 250,
   "geocodingApiKey": "",
-  "useGooglePlaces": false,
+  "useGooglePlacesNew2025": false,
+  "googlePlacesDataFields": "",
   "mapSources": [
     {
       "name": "CartoDB",
@@ -115,11 +126,23 @@
   "geoHelperUrl": "https://esm7.github.io/obsidian-geo-helper/",
   "tagForGeolocationNotes": "",
   "handleGeolinksInNotes": true,
+  "handlePathEmbeds": true,
   "showGeolinkPreview": false,
   "zoomOnGeolinkPreview": 10,
   "handleGeolinkContextMenu": true,
   "routingUrl": "https://www.google.com/maps/dir/?api=1&origin={x0},{y0}&destination={x1},{y1}",
+  "routingGraphHopperApiKey": "",
+  "routingGraphHopperProfiles": "foot, bike, car",
+  "routingGraphHopperExtra": {},
   "cacheAllTiles": true,
   "offlineMaxTileAgeMonths": 6,
-  "offlineMaxStorageGb": 2
+  "offlineMaxStorageGb": 2,
+  "loadLayersAhead": true,
+  "handleGeoJsonCodeBlocks": true,
+  "mapControls": {
+    "filtersDisplayed": false,
+    "viewDisplayed": false,
+    "presetsDisplayed": false
+  },
+  "useGooglePlaces": false
 }
