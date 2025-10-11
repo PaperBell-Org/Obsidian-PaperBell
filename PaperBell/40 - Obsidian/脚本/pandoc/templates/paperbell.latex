@@ -1,42 +1,28 @@
 %%
-% Copyright (c) 2017 - 2023, Pascal Wagler;
-% Copyright (c) 2014 - 2023, John MacFarlane
+% This is the PaperBell Academic Template for Pandoc LaTeX.
 %
+% This template is based on the Eisvogel pandoc LaTeX template by Pascal Wagler,
+% but has been extensively customized and localized for academic workflows
+% by PaperBell and Shuang Song.
+%
+% Intellectual Property:
+% Copyright (c) 2024 - Present, PaperBell & Shuang Song
 % All rights reserved.
 %
-% Redistribution and use in source and binary forms, with or without
-% modification, are permitted provided that the following conditions
-% are met:
+% This template is derived from Eisvogel template with significant modifications
+% for academic manuscript preparation, including but not limited to:
+% - Font standardization (Times New Roman)
+% - Academic citation formatting
+% - Line numbering controls
+% - Caption formatting
+% - Header/footer customization
+% - Chinese language support
 %
-% - Redistributions of source code must retain the above copyright
-% notice, this list of conditions and the following disclaimer.
+% Contact Information:
+% - PaperBell: paperbell@songshgeo.com
+% - Shuang Song: songshgeo@gmail.com
 %
-% - Redistributions in binary form must reproduce the above copyright
-% notice, this list of conditions and the following disclaimer in the
-% documentation and/or other materials provided with the distribution.
-%
-% - Neither the name of John MacFarlane nor the names of other
-% contributors may be used to endorse or promote products derived
-% from this software without specific prior written permission.
-%
-% THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-% "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-% LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
-% FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE
-% COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
-% INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
-% BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-% LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-% CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
-% LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN
-% ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-% POSSIBILITY OF SUCH DAMAGE.
-%%
-
-%%
-% This is the Eisvogel pandoc LaTeX template.
-%
-% For usage information and examples visit the official GitHub page:
+% Original Eisvogel template:
 % https://github.com/Wandmalfarbe/pandoc-latex-template
 %%
 
@@ -137,6 +123,11 @@ $else$
 \usepackage{setspace}
 \setstretch{1.2}
 $endif$
+$if(lineno)$
+\usepackage{lineno}
+\linenumbers
+\renewcommand\linenumberfont{\normalfont\small\rmfamily}
+$endif$
 \usepackage{iftex}
 \ifPDFTeX
   \usepackage[$if(fontenc)$$fontenc$$else$T1$endif$]{fontenc}
@@ -233,6 +224,20 @@ $endif$
   \tracinglostchars=0 % 关闭缺失字符的警告
   \tracingonline=0    % 禁止在线报告字体问题
 }
+
+% 标准化破折号字符 (PDFLaTeX/XeLaTeX/LuaLaTeX 方式)
+\ifXeTeX
+\catcode`\‑=\active \def‑{-} % NON-BREAKING HYPHEN to regular hyphen
+\catcode`\–=\active \def–{--} % EN DASH to LaTeX en-dash
+\catcode`\—=\active \def—{---} % EM DASH to LaTeX em-dash
+\fi
+\ifPDFTeX
+\DeclareUnicodeCharacter{2010}{-} % NON-BREAKING HYPHEN to regular hyphen
+\DeclareUnicodeCharacter{2011}{-} % NON-BREAKING HYPHEN to regular hyphen
+\DeclareUnicodeCharacter{2012}{--} % EN DASH to LaTeX en-dash
+\DeclareUnicodeCharacter{2013}{--} % EN DASH to LaTeX en-dash
+\DeclareUnicodeCharacter{2014}{---} % EM DASH to LaTeX em-dash
+\fi
 
 $if(CJKmainfont)$
   \ifLuaTeX
@@ -396,6 +401,12 @@ $if(graphics)$
 % Set default figure placement to htbp
 \def\fps@figure{htbp}
 \makeatother
+$endif$
+
+$if(figures-at-end)$
+% Move all figures and tables to the end of the document
+\usepackage[nomarkers,nolists,tablesfirst]{endfloat}
+\renewcommand{\efloatseparator}{\mbox{}}
 $endif$
 $if(svg)$
 \usepackage{svg}
@@ -653,8 +664,11 @@ $endif$
 \definecolor{caption-color}{rgb}{.4,.4,.4}
 $if(beamer)$
 $else$
-\usepackage[font={stretch=1.0,sf,small}, textfont={color=caption-color}, position=bottom, skip=4mm, labelfont=bf, singlelinecheck=false, justification=$if(caption-justification)$$caption-justification$$else$raggedright$endif$, format=hang, labelsep=endash]{caption}
+\usepackage[font={stretch=1.0,rm,small}, textfont={color=caption-color}, position=bottom, skip=4mm, labelfont=bf, singlelinecheck=false, justification=$if(caption-justification)$$caption-justification$$else$justified$endif$, format=plain, labelsep=endash]{caption}
 \setcapindent{0em}
+\captionsetup{margin=0pt,justification=justified,singlelinecheck=false}
+\captionsetup[figure]{font={rm,small}}
+\captionsetup[table]{font={rm,small}}
 $if(nonumberfigures)$
   \captionsetup[figure]{labelformat=empty}% redefines the caption setup of the figures environment
 $endif$
@@ -725,14 +739,35 @@ $endif$
 \fi
 
 %% HEADING STYLE
-\newcommand*{\heading}{\fontfamily{\sfdefault}\selectfont}
+\newcommand*{\heading}{\fontfamily{\rmdefault}\selectfont}
 %
 % heading color
 %
 \definecolor{heading-color}{RGB}{.4,.4,.4}
 $if(beamer)$
 $else$
-\addtokomafont{section}{\color{heading-color}}
+\addtokomafont{section}{\color{heading-color}\fontfamily{\rmdefault}\selectfont}
+\addtokomafont{subsection}{\color{heading-color}\fontfamily{\rmdefault}\selectfont}
+\addtokomafont{subsubsection}{\color{heading-color}\fontfamily{\rmdefault}\selectfont}
+
+% 调整标题间距和字体
+\RedeclareSectionCommand[
+  beforeskip=1.2\baselineskip plus 0.2\baselineskip minus 0.1\baselineskip,
+  afterskip=0.6\baselineskip plus 0.1\baselineskip minus 0.1\baselineskip,
+  font=\normalfont\Large\bfseries\fontfamily{\rmdefault}\selectfont
+]{section}
+
+\RedeclareSectionCommand[
+  beforeskip=1.0\baselineskip plus 0.2\baselineskip minus 0.1\baselineskip,
+  afterskip=0.4\baselineskip plus 0.1\baselineskip minus 0.1\baselineskip,
+  font=\normalfont\large\bfseries\fontfamily{\rmdefault}\selectfont
+]{subsection}
+
+\RedeclareSectionCommand[
+  beforeskip=0.6\baselineskip plus 0.1\baselineskip minus 0.1\baselineskip,
+  afterskip=0.3\baselineskip plus 0.1\baselineskip minus 0.1\baselineskip,
+  font=\normalfont\normalsize\bfseries\fontfamily{\rmdefault}\selectfont
+]{subsubsection}
 $endif$
 % When using the classes report, scrreprt, book,
 % scrbook or memoir, uncomment the following line.
@@ -926,10 +961,10 @@ $else$
 
 \newpairofpagestyles{eisvogel-header-footer}{
   \clearpairofpagestyles
-  \ihead*{$if(header-left)$$header-left$$else$$title$$endif$}
+  \ihead*{$if(header-left)$$header-left$$else$$if(acronym)$Manuscript: $acronym$$else$$title$$endif$$endif$}
   \chead*{$if(header-center)$$header-center$$else$$endif$}
   \ohead*{$if(header-right)$$header-right$$else$$date$$endif$}
-  \ifoot*{$if(footer-left)$$footer-left$$else$$for(author)$$author$$sep$, $endfor$$endif$}
+  \ifoot*{$if(footer-left)$$footer-left$$else$$if(target)$Submission: \textit{$target$}$else$$endif$$endif$}
   \cfoot*{$if(footer-center)$$footer-center$$else$$endif$}
   \ofoot*{$if(footer-right)$$footer-right$$else$\thepage$endif$}
   \addtokomafont{pageheadfoot}{\upshape}
@@ -1073,14 +1108,6 @@ $endif$
 $if(title)$
 $if(beamer)$
 \frame{\titlepage}
-% don't generate the default title
-% $else$
-% \maketitle
-$endif$
-$if(abstract)$
-\begin{abstract}
-\noindent\textbf{Abstract — }$abstract$
-\end{abstract}
 $endif$
 $endif$
 
@@ -1135,6 +1162,76 @@ $if(has-frontmatter)$
 \mainmatter
 $endif$
 
+$if(title)$
+$if(beamer)$
+$else$
+% Display title and authors at the beginning of main content
+\begin{center}
+{\Large \textbf{$title$}}
+$if(subtitle)$
+\vskip 0.5em
+{\large \textit{$subtitle$}}
+$endif$
+\vskip 1em
+$if(authors)$
+$for(authors)$$authors.name$$if(authors.affiliation)$\textsuperscript{$for(authors.affiliation)$$authors.affiliation$$sep$,$endfor$}$endif$$if(authors.corresponding)$\textsuperscript{*}$endif$$sep$, $endfor$
+$else$
+$if(author)$
+$for(author)$$author.name$$if(author.affiliations)$\textsuperscript{$for(author.affiliations)$$author.affiliations$$sep$,$endfor$}$endif$$if(author.corresponding)$\textsuperscript{*}$endif$$sep$, $endfor$
+$endif$
+$endif$
+\end{center}
+\vskip 0.5em
+% affiliations left aligned
+$if(institute)$
+\begin{flushleft}
+$for(institute)$\textsuperscript{$institute.index$} $institute.name$$sep$ \\ $endfor$
+\end{flushleft}
+$endif$
+$if(affiliations)$
+\begin{flushleft}
+$for(affiliations)$\textsuperscript{$affiliations.index$} $affiliations.name$$sep$ \\ $endfor$
+\end{flushleft}
+$endif$
+$if(institution)$
+\begin{flushleft}
+$for(institution)$\textsuperscript{$institution.index$} $institution.name$$sep$ \\ $endfor$
+\end{flushleft}
+$endif$
+$if(institutions)$
+\begin{flushleft}
+$for(institutions)$\textsuperscript{$institutions.index$} $institutions.name$$sep$ \\ $endfor$
+\end{flushleft}
+$endif$
+\vskip 0.5em
+$if(authors)$
+$for(authors)$
+$if(authors.corresponding)$
+\vskip 0.5em
+{\small *Corresponding author: $authors.corresponding$}
+$endif$
+$endfor$
+$else$
+$if(author)$
+$for(author)$
+$if(author.corresponding)$
+\vskip 0.5em
+{\small *Corresponding author: $author.corresponding$}
+$endif$
+$endfor$
+$endif$
+$endif$
+\vskip 1em
+$endif$
+$endif$
+
+$if(abstract)$
+\begin{abstract}
+\noindent\textbf{Abstract — }$abstract$
+\end{abstract}
+\captionsetup{justification=justified}
+$endif$
+
 $body$
 
 $if(has-frontmatter)$
@@ -1143,6 +1240,7 @@ $endif$
 
 $if(natbib)$
 $if(bibliography)$
+\nolinenumbers
 $if(biblio-title)$
 $if(has-chapters)$
 \renewcommand\bibname{$biblio-title$}
@@ -1162,6 +1260,7 @@ $endif$
 $endif$
 
 $if(biblatex)$
+\nolinenumbers
 $if(beamer)$
 \begin{frame}[allowframebreaks]{$biblio-title$}
   \bibliographytrue

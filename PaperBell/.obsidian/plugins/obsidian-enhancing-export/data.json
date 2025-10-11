@@ -53,6 +53,9 @@
     },
     {
       "name": "Bibliography"
+    },
+    {
+      "name": "PowerPoint (.pptx)"
     }
   ],
   "defaultExportDirectoryMode": "Same",
@@ -63,5 +66,5 @@
   "lastExportDirectory": {
     "darwin": "/Users/songshgeo/Documents/VSCode/PaperBell/PaperBell/Outputs/demo"
   },
-  "lastExportType": "Word (.docx)"
+  "lastExportType": "PaperBell"
 }

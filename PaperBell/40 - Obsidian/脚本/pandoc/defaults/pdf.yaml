@@ -12,7 +12,7 @@ data-dir: ${.}/..                             #! custom data directory, the dire
 
 
 ## Templates
-template: ${USERDATA}/templates/eisvogel.latex
+template: ${USERDATA}/templates/paperbell.latex
 
 ## Biliography
 bibliography: ${USERDATA}/../../mybib.bib     #! custom bib file
@@ -29,7 +29,7 @@ filters:
   - ${USERDATA}/filters/div.lua
   - ${USERDATA}/filters/preamble.lua
   - ${USERDATA}/filters/highlight.lua
-  # - pandoc-crossref  #! 交叉引用, 需要安装 pandoc-crossref
+  - pandoc-crossref  #! 交叉引用, 需要安装 pandoc-crossref
   # - citeproc
 
 metadata:

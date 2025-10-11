@@ -1,7 +1,7 @@
 {
   "version": 3,
   "projects": {},
-  "selectedDraftVaultPath": "Outputs/PaperBell用户文档/index.md",
+  "selectedDraftVaultPath": "Outputs/demo/Index.md",
   "userScriptFolder": "40 - Obsidian/脚本/longform",
   "sessionStorage": "file",
   "sessions": [],
@@ -36,7 +36,9 @@
         },
         {
           "id": "40 - Obsidian/脚本/longform/使用title属性作为章节名.js",
-          "optionValues": {}
+          "optionValues": {
+            "property_name": "scene_alias"
+          }
         },
         {
           "id": "prepend-title",
@@ -54,14 +56,82 @@
         {
           "id": "40 - Obsidian/脚本/longform/编译后增加头文件.js",
           "optionValues": {
-            "title": "论文题目",
-            "author-name": "用户作者"
+            "note-name": "Index",
+            "author-name": "用户作者",
+            "lineno": false,
+            "csl-style": "",
+            "target-journal": "",
+            "acronym": "",
+            "figures-at-end": false
           }
         },
         {
           "id": "write-to-note",
           "optionValues": {
             "target": "一篇论文",
+            "open-after": true
+          }
+        }
+      ]
+    },
+    "PaperBell-Standard": {
+      "name": "PaperBell-Standard",
+      "description": "",
+      "steps": [
+        {
+          "id": "strip-frontmatter",
+          "optionValues": {}
+        },
+        {
+          "id": "remove-links",
+          "optionValues": {
+            "remove-wikilinks": true,
+            "remove-external-links": true
+          }
+        },
+        {
+          "id": "40 - Obsidian/脚本/longform/使用title属性作为章节名.js",
+          "optionValues": {
+            "property_name": ""
+          }
+        },
+        {
+          "id": "prepend-title",
+          "optionValues": {
+            "format": "$3{##} $1",
+            "separator": "\\n"
+          }
+        },
+        {
+          "id": "concatenate-text",
+          "optionValues": {
+            "separator": "\\n"
+          }
+        },
+        {
+          "id": "40 - Obsidian/脚本/longform/去除手稿多余空行并强制标题前空行.js",
+          "optionValues": {}
+        },
+        {
+          "id": "40 - Obsidian/脚本/longform/去除手稿注释.js",
+          "optionValues": {}
+        },
+        {
+          "id": "40 - Obsidian/脚本/longform/编译后增加头文件.js",
+          "optionValues": {
+            "note-name": "Index",
+            "author-name": "Unknown Author",
+            "lineno": false,
+            "csl-style": "",
+            "target-journal": "",
+            "acronym": "",
+            "figures-at-end": false
+          }
+        },
+        {
+          "id": "write-to-note",
+          "optionValues": {
+            "target": "DEMO_manuscript.md",
             "open-after": true
           }
         }
