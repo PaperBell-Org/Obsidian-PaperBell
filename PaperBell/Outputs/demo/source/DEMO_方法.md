@@ -252,41 +252,149 @@ Auto-save sessions: Yes
 
 #### 步骤四：配置 Pandoc 模板
 
-**复制模板文件**：
+PaperBell 提供了完整的 Pandoc 配置系统，包括 defaults 文件、LaTeX 模板、Lua 过滤器和 CSL 引用样式。
 
-```bash
-# 复制 PaperBell LaTeX 模板
-cp templates/paperbell.latex 40\ -\ Obsidian/脚本/Pandoc/templates/
+##### 理解 Pandoc Defaults 文件
 
-# 复制默认配置文件
-cp defaults/pdf.yaml 40\ -\ Obsidian/脚本/Pandoc/defaults/
+PaperBell 在 `40 - Obsidian/脚本/pandoc/defaults/` 目录下提供了预配置的 defaults 文件：
 
-# 复制 CSL 引用样式文件
-cp csl/*.csl 40\ -\ Obsidian/脚本/Pandoc/
-```
+| 文件名 | 用途 | 主要差异 |
+|--------|------|----------|
+| `paperbell.yaml` | macOS/Linux 系统 | 中文字体：Songti SC、Heiti SC、STFangsong |
+| `paperbell-windows.yaml` | Windows 系统 | 中文字体：SimSun、SimHei、FangSong |
+| `beamer.yaml` | 演示文稿导出 | 使用 Beamer 模板 |
+| `crossref.yaml` | 交叉引用配置 | pandoc-crossref 插件配置 |
 
-**修改 pdf.yaml 路径**：
+**为什么需要两个 paperbell 配置？**
 
-编辑 `40 - Obsidian/脚本/Pandoc/defaults/pdf.yaml`，确保路径正确：
+不同操作系统的中文字体名称不同：
 
 ```yaml
-# 修改模板路径
-template: ${USERDATA}/templates/paperbell.latex
+# macOS/Linux (paperbell.yaml)
+metadata:
+  CJKmainfont: Songti SC      # 宋体
+  CJKsansfont: Heiti SC       # 黑体
+  CJKmonofont: STFangsong     # 仿宋
 
-# 修改文献库路径
-bibliography: ${USERDATA}/../../mybib.bib
-
-# ${USERDATA} 会解析为 40 - Obsidian/脚本/Pandoc
+# Windows (paperbell-windows.yaml)
+metadata:
+  CJKmainfont: SimSun         # 宋体
+  CJKsansfont: SimHei         # 黑体
+  CJKmonofont: FangSong       # 仿宋
 ```
 
-**验证模板可用**：
+##### 自动检测机制
+
+Longform 的 "Add YAML Metadata" 脚本会自动检测操作系统：
+
+```javascript
+// 自动检测逻辑
+if (!template || template === "") {
+  const platform = process.platform;
+  if (platform === "darwin" || platform === "linux") {
+    template = "paperbell";           // 使用 paperbell.yaml
+  } else if (platform === "win32") {
+    template = "paperbell-windows";   // 使用 paperbell-windows.yaml
+  }
+}
+```
+
+##### 手动指定模板
+
+在 Longform 编译时，可以在 "Pandoc Template" 文本框中手动指定：
+
+```yaml
+# 使用 Unix 版本（即使在 Windows 上）
+Pandoc Template: paperbell
+
+# 使用 Windows 版本（即使在 macOS 上）
+Pandoc Template: paperbell-windows
+
+# 使用其他模板
+Pandoc Template: eisvogel
+Pandoc Template: my-custom-template
+```
+
+##### 创建自定义 Defaults 文件
+
+你可以创建自己的 defaults 配置文件：
+
+1. **创建新的 defaults 文件**：
+
+在 `40 - Obsidian/脚本/Pandoc/defaults/` 创建 `my-workflow.yaml`：
+
+```yaml
+---
+## General options
+standalone: true
+pdf-engine: xelatex
+data-dir: ${.}/..
+
+## Templates
+template: ${USERDATA}/templates/my-template.latex
+
+## Bibliography
+bibliography: ${USERDATA}/../../mybib.bib
+csl: ${USERDATA}/my-style.csl
+
+## Filters
+filters:
+  - ${USERDATA}/filters/shift_headings.lua
+  - pandoc-crossref
+  - citeproc
+
+## Metadata
+metadata:
+  CJKmainfont: "Your Preferred Font"
+  mainfont: "Your Preferred Font"
+  numbersections: true
+  link-citations: true
+```
+
+2. **在 Longform 中使用**：
+
+编译时在 Template 选项中输入 `my-workflow`。
+
+##### 文件结构说明
 
 ```bash
-cd "40 - Obsidian/脚本/Pandoc"
-pandoc --print-default-template=latex | head -20
+40 - Obsidian/脚本/pandoc/
+├── defaults/              # Pandoc defaults 配置文件
+│   ├── paperbell.yaml    # Unix 系统配置
+│   ├── paperbell-windows.yaml  # Windows 系统配置
+│   ├── beamer.yaml       # 演示文稿配置
+│   └── crossref.yaml     # 交叉引用配置
+│
+├── templates/             # LaTeX 模板文件
+│   └── paperbell.latex   # PaperBell 学术模板
+│
+├── filters/               # Pandoc Lua 过滤器
+│   ├── shift_headings.lua  # 调整标题层级
+│   ├── image.lua          # 图片处理
+│   ├── callout.lua        # Callout 渲染
+│   └── ...                # 其他过滤器
+│
+├── csl/                   # 引用样式文件
+│   ├── nature.csl
+│   ├── apa.csl
+│   └── ...
+│
+└── preamble.sty          # LaTeX 导言区自定义
 ```
 
-应显示 LaTeX 模板内容。
+##### 验证配置
+
+```bash
+# 查看 defaults 文件内容
+cat "40 - Obsidian/脚本/pandoc/defaults/paperbell.yaml"
+
+# 测试 defaults 配置
+cd "40 - Obsidian/脚本/pandoc"
+pandoc --defaults=paperbell.yaml test.md -o test.pdf
+
+# 查看可用的过滤器
+ls "40 - Obsidian/脚本/pandoc/filters/"
+```
 
 #### 步骤五：配置 Zotero 导出
 

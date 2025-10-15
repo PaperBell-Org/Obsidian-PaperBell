@@ -13,6 +13,54 @@ longform: true
 
 ### 常用配置方案
 
+> [!tip] Pandoc Defaults 与 Template 配置说明
+>
+> PaperBell 的导出系统基于 Pandoc 的 defaults 文件配置。在 `40 - Obsidian/脚本/pandoc/defaults/` 目录下，我们提供了两个预配置的 defaults 文件：
+>
+> - **paperbell.yaml** - macOS/Linux 系统使用（中文字体：Songti SC、Heiti SC、STFangsong）
+> - **paperbell-windows.yaml** - Windows 系统使用（中文字体：SimSun、SimHei、FangSong）
+>
+> 这两个配置文件的主要区别在于**中文字体设置**，以适应不同操作系统的字体可用性。
+>
+> #### 自动检测与手动指定
+>
+> 在 Longform 编译时，"Add YAML Metadata" 脚本会：
+>
+> 1. **自动检测操作系统**（如果 Template 选项留空）：
+>    - macOS/Linux → 使用 `paperbell` 模板
+>    - Windows → 使用 `paperbell-windows` 模板
+>
+> 2. **支持手动指定**：在 Template 文本框中输入任何模板名称，如：
+>    - `paperbell` - 使用 Unix 版本
+>    - `paperbell-windows` - 使用 Windows 版本
+>    - `eisvogel` - 使用 Eisvogel 模板
+>    - `my-custom` - 使用你自己的自定义模板
+>
+> #### 创建自定义工作流
+>
+> 你完全可以定义自己的 defaults 配置文件和工作流：
+>
+> 1. 在 `40 - Obsidian/脚本/pandoc/defaults/` 创建新的 `.yaml` 文件
+> 2. 在 `40 - Obsidian/脚本/pandoc/templates/` 创建新的 `.latex` 模板
+> 3. 在 Longform 编译时的 Template 选项中指定你的配置名称
+>
+> 例如，创建 `my-workflow.yaml` 后，在编译时输入 `my-workflow` 即可使用。
+>
+> **相关文件路径**：
+>
+> ```bash
+> 40 - Obsidian/脚本/pandoc/
+> ├── defaults/          # Pandoc 默认配置文件
+> │   ├── paperbell.yaml
+> │   ├── paperbell-windows.yaml
+> │   ├── beamer.yaml
+> │   └── crossref.yaml
+> ├── templates/         # LaTeX 模板文件
+> │   └── paperbell.latex
+> ├── filters/           # Pandoc Lua 过滤器
+> └── csl/              # 引用样式文件
+> ```
+
 #### 方案一：快速投稿配置（Clean Submission）
 
 **适用场景**：论文已基本定稿，准备首次投稿
