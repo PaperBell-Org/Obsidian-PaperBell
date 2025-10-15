@@ -58,6 +58,13 @@ module.exports = {
         type: "Boolean",
         default: false,
       },
+      {
+        id: "template",
+        name: "Pandoc Template",
+        description: "Pandoc template to use (leave empty for auto-detection: macOS/Linux→paperbell, Windows→paperbell-windows)",
+        type: "Text",
+        default: "",
+      },
     ],
   },
 
@@ -74,6 +81,25 @@ module.exports = {
     let style = "";
     let lineno = context.optionValues["lineno"];
     let figuresAtEnd = context.optionValues["figures-at-end"];
+    let template = context.optionValues["template"];
+
+    // 检测操作系统 (如果 template 为空)
+    if (!template || template === "") {
+      const platform = process.platform;
+      // Unix-like 系统 (macOS, Linux)
+      if (platform === "darwin" || platform === "linux") {
+        template = "paperbell";
+      }
+      // Windows 系统
+      else if (platform === "win32") {
+        template = "paperbell-windows";
+      }
+      // 其他系统默认使用 Unix 版本
+      else {
+        template = "paperbell";
+      }
+      console.log(`[Add YAML Metadata] Auto-detected OS: ${platform}, using template: ${template}`);
+    }
 
     // 作者信息结构
     let authors = [];
@@ -132,6 +158,11 @@ module.exports = {
           csl = context.optionValues["csl-style"] || fm.csl || csl;
           style = fm.style || style;
           lineno = context.optionValues["lineno"] !== undefined ? context.optionValues["lineno"] : (fm.lineno || false);
+
+          // Template: 用户选项 > 元数据 > 自动检测
+          if (!context.optionValues["template"] || context.optionValues["template"] === "") {
+            template = fm.template || template;
+          }
         }
       }
     } catch (error) {
@@ -195,6 +226,11 @@ date: "${date}"
     yamlFrontmatter += `acronym: "${acronym}"\n`;
     yamlFrontmatter += `csl: "${csl}"\n`;
     yamlFrontmatter += `style: "${style}"\n`;
+
+    // 添加模板设置
+    if (template) {
+      yamlFrontmatter += `template: "${template}"\n`;
+    }
 
     // 添加行号设置
     if (lineno) {

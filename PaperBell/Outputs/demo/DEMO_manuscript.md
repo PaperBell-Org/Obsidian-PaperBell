@@ -25,6 +25,7 @@ target: "PaperBell Documentation"
 acronym: "DEMO"
 csl: "nature"
 style: ""
+template: "paperbell"
 ---
 
 ## 引言

@@ -62,7 +62,8 @@
             "csl-style": "",
             "target-journal": "",
             "acronym": "",
-            "figures-at-end": false
+            "figures-at-end": false,
+            "template": ""
           }
         },
         {
@@ -125,7 +126,8 @@
             "csl-style": "",
             "target-journal": "",
             "acronym": "",
-            "figures-at-end": false
+            "figures-at-end": false,
+            "template": ""
           }
         },
         {
