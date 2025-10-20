@@ -3,7 +3,7 @@
     {
       "name": "PaperBell",
       "type": "pandoc",
-      "arguments": "--defaults=\"${vaultDir}/40 - Obsidian/脚本/pandoc/defaults/pdf.yaml\" --resource-path=\"${currentDir}\" --resource-path=\"${currentDir}/imgs\" --resource-path=\"${attachmentFolderPath}\" -o \"${outputPath}\"",
+      "arguments": "--defaults=\"${vaultDir}/40 - Obsidian/脚本/pandoc/defaults/${metadata.template}.yaml\" --resource-path=\"${currentDir}\" --resource-path=\"${attachmentFolderPath}\" --resource-path=\"${currentDir}/figs\" --resource-path=\"${currentDir}/../figs\" --resource-path=\"${currentDir}/../imgs\" --resource-path=\"${currentDir}/imgs\" --resource-path=\"${currentDir}/images\" --resource-path=\"${currentDir}/../images\" --csl=\"${vaultDir}/40 - Obsidian/脚本/pandoc/csl/${metadata.csl}.csl\" -o \"${outputPath}\"",
       "extension": ".pdf"
     },
     {
@@ -53,6 +53,9 @@
     },
     {
       "name": "Bibliography"
+    },
+    {
+      "name": "PowerPoint (.pptx)"
     }
   ],
   "defaultExportDirectoryMode": "Same",
@@ -63,5 +66,5 @@
   "lastExportDirectory": {
     "darwin": "/Users/songshgeo/Documents/VSCode/PaperBell/PaperBell/Outputs/demo"
   },
-  "lastExportType": "Word (.docx)"
+  "lastExportType": "PaperBell"
 }

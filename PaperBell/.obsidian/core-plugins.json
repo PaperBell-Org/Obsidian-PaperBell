@@ -9,7 +9,7 @@
   "page-preview": true,
   "daily-notes": true,
   "templates": false,
-  "note-composer": true,
+  "note-composer": false,
   "command-palette": true,
   "slash-command": false,
   "editor-status": true,
@@ -28,6 +28,6 @@
   "bookmarks": true,
   "properties": true,
   "webviewer": false,
-  "footnotes": false,
+  "footnotes": true,
   "bases": true
 }
