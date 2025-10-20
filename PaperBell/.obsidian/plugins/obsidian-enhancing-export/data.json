@@ -62,9 +62,10 @@
   "openExportedFile": true,
   "env": {},
   "showExportProgressBar": true,
-  "lastEditName": "eisvogel",
+  "lastEditName": "PaperBell",
   "lastExportDirectory": {
-    "darwin": "/Users/songshgeo/Documents/VSCode/PaperBell/PaperBell/Outputs/demo"
+    "darwin": "/Users/songshgeo/Documents/VSCode/PaperBell/PaperBell/Outputs/demo",
+    "win32": "D:\\Users\\admin\\IdeaProjects\\Obsidian-PaperBell\\PaperBell/Outputs/demo"
   },
   "lastExportType": "PaperBell"
 }

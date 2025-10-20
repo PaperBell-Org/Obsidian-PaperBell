@@ -25,7 +25,7 @@ target: "PaperBell Documentation"
 acronym: "DEMO"
 csl: "nature"
 style: ""
-template: "paperbell"
+template: "paperbell-windows"
 ---
 
 ## 引言
@@ -251,12 +251,10 @@ PaperBell 提供了基于 Eisvogel 定制的 LaTeX 模板 `paperbell.latex`，�
 2. **智能行号控制**：支持 `lineno: "true"` 选项显示行号，便于审稿和讨论；参考文献部分自动关闭行号
 3. **图表位置灵活性**：支持 `figures-at-end: "true"` 将所有图表置于文末（参考文献之前）
 4. **页眉页脚定制**：
-
  - 左页眉：Manuscript: {acronym}
  - 右页眉：{date}
  - 左页脚：Submission: {target}
  - 右页脚：页码
-
 5. **图表标题格式化**：无缩进、两端对齐、Times New Roman 字体、加粗标签
 6. **紧凑学术格式**：优化标题间距，移除不必要的空白
 
@@ -450,13 +448,11 @@ PaperBell 支持多种协作模式：
 PaperBell 提供了两个核心自定义脚本，用户也可以编写自己的脚本：
 
 1. **编译后增加头文件.js**：
-
  - 从 Index.md 读取元数据
  - 注入 YAML 前置内容
  - 支持用户选项覆盖
 
 2. **替换结果占位符.js**：
-
  - 解析 results.json
  - 替换 {{path.to.value}} 占位符
  - 支持嵌套对象和数组
@@ -497,6 +493,54 @@ done
 本章探讨 PaperBell 在不同学术写作场景下的配置方案，分享经过实践验证的最佳实践，并介绍进阶自定义技巧。
 
 ### 常用配置方案
+
+> [!tip] Pandoc Defaults 与 Template 配置说明
+>
+> PaperBell 的导出系统基于 Pandoc 的 defaults 文件配置。在 `40 - Obsidian/脚本/pandoc/defaults/` 目录下，我们提供了两个预配置的 defaults 文件：
+>
+> - **paperbell.yaml** - macOS/Linux 系统使用（中文字体：Songti SC、Heiti SC、STFangsong）
+> - **paperbell-windows.yaml** - Windows 系统使用（中文字体：SimSun、SimHei、FangSong）
+>
+> 这两个配置文件的主要区别在于**中文字体设置**，以适应不同操作系统的字体可用性。
+>
+> #### 自动检测与手动指定
+>
+> 在 Longform 编译时，"Add YAML Metadata" 脚本会：
+>
+> 1. **自动检测操作系统**（如果 Template 选项留空）：
+> - macOS/Linux → 使用 `paperbell` 模板
+> - Windows → 使用 `paperbell-windows` 模板
+>
+> 2. **支持手动指定**：在 Template 文本框中输入任何模板名称，如：
+> - `paperbell` - 使用 Unix 版本
+> - `paperbell-windows` - 使用 Windows 版本
+> - `eisvogel` - 使用 Eisvogel 模板
+> - `my-custom` - 使用你自己的自定义模板
+>
+> #### 创建自定义工作流
+>
+> 你完全可以定义自己的 defaults 配置文件和工作流：
+>
+> 1. 在 `40 - Obsidian/脚本/pandoc/defaults/` 创建新的 `.yaml` 文件
+> 2. 在 `40 - Obsidian/脚本/pandoc/templates/` 创建新的 `.latex` 模板
+> 3. 在 Longform 编译时的 Template 选项中指定你的配置名称
+>
+> 例如，创建 `my-workflow.yaml` 后，在编译时输入 `my-workflow` 即可使用。
+>
+> **相关文件路径**：
+>
+> ```bash
+> 40 - Obsidian/脚本/pandoc/
+> ├── defaults/ # Pandoc 默认配置文件
+> │ ├── paperbell.yaml
+> │ ├── paperbell-windows.yaml
+> │ ├── beamer.yaml
+> │ └── crossref.yaml
+> ├── templates/ # LaTeX 模板文件
+> │ └── paperbell.latex
+> ├── filters/ # Pandoc Lua 过滤器
+> └── csl/ # 引用样式文件
+> ```
 
 #### 方案一：快速投稿配置（Clean Submission）
 
@@ -900,7 +944,6 @@ As shown in [@fig:study-area], our study area covers...
 **工作流程**：
 
 1. **文献阅读阶段**（Zotero）：
-
  - 使用彩色高亮标注关键内容：
  - 🟡 黄色：重要发现
  - 🟢 绿色：方法论
@@ -909,19 +952,16 @@ As shown in [@fig:study-area], our study area covers...
  - 添加标签：`#project/DEMO`、`#method/ABM`
 
 2. **笔记导入阶段**（ZotLit）：
-
  - 右键选择 "Create Literature Note(s)"
  - 自动导入到 `Inputs/Zotero/`
  - 验证引用键格式（如 `song2025collective`）
 
 3. **写作引用阶段**（Obsidian）：
-
  - 使用自动完成：输入 `[@song` 触发补全
  - 多引用：`[@author1; @author2; @author3]`
  - 文内引用：`@author2024 demonstrated that...`
 
 4. **编译检查阶段**（Pandoc）：
-
  - 检查是否有未解析的引用（会显示为 `[@unknown]`）
  - 验证参考文献格式与期刊要求一致
  - 检查引用顺序（Nature 系列按引用顺序，APA 按字母顺序）
@@ -1483,43 +1523,153 @@ Auto-save sessions: Yes
 
 #### 步骤四：配置 Pandoc 模板
 
-**复制模板文件**：
+PaperBell 提供了完整的 Pandoc 配置系统，包括 defaults 文件、LaTeX 模板、Lua 过滤器和 CSL 引用样式。
 
-```bash
+##### 理解 Pandoc Defaults 文件
 
-# 复制 PaperBell LaTeX 模板
-cp templates/paperbell.latex 40\ -\ Obsidian/脚本/Pandoc/templates/
+PaperBell 在 `40 - Obsidian/脚本/pandoc/defaults/` 目录下提供了预配置的 defaults 文件：
 
-# 复制默认配置文件
-cp defaults/pdf.yaml 40\ -\ Obsidian/脚本/Pandoc/defaults/
+| 文件名 | 用途 | 主要差异 |
+|--------|------|----------|
+| `paperbell.yaml` | macOS/Linux 系统 | 中文字体：Songti SC、Heiti SC、STFangsong |
+| `paperbell-windows.yaml` | Windows 系统 | 中文字体：SimSun、SimHei、FangSong |
+| `beamer.yaml` | 演示文稿导出 | 使用 Beamer 模板 |
+| `crossref.yaml` | 交叉引用配置 | pandoc-crossref 插件配置 |
 
-# 复制 CSL 引用样式文件
-cp csl/*.csl 40\ -\ Obsidian/脚本/Pandoc/
-```
+**为什么需要两个 paperbell 配置？**
 
-**修改 pdf.yaml 路径**：
-
-编辑 `40 - Obsidian/脚本/Pandoc/defaults/pdf.yaml`，确保路径正确：
+不同操作系统的中文字体名称不同：
 
 ```yaml
 
-# 修改模板路径
-template: ${USERDATA}/templates/paperbell.latex
+# macOS/Linux (paperbell.yaml)
+metadata:
+ CJKmainfont: Songti SC # 宋体
+ CJKsansfont: Heiti SC # 黑体
+ CJKmonofont: STFangsong # 仿宋
 
-# 修改文献库路径
-bibliography: ${USERDATA}/../../mybib.bib
-
-# ${USERDATA} 会解析为 40 - Obsidian/脚本/Pandoc
+# Windows (paperbell-windows.yaml)
+metadata:
+ CJKmainfont: SimSun # 宋体
+ CJKsansfont: SimHei # 黑体
+ CJKmonofont: FangSong # 仿宋
 ```
 
-**验证模板可用**：
+##### 自动检测机制
+
+Longform 的 "Add YAML Metadata" 脚本会自动检测操作系统：
+
+```javascript
+// 自动检测逻辑
+if (!template || template === "") {
+ const platform = process.platform;
+ if (platform === "darwin" || platform === "linux") {
+ template = "paperbell"; // 使用 paperbell.yaml
+ } else if (platform === "win32") {
+ template = "paperbell-windows"; // 使用 paperbell-windows.yaml
+ }
+}
+```
+
+##### 手动指定模板
+
+在 Longform 编译时，可以在 "Pandoc Template" 文本框中手动指定：
+
+```yaml
+
+# 使用 Unix 版本（即使在 Windows 上）
+Pandoc Template: paperbell
+
+# 使用 Windows 版本（即使在 macOS 上）
+Pandoc Template: paperbell-windows
+
+# 使用其他模板
+Pandoc Template: eisvogel
+Pandoc Template: my-custom-template
+```
+
+##### 创建自定义 Defaults 文件
+
+你可以创建自己的 defaults 配置文件：
+
+1. **创建新的 defaults 文件**：
+
+在 `40 - Obsidian/脚本/Pandoc/defaults/` 创建 `my-workflow.yaml`：
+
+```yaml
+---
+
+## General options
+standalone: true
+pdf-engine: xelatex
+data-dir: ${.}/..
+
+## Templates
+template: ${USERDATA}/templates/my-template.latex
+
+## Bibliography
+bibliography: ${USERDATA}/../../mybib.bib
+csl: ${USERDATA}/my-style.csl
+
+## Filters
+filters:
+ - ${USERDATA}/filters/shift_headings.lua
+ - pandoc-crossref
+ - citeproc
+
+## Metadata
+metadata:
+ CJKmainfont: "Your Preferred Font"
+ mainfont: "Your Preferred Font"
+ numbersections: true
+ link-citations: true
+```
+
+2. **在 Longform 中使用**：
+
+编译时在 Template 选项中输入 `my-workflow`。
+
+##### 文件结构说明
 
 ```bash
-cd "40 - Obsidian/脚本/Pandoc"
-pandoc --print-default-template=latex | head -20
+40 - Obsidian/脚本/pandoc/
+├── defaults/ # Pandoc defaults 配置文件
+│ ├── paperbell.yaml # Unix 系统配置
+│ ├── paperbell-windows.yaml # Windows 系统配置
+│ ├── beamer.yaml # 演示文稿配置
+│ └── crossref.yaml # 交叉引用配置
+│
+├── templates/ # LaTeX 模板文件
+│ └── paperbell.latex # PaperBell 学术模板
+│
+├── filters/ # Pandoc Lua 过滤器
+│ ├── shift_headings.lua # 调整标题层级
+│ ├── image.lua # 图片处理
+│ ├── callout.lua # Callout 渲染
+│ └── ... # 其他过滤器
+│
+├── csl/ # 引用样式文件
+│ ├── nature.csl
+│ ├── apa.csl
+│ └── ...
+│
+└── preamble.sty # LaTeX 导言区自定义
 ```
 
-应显示 LaTeX 模板内容。
+##### 验证配置
+
+```bash
+
+# 查看 defaults 文件内容
+cat "40 - Obsidian/脚本/pandoc/defaults/paperbell.yaml"
+
+# 测试 defaults 配置
+cd "40 - Obsidian/脚本/pandoc"
+pandoc --defaults=paperbell.yaml test.md -o test.pdf
+
+# 查看可用的过滤器
+ls "40 - Obsidian/脚本/pandoc/filters/"
+```
 
 #### 步骤五：配置 Zotero 导出
 
@@ -1555,37 +1705,203 @@ Color Mapping:
 Use Better BibTeX Key: Yes
 ```
 
-**创建文献笔记模板**：
+**Zotlit文献笔记模板**：
 
-`40 - Obsidian/模板/Literature Note.md`:
+在Zotlit 插件的 template 界面或者在`40 - Obsidian/模板`文件夹找到下面md文件进行修改:
+
+zt-annot.eta：
 
 ```markdown
+<%
+// 从 paperbell 插件获取配置
+let label = {};
+let noteLabel = 'Note'; // 默认标签
+try {
+ const paperbellPlugin = app.plugins.plugins.paperbell;
+ if (paperbellPlugin && paperbellPlugin.settings &&
+ paperbellPlugin.settings.ZotLitColors &&
+ paperbellPlugin.settings.ZotLitColors.mapping) {
+ const colorMapping = paperbellPlugin.settings.ZotLitColors.mapping;
+ // 将 mapping 对象转换成我们需要的格式 {colorName: label}
+ Object.keys(colorMapping).forEach(color => {
+ if (colorMapping[color] && colorMapping[color].callout) {
+ label[color] = colorMapping[color].callout;
+ }
+ });
+ }
+} catch (e) {
+ console.error("无法读取 paperbell 插件配置:", e);
+}
+// 如果读取失败，使用默认映射作为备份
+if (Object.keys(label).length === 0) {
+ label = {
+ "red": "Conclusion",
+ "orange": "Question",
+ "yellow": "Highlight",
+ "gray": "Comment",
+ "green": "Quote",
+ "cyan": "Task",
+ "blue": "Definition",
+ "navy": "Definition",
+ "purple": "Question",
+ "brown": "Source",
+ "magenta": "To Do"
+ };
+}
+// 获取当前注释的标签
+noteLabel = label[it.colorName] ? label[it.colorName] : 'Note';
+%>
+
+[!<%= noteLabel %>] Page <%= it.pageLabel %>
+
+<%= it.imgEmbed %><%= it.text %>
+<% if (it.comment) { %>
 ---
-title: "{{title}}"
-authors: {{authors}}
-year: {{year}}
-tags: [literature, {{itemType}}]
-citekey: {{citekey}}
----
 
-# {{title}}
+<%= it.comment %>
+<% } %>
+```
 
-### Metadata
-- **Authors**: {{authors}}
-- **Year**: {{year}}
-- **Journal**: {{publicationTitle}}
-- **DOI**: {{DOI}}
+zt-annots.eta
 
-### Abstract
-{{abstractNote}}
+```markdown
+<%
+// 尝试从 paperbell 插件获取配置
+let label = {};
+let readSuccess = false; // 添加一个标志来跟踪是否成功读取数据
+let readSource = "未知"; // 记录数据来源
+try {
+ // 假设可以通过 app.plugins.plugins 访问插件
+ const paperbellPlugin = app.plugins.plugins.paperbell;
+ if (paperbellPlugin && paperbellPlugin.settings &&
+ paperbellPlugin.settings.ZotLitColors &&
+ paperbellPlugin.settings.ZotLitColors.mapping) {
+ // 从插件设置中提取颜色标签映射
+ const colorMapping = paperbellPlugin.settings.ZotLitColors.mapping;
+ // 将 mapping 对象转换成我们需要的格式 {colorName: label}
+ Object.keys(colorMapping).forEach(color => {
+ if (colorMapping[color] && colorMapping[color].label) {
+ label[color] = colorMapping[color].label;
+ }
+ });
+ // 如果至少读取到一个颜色标签，则标记为成功
+ if (Object.keys(label).length > 0) {
+ readSuccess = true;
+ readSource = "paperbell插件";
+ }
+ }
+} catch (e) {
+ console.error("无法读取 paperbell 插件配置:", e);
+}
+console.log("paperbell插件检测:", !!app.plugins.plugins.paperbell);
+console.log("paperbell设置检测:", !!(app.plugins.plugins.paperbell && app.plugins.plugins.paperbell.settings));
+console.log("ZotLitColors检测:", !!(app.plugins.plugins.paperbell &&
+ app.plugins.plugins.paperbell.settings &&
+ app.plugins.plugins.paperbell.settings.ZotLitColors));
+// 如果读取失败，使用默认映射作为备份
+if (Object.keys(label).length === 0) {
+ label = {
+ "red": "Conclusion",
+ "orange": "Keyword",
+ "yellow": "Highlight",
+ "gray": "Comment",
+ "green": "Quote",
+ "cyan": "Task",
+ "blue": "Definition",
+ "navy": "Definition",
+ "purple": "Question",
+ "brown": "Source",
+ "magenta": "To Do"
+ };
+ readSource = "默认映射";
+ console.log("使用默认映射进行笔记提取，请检查 PaperBell 插件配置。")
+}
+const byColor = Object.groupBy(it, (annot) => annot.colorName);
+// 保持原来的逻辑
+const colorSet = new Set([...Object.keys(label), ...Object.keys(byColor)]);
+%>
+<% for (const color of colorSet) {
+ if (!(color in byColor)) continue
+-%>
 
-### Annotations
+### <%= label[color] ?? color %>
 
-{{annotations}}
+<%_for (const annot of byColor[color]) { %>
+<%~ include("annotation", annot) %>
+<%%>
+<%_ } %>
+<% } %>
+```
 
-### Notes
+zt-cite.eta
 
-(Add your thoughts here)
+```markdown
+[<%= it.map(lit => `@${lit.citekey}`).join("; ") %>]
+```
+
+zt-cite2.eta
+
+```markdown
+<%= it.map(lit => `@${lit.citekey}`).join("; ") %>
+```
+
+zt-colored.eta
+
+```markdown
+<mark style="
+<%- if (it.color) { _%> color: <%= it.color %>; <%_ } -%>
+<%- if (it.bgColor) { _%> background-color: <%= it.bgColor %>; <%_ } -%>
+"><%= it.content %></mark>
+```
+
+zt-field.eta
+
+```markdown
+title: "<%= it.title %>"
+
+citekey: "<%= it.citekey %>"
+
+tags: [paper, <% = it.tags.filter(t => t.name && t.name.startsWith('#')).map(t => '"' + t.name.slice(1) + '"').join(', ') %>]
+
+cate: 论文
+
+concepts: [<%let excludeEndings = ['更新', '推荐', '关联', '检索', '浏览', '初读', '精读', '星标'];
+let filteredConceptTags = (Array.isArray(it.tags) ? it.tags : []).filter(t =>
+ t.name &&
+ !t.name.startsWith('#') &&
+ !excludeEndings.some(ending => t.name.endsWith(ending))
+).map(t => '"' + t.name + '"');
+%> <%= filteredConceptTags.join(', ') %>]
+
+read: [<% let endings = ['浏览', '初读', '精读']; let filteredTags = it.tags.filter(t => t.name && endings.some(ending => t.name.endsWith(ending))); if (filteredTags.length === 1) { %> "<%= filteredTags[0].name %>" <% } else if (filteredTags.length > 1) { %> 错误：存在多个符合条件的标签。 <% } else { %> 错误：没有找到符合条件的标签。 <% } %>]
+
+source: [<% let endings_2 = ['更新', '推荐', '关联', '检索']; let filteredTags_2 = it.tags.filter(t => t.name && endings_2.some(ending => t.name.endsWith(ending))); if (filteredTags_2.length === 1) { %> "<%= filteredTags_2[0].name %>" <% } else if (filteredTags_2.length > 1) { %> 错误：存在多个符合条件的标签。 <% } else { %> 错误：没有找到符合条件的标签。 <% } %>]
+
+authors: [<%= it.authors %>]
+
+journal: <%= it.publicationTitle %>
+
+paper_date: <%= it.date %>
+
+date: <%= (new Date(it.dateModified || Date.now())).toISOString().slice(0, 10) %>
+
+<%
+let isImportant = it.tags.some(t => t.name === '🌟星标');
+%>
+
+important: <%= isImportant ? 'True' : 'False' %>
+```
+
+zt-note.eta
+
+```markdown
+| Zotero | File | Journal |
+| ---------------------------- | ------------------ | ------------------------------------------ |
+| Zotero | <%= it.fileLink %> | <%= it.publicationTitle %> |
+
+## Annotations
+
+<%~ include("annots", it.annotations) %>
 ```
 
 #### 步骤六：配置 Enhancing Export
@@ -1625,11 +1941,9 @@ Settings → Obsidian Enhancing Export：
 1. 打开 Obsidian 左侧边栏的 Longform 图标
 2. 点击 **New Project**
 3. 配置项目：
-
  - Name: `MyFirstPaper`
  - Type: Manuscript
  - Location: `Outputs/`
-
 4. 点击 **Create**
 
 #### 步骤二：添加项目结构
@@ -1741,7 +2055,6 @@ As shown in [@fig:demo], our method works well.
 1. 在 Longform 面板中选择 `MyFirstPaper`
 2. 点击 **Compile** 选项卡
 3. 配置编译步骤（按顺序）：
-
  - Strip Frontmatter
  - Remove Links
  - Prepend Title
@@ -1749,7 +2062,6 @@ As shown in [@fig:demo], our method works well.
  - **Add YAML Metadata** (Note Name: `Index`)
  - **Replace placeholders from JSON**
  - Save as Note (输出：`manuscript.md`)
-
 4. 点击 **Compile**
 
 **验证编译结果**：

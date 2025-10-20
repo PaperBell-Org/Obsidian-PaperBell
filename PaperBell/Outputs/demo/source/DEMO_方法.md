@@ -429,38 +429,212 @@ Color Mapping:
 Use Better BibTeX Key: Yes
 ```
 
-**创建文献笔记模板**：
+**Zotlit文献笔记模板**：
 
-`40 - Obsidian/模板/Literature Note.md`:
+在Zotlit 插件的 template 界面或者在`40 - Obsidian/模板`文件夹找到下面md文件进行修改:
+
+zt-annot.eta：
 
 ```markdown
+<%
+// 从 paperbell 插件获取配置
+let label = {};
+let noteLabel = 'Note'; // 默认标签
+try {
+  const paperbellPlugin = app.plugins.plugins.paperbell;
+  if (paperbellPlugin && paperbellPlugin.settings &&
+      paperbellPlugin.settings.ZotLitColors &&
+      paperbellPlugin.settings.ZotLitColors.mapping) {
+    const colorMapping = paperbellPlugin.settings.ZotLitColors.mapping;
+    // 将 mapping 对象转换成我们需要的格式 {colorName: label}
+    Object.keys(colorMapping).forEach(color => {
+      if (colorMapping[color] && colorMapping[color].callout) {
+        label[color] = colorMapping[color].callout;
+      }
+    });
+  }
+} catch (e) {
+  console.error("无法读取 paperbell 插件配置:", e);
+}
+// 如果读取失败，使用默认映射作为备份
+if (Object.keys(label).length === 0) {
+  label = {
+    "red": "Conclusion",
+    "orange": "Question",
+    "yellow": "Highlight",
+    "gray": "Comment",
+    "green": "Quote",
+    "cyan": "Task",
+    "blue": "Definition",
+    "navy": "Definition",
+    "purple": "Question",
+    "brown": "Source",
+    "magenta": "To Do"
+  };
+}
+// 获取当前注释的标签
+noteLabel = label[it.colorName] ? label[it.colorName] : 'Note';
+%>
+
+[!<%= noteLabel %>] Page <%= it.pageLabel %>
+
+<%= it.imgEmbed %><%= it.text %>
+<% if (it.comment) { %>
 ---
-title: "{{title}}"
-authors: {{authors}}
-year: {{year}}
-tags: [literature, {{itemType}}]
-citekey: {{citekey}}
----
 
-# {{title}}
-
-### Metadata
-- **Authors**: {{authors}}
-- **Year**: {{year}}
-- **Journal**: {{publicationTitle}}
-- **DOI**: {{DOI}}
-
-### Abstract
-{{abstractNote}}
-
-### Annotations
-
-{{annotations}}
-
-### Notes
-
-(Add your thoughts here)
+<%= it.comment %>
+<% } %>
 ```
+
+
+zt-annots.eta
+
+```markdown
+<%
+// 尝试从 paperbell 插件获取配置
+let label = {};
+let readSuccess = false; // 添加一个标志来跟踪是否成功读取数据
+let readSource = "未知"; // 记录数据来源
+try {
+  // 假设可以通过 app.plugins.plugins 访问插件
+  const paperbellPlugin = app.plugins.plugins.paperbell;
+  if (paperbellPlugin && paperbellPlugin.settings &&
+      paperbellPlugin.settings.ZotLitColors &&
+      paperbellPlugin.settings.ZotLitColors.mapping) {
+    // 从插件设置中提取颜色标签映射
+    const colorMapping = paperbellPlugin.settings.ZotLitColors.mapping;
+    // 将 mapping 对象转换成我们需要的格式 {colorName: label}
+    Object.keys(colorMapping).forEach(color => {
+      if (colorMapping[color] && colorMapping[color].label) {
+        label[color] = colorMapping[color].label;
+      }
+    });
+    // 如果至少读取到一个颜色标签，则标记为成功
+    if (Object.keys(label).length > 0) {
+      readSuccess = true;
+      readSource = "paperbell插件";
+    }
+  }
+} catch (e) {
+  console.error("无法读取 paperbell 插件配置:", e);
+}
+console.log("paperbell插件检测:", !!app.plugins.plugins.paperbell);
+console.log("paperbell设置检测:", !!(app.plugins.plugins.paperbell && app.plugins.plugins.paperbell.settings));
+console.log("ZotLitColors检测:", !!(app.plugins.plugins.paperbell &&
+                              app.plugins.plugins.paperbell.settings &&
+                              app.plugins.plugins.paperbell.settings.ZotLitColors));
+// 如果读取失败，使用默认映射作为备份
+if (Object.keys(label).length === 0) {
+  label = {
+    "red": "Conclusion",
+    "orange": "Keyword",
+    "yellow": "Highlight",
+    "gray": "Comment",
+    "green": "Quote",
+    "cyan": "Task",
+    "blue": "Definition",
+    "navy": "Definition",
+    "purple": "Question",
+    "brown": "Source",
+    "magenta": "To Do"
+  };
+  readSource = "默认映射";
+  console.log("使用默认映射进行笔记提取，请检查 PaperBell 插件配置。")
+}
+const byColor = Object.groupBy(it, (annot) => annot.colorName);
+// 保持原来的逻辑
+const colorSet = new Set([...Object.keys(label), ...Object.keys(byColor)]);
+%>
+<% for (const color of colorSet) {
+  if (!(color in byColor)) continue
+-%>
+
+### <%= label[color] ?? color %>
+
+<%_for (const annot of byColor[color]) { %>
+<%~ include("annotation", annot) %>
+<%%>
+<%_ } %>
+<% } %>
+```
+
+
+zt-cite.eta
+
+```markdown
+[<%= it.map(lit => `@${lit.citekey}`).join("; ") %>]
+```
+
+
+zt-cite2.eta
+
+```markdown
+<%= it.map(lit => `@${lit.citekey}`).join("; ") %>
+```
+
+
+zt-colored.eta
+
+```markdown
+<mark style="
+<%- if (it.color) { _%> color: <%= it.color %>; <%_ } -%>
+<%- if (it.bgColor) { _%> background-color: <%= it.bgColor %>; <%_ } -%>
+"><%= it.content %></mark>
+```
+
+
+zt-field.eta
+
+```markdown
+title: "<%= it.title %>"
+
+citekey: "<%= it.citekey %>"
+
+tags: [paper, <% = it.tags.filter(t => t.name && t.name.startsWith('#')).map(t => '"' + t.name.slice(1) + '"').join(', ') %>]
+
+cate: 论文
+
+concepts: [<%let excludeEndings = ['更新', '推荐', '关联', '检索', '浏览', '初读', '精读', '星标'];
+let filteredConceptTags = (Array.isArray(it.tags) ? it.tags : []).filter(t =>
+  t.name &&
+  !t.name.startsWith('#') &&
+  !excludeEndings.some(ending => t.name.endsWith(ending))
+).map(t => '"' + t.name + '"');
+%> <%= filteredConceptTags.join(', ') %>]
+
+read: [<% let endings = ['浏览', '初读', '精读']; let filteredTags = it.tags.filter(t => t.name && endings.some(ending => t.name.endsWith(ending))); if (filteredTags.length === 1) { %> "<%= filteredTags[0].name %>" <% } else if (filteredTags.length > 1) { %> 错误：存在多个符合条件的标签。 <% } else { %> 错误：没有找到符合条件的标签。 <% } %>]
+
+source: [<% let endings_2 = ['更新', '推荐', '关联', '检索']; let filteredTags_2 = it.tags.filter(t => t.name && endings_2.some(ending => t.name.endsWith(ending))); if (filteredTags_2.length === 1) { %> "<%= filteredTags_2[0].name %>" <% } else if (filteredTags_2.length > 1) { %> 错误：存在多个符合条件的标签。 <% } else { %> 错误：没有找到符合条件的标签。 <% } %>]
+
+authors: [<%= it.authors %>]
+
+journal: <%= it.publicationTitle %>
+
+paper_date: <%= it.date %>
+
+date: <%= (new Date(it.dateModified || Date.now())).toISOString().slice(0, 10) %>
+
+<%
+let isImportant = it.tags.some(t => t.name === '🌟星标');
+%>
+
+important: <%= isImportant ? 'True' : 'False' %>
+```
+
+
+zt-note.eta
+
+```markdown
+| Zotero                       | File               | Journal                                    |
+| ---------------------------- | ------------------ | ------------------------------------------ |
+| [Zotero](<%= it.backlink %>) | <%= it.fileLink %> | [<%= it.publicationTitle %>](<%= it.url%>) |
+
+## Annotations
+
+<%~ include("annots", it.annotations) %>
+```
+
+
 
 #### 步骤六：配置 Enhancing Export
 
