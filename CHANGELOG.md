@@ -86,6 +86,26 @@
 - 修复了一些已知问题 📅 2024-05-13
 
 <a id='changelog-0.1.0'></a>
+## [4.4.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.4...v4.4.0) (2025-10-20)
+
+
+### Features
+
+* **demo:** Add comprehensive demo manuscript and enhance export configurations ([415d17d](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/415d17d95ae84dd112befa72baea880cc39660e2))
+* **demo:** Add new images for demo manuscript and update references ([1b044e9](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/1b044e90a318dd166b77f7be26e4f80a8441a6f2))
+* **demo:** Add organizing image to enhance demo manuscript visuals ([7baeb7e](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/7baeb7e34d4961ffc2f1158fd3fab3ce180bb3d0))
+* **demo:** Enhance Pandoc configuration documentation and add custom workflow instructions ([ef9baad](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/ef9baade9d97b1de7d4db91e9f686346cfa324e4))
+* **longform:** Add template option for Pandoc export and enhance manuscript metadata ([e26130a](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/e26130a1a320e9eb6241d39328d43d6b59cd8514))
+* **longform:** Revamp PaperBell Longform project structure and enhance metadata ([ff7f45f](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/ff7f45f9da5d915b8dabfb694fef246b5e601310))
+* **map-view:** Enhance map view functionality and update plugin versions ([2cd6d0f](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/2cd6d0fe01c478b23b66376c28a631a0be64403f))
+* **template:** Update longform academic template metadata and add scene alias ([d606152](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/d606152f94cd4eb63946d311b11afefcacedb41a))
+
+
+### Bug Fixes
+
+* **demo:** Update manuscript content and image references for clarity ([bbfd22d](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/bbfd22dcff39bf91726842624197ffc1211eb43e))
+* **export:** Update PDF export arguments for improved resource handling ([d5173b1](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/d5173b1b1b8acb083dd66f117c6bc402f17a7a93))
+
 ## [4.3.4](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.3...v4.3.4) (2025-09-28)
 
 
