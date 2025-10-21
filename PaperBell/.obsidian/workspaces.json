@@ -590,10 +590,10 @@
       },
       "left-ribbon": {
         "hiddenItems": {
-          "paperbell:Open Section View Dashboard": false,
+          "paperbell:搜索机构": false,
+          "paperbell:打开部分视图仪表板": false,
           "bases:创建新数据库": false,
           "pexels-banner:🚩 Pixel Banner Menu": false,
-          "paperbell:Search institution": false,
           "daily-notes:打开/创建今天的日记": false,
           "homepage:Open homepage": false,
           "obsidian-memos:Thino": false,
@@ -610,7 +610,7 @@
         }
       },
       "active": "0fe3999b908523ec",
-      "mtime": "2025-09-26T22:28:34+02:00"
+      "mtime": "2025-10-21T21:59:27+02:00"
     }
   },
   "active": "主工作区"
