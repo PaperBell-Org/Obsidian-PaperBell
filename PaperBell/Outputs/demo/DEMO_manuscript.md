@@ -25,7 +25,7 @@ target: "PaperBell Documentation"
 acronym: "DEMO"
 csl: "nature"
 style: ""
-template: "paperbell"
+template: "paperbell-windows"
 ---
 
 ## 引言
@@ -251,12 +251,10 @@ PaperBell 提供了基于 Eisvogel 定制的 LaTeX 模板 `paperbell.latex`，�
 2. **智能行号控制**：支持 `lineno: "true"` 选项显示行号，便于审稿和讨论；参考文献部分自动关闭行号
 3. **图表位置灵活性**：支持 `figures-at-end: "true"` 将所有图表置于文末（参考文献之前）
 4. **页眉页脚定制**：
-
  - 左页眉：Manuscript: {acronym}
  - 右页眉：{date}
  - 左页脚：Submission: {target}
  - 右页脚：页码
-
 5. **图表标题格式化**：无缩进、两端对齐、Times New Roman 字体、加粗标签
 6. **紧凑学术格式**：优化标题间距，移除不必要的空白
 
@@ -450,13 +448,11 @@ PaperBell 支持多种协作模式：
 PaperBell 提供了两个核心自定义脚本，用户也可以编写自己的脚本：
 
 1. **编译后增加头文件.js**：
-
  - 从 Index.md 读取元数据
  - 注入 YAML 前置内容
  - 支持用户选项覆盖
 
 2. **替换结果占位符.js**：
-
  - 解析 results.json
  - 替换 {{path.to.value}} 占位符
  - 支持嵌套对象和数组
@@ -512,12 +508,10 @@ done
 > 在 Longform 编译时，"Add YAML Metadata" 脚本会：
 >
 > 1. **自动检测操作系统**（如果 Template 选项留空）：
->
 > - macOS/Linux → 使用 `paperbell` 模板
 > - Windows → 使用 `paperbell-windows` 模板
 >
 > 2. **支持手动指定**：在 Template 文本框中输入任何模板名称，如：
->
 > - `paperbell` - 使用 Unix 版本
 > - `paperbell-windows` - 使用 Windows 版本
 > - `eisvogel` - 使用 Eisvogel 模板
@@ -950,7 +944,6 @@ As shown in [@fig:study-area], our study area covers...
 **工作流程**：
 
 1. **文献阅读阶段**（Zotero）：
-
  - 使用彩色高亮标注关键内容：
  - 🟡 黄色：重要发现
  - 🟢 绿色：方法论
@@ -959,19 +952,16 @@ As shown in [@fig:study-area], our study area covers...
  - 添加标签：`#project/DEMO`、`#method/ABM`
 
 2. **笔记导入阶段**（ZotLit）：
-
  - 右键选择 "Create Literature Note(s)"
  - 自动导入到 `Inputs/Zotero/`
  - 验证引用键格式（如 `song2025collective`）
 
 3. **写作引用阶段**（Obsidian）：
-
  - 使用自动完成：输入 `[@song` 触发补全
  - 多引用：`[@author1; @author2; @author3]`
  - 文内引用：`@author2024 demonstrated that...`
 
 4. **编译检查阶段**（Pandoc）：
-
  - 检查是否有未解析的引用（会显示为 `[@unknown]`）
  - 验证参考文献格式与期刊要求一致
  - 检查引用顺序（Nature 系列按引用顺序，APA 按字母顺序）
@@ -1722,95 +1712,22 @@ Use Better BibTeX Key: Yes
 zt-annot.eta：
 
 ```markdown
-<%
-// 从 paperbell 插件获取配置
-let label = {};
-let noteLabel = 'Note'; // 默认标签
-try {
- const paperbellPlugin = app.plugins.plugins.paperbell;
- if (paperbellPlugin && paperbellPlugin.settings &&
- paperbellPlugin.settings.ZotLitColors &&
- paperbellPlugin.settings.ZotLitColors.mapping) {
- const colorMapping = paperbellPlugin.settings.ZotLitColors.mapping;
- // 将 mapping 对象转换成我们需要的格式 {colorName: label}
- Object.keys(colorMapping).forEach(color => {
- if (colorMapping[color] && colorMapping[color].callout) {
- label[color] = colorMapping[color].callout;
- }
- });
- }
-} catch (e) {
- console.error("无法读取 paperbell 插件配置:", e);
-}
-// 如果读取失败，使用默认映射作为备份
-if (Object.keys(label).length === 0) {
- label = {
- "red": "Conclusion",
- "orange": "Question",
- "yellow": "Highlight",
- "gray": "Comment",
- "green": "Quote",
- "cyan": "Task",
- "blue": "Definition",
- "navy": "Definition",
- "purple": "Question",
- "brown": "Source",
- "magenta": "To Do"
- };
-}
-// 获取当前注释的标签
-noteLabel = label[it.colorName] ? label[it.colorName] : 'Note';
-%>
-
-[!<%= noteLabel %>] Page <%= it.pageLabel %>
+[!<%= it.colorName %>] Page <%= it.pageLabel %>
 
 <%= it.imgEmbed %><%= it.text %>
 <% if (it.comment) { %>
 ---
-
 <%= it.comment %>
 <% } %>
+
+<%= it.tags.filter(t => t.type === 0).map(t => `#${t.name}`).join(' ') %>
 ```
 
 zt-annots.eta
 
 ```markdown
-<%
-// 尝试从 paperbell 插件获取配置
-let label = {};
-let readSuccess = false; // 添加一个标志来跟踪是否成功读取数据
-let readSource = "未知"; // 记录数据来源
-try {
- // 假设可以通过 app.plugins.plugins 访问插件
- const paperbellPlugin = app.plugins.plugins.paperbell;
- if (paperbellPlugin && paperbellPlugin.settings &&
- paperbellPlugin.settings.ZotLitColors &&
- paperbellPlugin.settings.ZotLitColors.mapping) {
- // 从插件设置中提取颜色标签映射
- const colorMapping = paperbellPlugin.settings.ZotLitColors.mapping;
- // 将 mapping 对象转换成我们需要的格式 {colorName: label}
- Object.keys(colorMapping).forEach(color => {
- if (colorMapping[color] && colorMapping[color].label) {
- label[color] = colorMapping[color].label;
- }
- });
- // 如果至少读取到一个颜色标签，则标记为成功
- if (Object.keys(label).length > 0) {
- readSuccess = true;
- readSource = "paperbell插件";
- }
- }
-} catch (e) {
- console.error("无法读取 paperbell 插件配置:", e);
-}
-console.log("paperbell插件检测:", !!app.plugins.plugins.paperbell);
-console.log("paperbell设置检测:", !!(app.plugins.plugins.paperbell && app.plugins.plugins.paperbell.settings));
-console.log("ZotLitColors检测:", !!(app.plugins.plugins.paperbell &&
- app.plugins.plugins.paperbell.settings &&
- app.plugins.plugins.paperbell.settings.ZotLitColors));
-// 如果读取失败，使用默认映射作为备份
-if (Object.keys(label).length === 0) {
- label = {
+<% const byColor = Object.groupBy(it, (annot) => annot.colorName);
+const label = {
  "red": "Conclusion",
  "orange": "Keyword",
  "yellow": "Highlight",
@@ -1822,24 +1739,18 @@ if (Object.keys(label).length === 0) {
  "purple": "Question",
  "brown": "Source",
  "magenta": "To Do"
- };
- readSource = "默认映射";
- console.log("使用默认映射进行笔记提取，请检查 PaperBell 插件配置。")
-}
-const byColor = Object.groupBy(it, (annot) => annot.colorName);
-// 保持原来的逻辑
+};
+// Merge colors with customized label with unexpected colors, if any
+// Keep the order of the colors from the original color-label map
 const colorSet = new Set([...Object.keys(label), ...Object.keys(byColor)]);
-%>
-<% for (const color of colorSet) {
- if (!(color in byColor)) continue
--%>
+for (const color of colorSet) { 
+if (!(color in byColor)) continue -%>
 
 ### <%= label[color] ?? color %>
+ <%_ for (const annot of byColor[color]) { %>
 
-<%_for (const annot of byColor[color]) { %>
 <%~ include("annotation", annot) %>
-<%%>
-<%_ } %>
+ <%_ } %>
 <% } %>
 ```
 
@@ -1951,11 +1862,9 @@ Settings → Obsidian Enhancing Export：
 1. 打开 Obsidian 左侧边栏的 Longform 图标
 2. 点击 **New Project**
 3. 配置项目：
-
  - Name: `MyFirstPaper`
  - Type: Manuscript
  - Location: `Outputs/`
-
 4. 点击 **Create**
 
 #### 步骤二：添加项目结构
@@ -2067,7 +1976,6 @@ As shown in [@fig:demo], our method works well.
 1. 在 Longform 面板中选择 `MyFirstPaper`
 2. 点击 **Compile** 选项卡
 3. 配置编译步骤（按顺序）：
-
  - Strip Frontmatter
  - Remove Links
  - Prepend Title
@@ -2075,7 +1983,6 @@ As shown in [@fig:demo], our method works well.
  - **Add YAML Metadata** (Note Name: `Index`)
  - **Replace placeholders from JSON**
  - Save as Note (输出：`manuscript.md`)
-
 4. 点击 **Compile**
 
 **验证编译结果**：
