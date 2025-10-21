@@ -1232,6 +1232,12 @@ $if(abstract)$
 \captionsetup{justification=justified}
 $endif$
 
+$if(keywords)$
+\par\noindent\textbf{Keywords — }
+$for(keywords)$$keywords$$sep$； $endfor$
+\par\medskip
+$endif$
+
 $body$
 
 $if(has-frontmatter)$
