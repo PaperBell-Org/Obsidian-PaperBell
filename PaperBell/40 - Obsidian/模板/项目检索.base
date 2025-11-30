@@ -1,6 +1,81 @@
+filters:
+  and:
+    - file.tags.contains("project/" + this.file.basename)
+formulas:
+  未命名: ""
 views:
   - type: table
-    name: 表格
+    name: 所有相关笔记
+    groupBy:
+      property: file.folder
+      direction: ASC
+    order:
+      - file.name
+      - file.folder
+    sort:
+      - property: file.name
+        direction: DESC
+      - property: file.folder
+        direction: ASC
+    columnSize:
+      file.name: 297
+  - type: task-genius-tags
+    name: 标签
+    viewMode: tags
+    taskContent: file.basename
+    taskStatus: note.status
+    taskPriority: note.priority
+    taskProject: note.project
+    taskTags: note.tags
+    taskDueDate: note.dueDate
+    taskStartDate: note.startDate
+    taskCompletedDate: note.completionDate
+    taskContext: note.context
+    hideWeekends: false
+  - type: cards
+    name: 相关书籍
     filters:
       and:
-        - file.tags.contains("project/PaperBell")
+        - file.path.startsWith("Inputs/Books")
+  - type: task-genius-calendar
+    name: 日历
+    viewMode: calendar
+    taskContent: file.basename
+    taskStatus: note.status
+    taskPriority: note.priority
+    taskProject: note.project
+    taskTags: note.tags
+    taskDueDate: note.date
+    taskStartDate: note.date
+    taskCompletedDate: note.date
+    taskContext: note.context
+  - type: task-genius-kanban
+    name: kanban
+    viewMode: kanban
+    taskContent: file.basename
+    taskStatus: note.status
+    taskPriority: note.priority
+    taskProject: note.project
+    taskTags: note.tags
+    taskDueDate: note.dueDate
+    taskStartDate: note.startDate
+    taskCompletedDate: note.completionDate
+    taskContext: note.context
+    tg_groupBy: status
+    hideEmptyColumns: false
+  - type: table
+    name: 相关论文
+    filters:
+      and:
+        - file.path.startsWith("Inputs/Zotero")
+    order:
+      - file.name
+      - journal
+      - paper_date
+      - read
+      - important
+    columnSize:
+      file.name: 588
+      note.journal: 272
+      note.paper_date: 106
+      note.read: 184

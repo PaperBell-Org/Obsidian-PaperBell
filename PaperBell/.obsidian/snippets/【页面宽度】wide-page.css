@@ -1,0 +1,46 @@
+/* 
+  Wide Mode Snippet
+  Add "cssclasses: wide-page" to your frontmatter to use this.
+  
+  包含：
+  1. 宽屏显示优化
+  2. Navigation 属性在属性面板中的隐藏 (因为我们现在用 DV 渲染到正文了)
+*/
+
+/* ---------------------------------------------
+   1. 宽屏显示优化
+--------------------------------------------- */
+.wide-page {
+  /* Standard Obsidian variables */
+  --file-line-width: 95%;
+  --line-width: 95%;
+  
+  /* AnuPpuccin / Minimal / Other theme variables */
+  --max-width: 95%;
+  --container-width: 95%;
+}
+
+/* Fallback for themes that don't use variables for width */
+.wide-page .markdown-preview-view.is-readable-line-width .markdown-preview-sizer,
+.wide-page .markdown-source-view.is-readable-line-width .cm-sizer,
+.wide-page .markdown-source-view.is-readable-line-width .cm-content {
+  max-width: 95% !important;
+  width: 95% !important;
+}
+
+/* Adjust margins if necessary */
+.wide-page .markdown-preview-sizer,
+.wide-page .markdown-source-view .cm-sizer {
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+
+
+/* ---------------------------------------------
+   2. 隐藏属性面板中的 Navigation
+   (避免重复显示：正文有了，属性面板就不需要看了)
+--------------------------------------------- */
+
+.wide-page .metadata-property[data-property-key="navigation"] {
+    display: none;
+}

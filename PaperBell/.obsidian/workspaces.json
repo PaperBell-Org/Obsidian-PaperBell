@@ -317,6 +317,32 @@
                 }
               },
               {
+                "id": "86ba234b6754b2dd",
+                "type": "leaf",
+                "state": {
+                  "type": "fluent-task-genius-view",
+                  "state": {
+                    "currentWorkspace": "ws_1764410067355_a3rl1g5fn",
+                    "viewMode": "list",
+                    "viewModeByViewId": {
+                      "projects": "calendar",
+                      "inbox": "list",
+                      "today": "list",
+                      "flagged": "list",
+                      "forecast": "list",
+                      "review": "list",
+                      "calendar": "list"
+                    },
+                    "searchQuery": "",
+                    "filters": {},
+                    "filterInputValue": "",
+                    "currentViewId": "calendar"
+                  },
+                  "icon": "task-genius",
+                  "title": "Task Genius"
+                }
+              },
+              {
                 "id": "09485baf3a99e2db",
                 "type": "leaf",
                 "state": {
@@ -334,16 +360,6 @@
                   "state": {},
                   "icon": "Memos",
                   "title": "Thino"
-                }
-              },
-              {
-                "id": "153532a1e4d3aa07",
-                "type": "leaf",
-                "state": {
-                  "type": "task-genius-view",
-                  "state": {},
-                  "icon": "folders",
-                  "title": "项目"
                 }
               }
             ]
@@ -610,7 +626,7 @@
         }
       },
       "active": "0fe3999b908523ec",
-      "mtime": "2025-10-21T21:59:27+02:00"
+      "mtime": "2025-11-30T10:09:18+01:00"
     }
   },
   "active": "主工作区"

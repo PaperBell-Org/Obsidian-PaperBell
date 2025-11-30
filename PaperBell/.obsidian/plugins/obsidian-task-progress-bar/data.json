@@ -1,4 +1,8 @@
 {
+  "changelog": {
+    "enabled": true,
+    "lastVersion": "9.12.2"
+  },
   "progressBarDisplayMode": "both",
   "supportHoverToShowProgressInfo": true,
   "addProgressBarToNonTaskBullet": false,
@@ -75,6 +79,7 @@
   "useOnlyCountMarks": false,
   "onlyCountTaskMarks": "x|X|>|/",
   "enableTaskStatusSwitcher": false,
+  "enableIndicatorWithCheckbox": false,
   "enableCustomTaskMarks": false,
   "enableTextMarkInSourceMode": false,
   "enableCycleCompleteStatus": false,
@@ -93,6 +98,29 @@
     "Planned": "?"
   },
   "excludeMarksFromCycle": [],
+  "statusCycles": [
+    {
+      "id": "default-cycle",
+      "name": "Default Cycle",
+      "description": "Standard task lifecycle with all states",
+      "priority": 0,
+      "cycle": [
+        "Not Started",
+        "In Progress",
+        "Completed",
+        "Abandoned",
+        "Planned"
+      ],
+      "marks": {
+        "Not Started": " ",
+        "In Progress": "/",
+        "Completed": "x",
+        "Abandoned": "-",
+        "Planned": "?"
+      },
+      "enabled": true
+    }
+  ],
   "enableTaskGeniusIcons": false,
   "enablePriorityPicker": true,
   "enablePriorityKeyboardShortcuts": false,
@@ -141,7 +169,37 @@
       "folder": "00 - 每日日记/DailyNote",
       "template": "40 - Obsidian/模板/每日日记模板"
     },
-    "enableMinimalMode": true
+    "enableMinimalMode": true,
+    "createFileMode": {
+      "defaultFolder": "",
+      "useTemplate": false,
+      "templateFile": ""
+    },
+    "fileNameTemplates": [
+      {
+        "name": "Daily Note",
+        "template": "{{DATE:YYYY-MM-DD}}"
+      },
+      {
+        "name": "Meeting",
+        "template": "{{DATE:YYYY-MM-DD}} - Meeting"
+      },
+      {
+        "name": "Task",
+        "template": "{{DATE:YYYY-MM-DD}} - Task"
+      },
+      {
+        "name": "Project",
+        "template": "Project - {{DATE:YYYY-MM}}"
+      },
+      {
+        "name": "Notes",
+        "template": "Notes - {{DATE:YYYY-MM-DD-HHmm}}"
+      }
+    ],
+    "minimalModeSettings": {
+      "suggestTrigger": "/"
+    }
   },
   "workflow": {
     "enableWorkflow": false,
@@ -241,7 +299,7 @@
     "pathMappings": [],
     "metadataConfig": {
       "metadataKey": "project",
-      "enabled": true,
+      "enabled": false,
       "detectionMethods": []
     },
     "configFile": {
@@ -525,7 +583,7 @@
         "id": "reward-series-episode",
         "name": "观看一集喜欢的剧集",
         "occurrence": "普通",
-        "inventory": 19
+        "inventory": 18
       },
       {
         "id": "reward-champagne-project",
@@ -676,7 +734,11 @@
         "path": "40 - Obsidian",
         "enabled": false
       }
-    ]
+    ],
+    "scopeControls": {
+      "inlineTasksEnabled": true,
+      "fileTasksEnabled": false
+    }
   },
   "onCompletion": {
     "enableOnCompletion": true,
@@ -756,7 +818,6 @@
   },
   "enableCustomDateFormats": false,
   "customDateFormats": [],
-  "experimental": {},
   "onboarding": {
     "completed": false,
     "version": "9.7.7",
@@ -850,6 +911,24 @@
       "caseSensitive": false
     }
   },
+  "fluentView": {
+    "enableFluent": true,
+    "workspaces": [
+      {
+        "id": "default",
+        "name": "Default",
+        "color": "#3498db"
+      }
+    ],
+    "fluentConfig": {
+      "enableWorkspaces": true,
+      "defaultWorkspace": "default",
+      "maxOtherViewsBeforeOverflow": 5
+    },
+    "useWorkspaceSideLeaves": false
+  },
+  "customCalendarViews": [],
+  "experimental": {},
   "enhancedProjectData": {
     "fileProjectMap": {
       "Inputs/Zotero/tsvetkova2024a.md": {
@@ -2294,5 +2373,111 @@
       }
     },
     "projectConfigMap": {}
+  },
+  "workspaces": {
+    "version": 2,
+    "defaultWorkspaceId": "ws_1764410067355_a3rl1g5fn",
+    "activeWorkspaceId": "ws_1764410067355_a3rl1g5fn",
+    "order": [
+      "ws_1764410067355_a3rl1g5fn"
+    ],
+    "byId": {
+      "ws_1764410067355_a3rl1g5fn": {
+        "id": "ws_1764410067355_a3rl1g5fn",
+        "name": "Default",
+        "updatedAt": 1764531665858,
+        "settings": {
+          "fluentFilterState": {
+            "projects": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "tree"
+            },
+            "upcoming": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "list"
+            },
+            "inbox": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "kanban"
+            },
+            "today": {
+              "filters": {},
+              "selectedProject": "MYPAPER",
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1764510285773",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1764510285773",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "MYPAPER"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "viewMode": "list"
+            },
+            "flagged": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "list"
+            },
+            "forecast": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "list"
+            },
+            "review": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "list"
+            },
+            "calendar": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "list"
+            },
+            "tags": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "list"
+            }
+          },
+          "fluentActiveViewId": "inbox"
+        }
+      }
+    }
   }
 }

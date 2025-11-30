@@ -546,13 +546,14 @@
   "inputPrompt": "single-line",
   "devMode": false,
   "templateFolderPath": "40 - Obsidian/模板",
-  "announceUpdates": true,
-  "version": "2.5.0",
+  "announceUpdates": "all",
+  "version": "2.8.0",
   "globalVariables": {},
   "onePageInputEnabled": false,
   "disableOnlineFeatures": false,
   "enableRibbonIcon": false,
   "showCaptureNotification": true,
+  "showInputCancellationNotification": false,
   "enableTemplatePropertyTypes": false,
   "ai": {
     "defaultModel": "Ask me",
@@ -593,7 +594,8 @@
             "name": "text-davinci-003",
             "maxTokens": 4096
           }
-        ]
+        ],
+        "modelSource": "auto"
       }
     ]
   },
@@ -605,6 +607,7 @@
     "setVersionAfterUpdateModalRelease": true,
     "addDefaultAIProviders": true,
     "removeMacroIndirection": true,
-    "migrateFileOpeningSettings": true
+    "migrateFileOpeningSettings": true,
+    "setProviderModelDiscoveryMode": true
   }
 }

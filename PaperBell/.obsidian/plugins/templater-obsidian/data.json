@@ -21,6 +21,14 @@
     {
       "folder": "00 - 每日日记/DailyNote",
       "template": "40 - Obsidian/模板/每日日记模板.md"
+    },
+    {
+      "folder": "/",
+      "template": "40 - Obsidian/模板/测试模板.md"
+    },
+    {
+      "folder": "Projects",
+      "template": "40 - Obsidian/模板/项目模板.md"
     }
   ],
   "enable_file_templates": false,

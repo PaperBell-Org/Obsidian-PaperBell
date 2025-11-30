@@ -14,7 +14,7 @@
   "attachmentFolderPath": "40 - Obsidian/附件",
   "showInlineTitle": false,
   "propertiesInDocument": "visible",
-  "newFileLocation": "folder",
+  "newFileLocation": "current",
   "newFileFolderPath": "Cards/Concepts",
   "defaultViewMode": "preview",
   "readableLineLength": true

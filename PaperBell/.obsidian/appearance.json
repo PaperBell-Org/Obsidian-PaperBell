@@ -27,7 +27,9 @@
     "【AnuPpuccin】floating-search-bar",
     "【AnuPpuccin】its-frontmatter",
     "【AnuPpuccin】minimal-cards",
-    "【AnuPpuccin】notion-cards"
+    "【AnuPpuccin】notion-cards",
+    "【页面宽度】wide-page",
+    "【元数据优化】longform-props"
   ],
   "cssTheme": "AnuPpuccin",
   "theme": "system",

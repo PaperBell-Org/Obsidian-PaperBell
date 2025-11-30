@@ -1,4 +1,5 @@
 ---
+cssclasses: longform-props
 longform:
   format: scenes
   title: PaperBell学术写作完全指南
