@@ -295,7 +295,7 @@
     "inheritFromFrontmatterForSubtasks": false
   },
   "projectConfig": {
-    "enableEnhancedProject": true,
+    "enableEnhancedProject": false,
     "pathMappings": [],
     "metadataConfig": {
       "metadataKey": "project",
@@ -2385,14 +2385,28 @@
       "ws_1764410067355_a3rl1g5fn": {
         "id": "ws_1764410067355_a3rl1g5fn",
         "name": "Default",
-        "updatedAt": 1764531665858,
+        "updatedAt": 1764572996250,
         "settings": {
           "fluentFilterState": {
             "projects": {
               "filters": {},
+              "selectedProject": "PaperBell",
               "advancedFilter": {
                 "rootCondition": "all",
-                "filterGroups": []
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1764572995748",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1764572995748",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
               },
               "viewMode": "tree"
             },
@@ -2408,7 +2422,20 @@
               "filters": {},
               "advancedFilter": {
                 "rootCondition": "all",
-                "filterGroups": []
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1764568834682",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1764568834682",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
               },
               "viewMode": "kanban"
             },
@@ -2475,7 +2502,7 @@
               "viewMode": "list"
             }
           },
-          "fluentActiveViewId": "inbox"
+          "fluentActiveViewId": "projects"
         }
       }
     }

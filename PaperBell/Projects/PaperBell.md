@@ -13,6 +13,7 @@ url: https://paperbell.cn/
 concepts:
   - obsidian
 participants:
+  - 宋爽
 funds:
 project: PaperBell
 banner: 40 - Obsidian/img/PaperBell.jpg
@@ -21,27 +22,32 @@ navigation:
   - "[PaperBell项目文档](https://paperbell.songshgeo.com/)"
   - "[PaperBell专属插件](https://github.com/PaperBell-Org/Obsidian-PaperBell-Plugin)"
   - "[PaperBell示例库](https://github.com/PaperBell-Org/Obsidian-PaperBell)"
+  - "[宋爽的主页]( https://cv.songshgeo.com/)"
 milestones:
   - task: v1 框架搭建
+    date: 2023-09-01T00:00:00.000+02:00
     done: true
-    date: 2023-09-01
+    progress: 100
   - task: v2 学者追踪
+    date: 2023-10-01T00:00:00.000+02:00
     done: true
-    date: 2023-10-01
+    progress: 100
   - task: v3 论文积累
+    date: 2023-11-01T00:00:00.000+01:00
     done: true
-    date: 2023-11-01
+    progress: 100
   - task: v4 专属插件
+    date: 2023-12-01T00:00:00.000+01:00
     done: true
-    date: 2023-12-01
+    progress: 100
   - task: v5 项目管理
+    date: 2024-05-13T00:00:00.000+02:00
     done: true
-    date: 2024-05-13
     progress: 100
   - task: Test
-    date: 2025-11-30
-    done: false
-    progress: 0
+    date: 2025-11-30T00:00:00.000+01:00
+    done: true
+    progress: 100
 abstract: "`PaperBell` 是我在业余时间维护的一个开源项目，旨在总结和分享我的工作流。"
 type: " 软件"
 ---

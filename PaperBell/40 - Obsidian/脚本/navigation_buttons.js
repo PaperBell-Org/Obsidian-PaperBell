@@ -70,24 +70,24 @@ function showInputModal(title, placeholder, callback) {
 // Main Logic
 // ---------------------------------------------------------
 
-const container = dv.el("div", "", { cls: "nav-buttons-container" });
+    const container = dv.el("div", "", { cls: "nav-buttons-container" });
 
-const style = document.createElement("style");
-style.textContent = `
+    const style = document.createElement("style");
+    style.textContent = `
     .nav-buttons-container { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; margin-bottom: 20px; }
-    .nav-btn {
+        .nav-btn {
         display: inline-flex; align-items: center; padding: 6px 16px; border-radius: 20px;
         background-color: var(--interactive-accent); color: var(--text-on-accent) !important;
         text-decoration: none !important; font-weight: 600; font-size: 0.9em;
         transition: transform 0.2s, box-shadow 0.2s; border: 1px solid transparent; line-height: 1.4; cursor: pointer;
-    }
+        }
     .nav-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.15); color: var(--text-on-accent) !important; }
     .theme-dark .nav-btn { color: #ffffff !important; }
     .nav-btn.writing-btn { background-color: var(--color-purple); }
     .nav-btn.add-btn { background-color: var(--background-modifier-border); color: var(--text-normal) !important; }
     .nav-btn.add-btn:hover { background-color: var(--interactive-accent); color: var(--text-on-accent) !important; }
-`;
-container.appendChild(style);
+    `;
+    container.appendChild(style);
 
 // 1. 写作按钮
 const { long_name, project, type } = current;

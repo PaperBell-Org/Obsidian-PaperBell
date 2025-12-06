@@ -10,6 +10,7 @@ longform:
     - DEMO_结果
     - DEMO_讨论
     - DEMO_方法
+  sceneTemplate: 40 - Obsidian/模板/学术长文本模板 Longform academic template.md
   ignoredFiles: []
 title: PaperBell：基于 Obsidian 的学术写作管理系统
 subtitle: 从 Markdown 到专业论文的完整工作流
