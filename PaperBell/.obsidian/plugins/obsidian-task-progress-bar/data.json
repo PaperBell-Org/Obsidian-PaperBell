@@ -1,7 +1,7 @@
 {
   "changelog": {
     "enabled": true,
-    "lastVersion": "9.12.2"
+    "lastVersion": "9.13.1"
   },
   "progressBarDisplayMode": "both",
   "supportHoverToShowProgressInfo": true,
@@ -355,6 +355,28 @@
   },
   "viewConfiguration": [
     {
+      "id": "today",
+      "name": "今天",
+      "icon": "calendar-days",
+      "type": "default",
+      "visible": true,
+      "region": "top",
+      "hideCompletedAndAbandonedTasks": true,
+      "filterBlanks": false,
+      "filterRules": {}
+    },
+    {
+      "id": "upcoming",
+      "name": "Upcoming",
+      "icon": "calendar",
+      "type": "default",
+      "visible": true,
+      "region": "top",
+      "hideCompletedAndAbandonedTasks": true,
+      "filterBlanks": false,
+      "filterRules": {}
+    },
+    {
       "id": "inbox",
       "name": "收件箱",
       "icon": "inbox",
@@ -362,7 +384,8 @@
       "visible": true,
       "hideCompletedAndAbandonedTasks": true,
       "filterRules": {},
-      "filterBlanks": false
+      "filterBlanks": false,
+      "region": "top"
     },
     {
       "id": "forecast",
@@ -406,7 +429,8 @@
       "visible": true,
       "hideCompletedAndAbandonedTasks": true,
       "filterRules": {},
-      "filterBlanks": false
+      "filterBlanks": false,
+      "region": "top"
     },
     {
       "id": "review",
@@ -559,6 +583,16 @@
           "notUrgentNotImportant": "#6c757d"
         }
       }
+    },
+    {
+      "id": "working-on",
+      "name": "进行中",
+      "icon": "timer",
+      "type": "default",
+      "visible": true,
+      "hideCompletedAndAbandonedTasks": true,
+      "filterRules": {},
+      "filterBlanks": false
     }
   ],
   "reviewSettings": {
@@ -2385,7 +2419,7 @@
       "ws_1764410067355_a3rl1g5fn": {
         "id": "ws_1764410067355_a3rl1g5fn",
         "name": "Default",
-        "updatedAt": 1764572996250,
+        "updatedAt": 1765439117956,
         "settings": {
           "fluentFilterState": {
             "projects": {
@@ -2395,11 +2429,11 @@
                 "rootCondition": "all",
                 "filterGroups": [
                   {
-                    "id": "fluent-proj-group-1764572995748",
+                    "id": "fluent-proj-group-1765439061419",
                     "groupCondition": "all",
                     "filters": [
                       {
-                        "id": "fluent-proj-filter-1764572995748",
+                        "id": "fluent-proj-filter-1765439061419",
                         "property": "project",
                         "condition": "is",
                         "value": "PaperBell"
@@ -2408,13 +2442,27 @@
                   }
                 ]
               },
-              "viewMode": "tree"
+              "viewMode": "kanban"
             },
             "upcoming": {
               "filters": {},
+              "selectedProject": "PaperBell",
               "advancedFilter": {
                 "rootCondition": "all",
-                "filterGroups": []
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1765439061419",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1765439061419",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
               },
               "viewMode": "list"
             },
@@ -2441,19 +2489,19 @@
             },
             "today": {
               "filters": {},
-              "selectedProject": "MYPAPER",
+              "selectedProject": "PaperBell",
               "advancedFilter": {
                 "rootCondition": "all",
                 "filterGroups": [
                   {
-                    "id": "fluent-proj-group-1764510285773",
+                    "id": "fluent-proj-group-1765439061419",
                     "groupCondition": "all",
                     "filters": [
                       {
-                        "id": "fluent-proj-filter-1764510285773",
+                        "id": "fluent-proj-filter-1765439061419",
                         "property": "project",
                         "condition": "is",
-                        "value": "MYPAPER"
+                        "value": "PaperBell"
                       }
                     ]
                   }
@@ -2471,9 +2519,23 @@
             },
             "forecast": {
               "filters": {},
+              "selectedProject": "PaperBell",
               "advancedFilter": {
                 "rootCondition": "all",
-                "filterGroups": []
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1764572995748",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1764572995748",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
               },
               "viewMode": "list"
             },
@@ -2502,7 +2564,7 @@
               "viewMode": "list"
             }
           },
-          "fluentActiveViewId": "projects"
+          "fluentActiveViewId": "today"
         }
       }
     }

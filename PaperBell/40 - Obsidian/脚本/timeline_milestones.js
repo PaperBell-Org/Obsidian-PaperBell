@@ -24,11 +24,35 @@ const currentFile = app.vault.getAbstractFileByPath(current.file.path);
 
 // Normalize Data
 const rawMilestones = current.milestones || current.timeline || [];
+
+// Helper function to convert date to string (handles Dataview DateTime objects)
+function dateToString(date) {
+    if (!date) return new Date().toISOString().split('T')[0];
+    if (typeof date === 'string') return date;
+    // Handle Dataview/Luxon DateTime objects
+    if (date.toISOString && typeof date.toISOString === 'function') {
+        return date.toISOString().split('T')[0];
+    }
+    if (date.toFormat && typeof date.toFormat === 'function') {
+        return date.toFormat('yyyy-MM-dd');
+    }
+    // Fallback: try to convert to Date and then to string
+    try {
+        const d = new Date(date);
+        if (!isNaN(d.getTime())) {
+            return d.toISOString().split('T')[0];
+        }
+    } catch (e) {
+        console.warn('Failed to convert date:', date, e);
+    }
+    return new Date().toISOString().split('T')[0];
+}
+
 const initialData = rawMilestones.map((m, i) => ({
     id: (i + 1).toString(),
     title: m.task || m.title || "未命名",
-    startDate: m.date || m.time || new Date().toISOString().split('T')[0],
-    endDate: m.endDate || m.date || new Date().toISOString().split('T')[0],
+    startDate: dateToString(m.date || m.time),
+    endDate: dateToString(m.endDate || m.date || m.time),
     status: (m.done || m.completed || m.status === 'done') ? 'completed' : (m.progress > 0 ? 'in_progress' : 'pending'),
     progress: m.progress || (m.done ? 100 : 0),
     description: m.desc || m.description || ""
@@ -40,7 +64,7 @@ const cssFile = app.vault.getAbstractFileByPath(cssPath);
 
     if (cssFile) {
         app.vault.read(cssFile).then(content => {
-            const style = document.createElement("style");
+    const style = document.createElement("style");
 
             // 1. Scope Tailwind Styles (Replace :root and body with :host)
             let scopedContent = content
@@ -146,48 +170,219 @@ const jsFile = app.vault.getAbstractFileByPath(jsPath);
 if (jsFile) {
     const scriptId = "project-timeline-lib-umd";
 
+    // Helper function to wait for global variable
+    const waitForGlobal = (maxAttempts = 100, interval = 50) => {
+        return new Promise((resolve, reject) => {
+            let attempts = 0;
+            const check = () => {
+                attempts++;
+
+                // Try multiple access methods
+                let lib = null;
+
+                // Method 1: Direct window access
+                if (window.ProjectTimeline && typeof window.ProjectTimeline.renderTimeline === 'function') {
+                    lib = window.ProjectTimeline;
+                }
+                // Method 2: globalThis access
+                else if (typeof globalThis !== 'undefined' && globalThis.ProjectTimeline && typeof globalThis.ProjectTimeline.renderTimeline === 'function') {
+                    lib = globalThis.ProjectTimeline;
+                }
+                // Method 3: Check if it's an object with default property (UMD module export)
+                else if (window.ProjectTimeline && typeof window.ProjectTimeline === 'object') {
+                    if (window.ProjectTimeline.default && typeof window.ProjectTimeline.default.renderTimeline === 'function') {
+                        lib = window.ProjectTimeline.default;
+                    } else if (typeof window.ProjectTimeline.renderTimeline === 'function') {
+                        lib = window.ProjectTimeline;
+                    }
+                }
+
+                if (lib && typeof lib.renderTimeline === 'function') {
+                    // Ensure it's also on window for consistency
+                    if (!window.ProjectTimeline || typeof window.ProjectTimeline.renderTimeline !== 'function') {
+                        window.ProjectTimeline = lib;
+                    }
+                    resolve();
+                } else if (attempts >= maxAttempts) {
+                    const debugInfo = {
+                        window: !!window.ProjectTimeline,
+                        globalThis: typeof globalThis !== 'undefined' ? !!globalThis.ProjectTimeline : 'N/A',
+                        windowType: typeof window.ProjectTimeline,
+                        globalThisType: typeof globalThis !== 'undefined' ? typeof globalThis.ProjectTimeline : 'N/A',
+                        windowKeys: window.ProjectTimeline ? Object.keys(window.ProjectTimeline) : [],
+                        windowValue: window.ProjectTimeline ? JSON.stringify(window.ProjectTimeline).substring(0, 200) : 'null'
+                    };
+                    console.error("ProjectTimeline debug info:", debugInfo);
+                    reject(new Error(`ProjectTimeline not found after ${maxAttempts} attempts. Debug: ${JSON.stringify(debugInfo)}`));
+                } else {
+                    setTimeout(check, interval);
+                }
+            };
+            check();
+        });
+    };
+
     const loadScript = () => new Promise((resolve, reject) => {
-        if (window.ProjectTimeline && window.ProjectTimeline.renderTimeline) {
+        // Check if already loaded
+        const lib = window.ProjectTimeline || (typeof globalThis !== 'undefined' ? globalThis.ProjectTimeline : null);
+        if (lib && typeof lib.renderTimeline === 'function') {
             return resolve();
         }
 
         // Check if script tag exists
-        if (document.getElementById(scriptId)) {
-             // Wait a bit or resolve? Assuming loaded.
-             return resolve();
+        const existingScript = document.getElementById(scriptId);
+        if (existingScript) {
+            // Script already exists, wait for global to be set
+            return waitForGlobal().then(resolve).catch(reject);
         }
 
-        const script = document.createElement("script");
-        script.id = scriptId;
-        script.src = app.vault.getResourcePath(jsFile);
-        script.onload = () => resolve();
-        script.onerror = (e) => reject(e);
-        document.head.appendChild(script);
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = app.vault.getResourcePath(jsFile);
+    script.onload = () => {
+        // Script loaded - the footer injection should have set the global immediately
+        // Check synchronously first (no delay needed)
+        if (window.ProjectTimeline && typeof window.ProjectTimeline.renderTimeline === 'function') {
+            return resolve();
+        }
+
+        // If not found, wait a tiny bit (just for the footer to execute, should be instant)
+        // Use requestAnimationFrame for minimal delay (one frame, ~16ms)
+        if (typeof requestAnimationFrame !== 'undefined') {
+            requestAnimationFrame(() => {
+                if (window.ProjectTimeline && typeof window.ProjectTimeline.renderTimeline === 'function') {
+                    resolve();
+                } else {
+                    // Fallback: use waitForGlobal with shorter timeout
+                    waitForGlobal(20, 10).then(resolve).catch(reject);
+                }
+            });
+        } else {
+            // No requestAnimationFrame, use minimal setTimeout
+            setTimeout(() => {
+                if (window.ProjectTimeline && typeof window.ProjectTimeline.renderTimeline === 'function') {
+                    resolve();
+                } else {
+                    waitForGlobal(20, 10).then(resolve).catch(reject);
+                }
+            }, 0);
+        }
+    };
+    script.onerror = (e) => reject(new Error(`Failed to load script: ${e}`));
+    document.head.appendChild(script);
     });
 
     loadScript().then(() => {
-        if (window.ProjectTimeline && window.ProjectTimeline.renderTimeline) {
-            try {
-                // Mount into Shadow DOM mountPoint
-                window.ProjectTimeline.renderTimeline(mountPoint, {
-                    initialData: initialData,
-                    onSave: handleSave
-                });
-            } catch (err) {
-                console.error("Error mounting React component:", err);
-                const errDiv = document.createElement("div");
-                errDiv.textContent = `Error mounting component: ${err.message}`;
-                shadow.appendChild(errDiv);
+        // Try multiple ways to access the global
+        let lib = null;
+
+        // Method 1: Direct window access
+        if (window.ProjectTimeline && typeof window.ProjectTimeline.renderTimeline === 'function') {
+            lib = window.ProjectTimeline;
+        }
+        // Method 2: globalThis access
+        else if (typeof globalThis !== 'undefined' && globalThis.ProjectTimeline && typeof globalThis.ProjectTimeline.renderTimeline === 'function') {
+            lib = globalThis.ProjectTimeline;
+        }
+        // Method 3: Check if it's an object with empty keys (UMD wrapper issue)
+        // Try to manually populate it from the module exports
+        else if (window.ProjectTimeline && typeof window.ProjectTimeline === 'object') {
+            const keys = Object.keys(window.ProjectTimeline);
+            console.log("ProjectTimeline keys:", keys);
+            console.log("ProjectTimeline object:", window.ProjectTimeline);
+
+            // Try to access renderTimeline from the module exports
+            if (window.ProjectTimeline.default && typeof window.ProjectTimeline.default.renderTimeline === 'function') {
+                lib = window.ProjectTimeline.default;
+                // Also populate the main object
+                Object.assign(window.ProjectTimeline, window.ProjectTimeline.default);
+            } else if (window.ProjectTimeline.renderTimeline && typeof window.ProjectTimeline.renderTimeline === 'function') {
+                lib = window.ProjectTimeline;
+            } else {
+                // Last resort: try to find renderTimeline in the global scope
+                // UMD wrapper might have set it as Qe.renderTimeline
+                // Check if we can access it via the script's execution context
+                console.warn("ProjectTimeline object is empty, attempting manual fix...");
+
+                // Wait for setTimeout(0) in entry.tsx to execute (Object.assign fix)
+                // Try multiple times with increasing delays
+                let retryCount = 0;
+                const maxRetries = 10;
+                const retryInterval = 50;
+
+                const retryCheck = () => {
+                    retryCount++;
+                    if (window.ProjectTimeline && typeof window.ProjectTimeline.renderTimeline === 'function') {
+                        lib = window.ProjectTimeline;
+                        mountComponent();
+                    } else if (retryCount < maxRetries) {
+                        setTimeout(retryCheck, retryInterval);
+                    } else {
+                        // Final attempt: try to manually populate from default export
+                        console.error("Failed to find ProjectTimeline after retries, attempting manual population");
+                        if (window.ProjectTimeline && typeof window.ProjectTimeline === 'object') {
+                            // Try to get renderTimeline from the module's default export
+                            // This is a last resort hack
+                            try {
+                                const scriptElement = document.getElementById(scriptId);
+                                if (scriptElement) {
+                                    // The UMD wrapper sets Qe.default and Qe.renderTimeline
+                                    // We can't directly access Qe, but we can try to access via eval
+                                    // Actually, let's just show an error with instructions
+                                    showError();
+                                } else {
+                                    showError();
+                                }
+                            } catch (e) {
+                                showError();
+                            }
+                        } else {
+                            showError();
+                        }
+                    }
+                };
+
+                setTimeout(retryCheck, retryInterval);
+                return; // Exit early, will retry in setTimeout
             }
-        } else {
+        }
+
+        mountComponent();
+
+        function mountComponent() {
+            if (lib && typeof lib.renderTimeline === 'function') {
+                try {
+                    // Mount into Shadow DOM mountPoint
+                    lib.renderTimeline(mountPoint, {
+                        initialData: initialData,
+                        onSave: handleSave
+                    });
+                } catch (err) {
+                    console.error("Error mounting React component:", err);
+                    const errDiv = document.createElement("div");
+                    errDiv.textContent = `Error mounting component: ${err.message}`;
+                    shadow.appendChild(errDiv);
+                }
+            } else {
+                showError();
+            }
+        }
+
+        function showError() {
             const errDiv = document.createElement("div");
-            errDiv.textContent = "Error: Library loaded but 'ProjectTimeline' global not found.";
+            errDiv.innerHTML = `Error: Library loaded but 'ProjectTimeline' global not found.<br>
+                Debug info:<br>
+                - window.ProjectTimeline exists: ${!!window.ProjectTimeline}<br>
+                - window.ProjectTimeline type: ${typeof window.ProjectTimeline}<br>
+                - window.ProjectTimeline keys: ${window.ProjectTimeline ? Object.keys(window.ProjectTimeline).join(', ') : 'N/A'}<br>
+                - globalThis.ProjectTimeline exists: ${typeof globalThis !== 'undefined' ? !!globalThis.ProjectTimeline : 'N/A'}<br>
+                - Attempting to manually fix...`;
             shadow.appendChild(errDiv);
         }
     }).catch(e => {
         console.error(e);
         const errDiv = document.createElement("div");
-        errDiv.textContent = "Failed to load timeline component.";
+        errDiv.textContent = `Failed to load timeline component: ${e.message || e}`;
         shadow.appendChild(errDiv);
     });
 } else {

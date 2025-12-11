@@ -29,6 +29,10 @@
     {
       "folder": "Projects",
       "template": "40 - Obsidian/模板/项目模板.md"
+    },
+    {
+      "folder": "Persons",
+      "template": "40 - Obsidian/模板/学者模板.md"
     }
   ],
   "enable_file_templates": false,
