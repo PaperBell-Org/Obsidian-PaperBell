@@ -2419,30 +2419,16 @@
       "ws_1764410067355_a3rl1g5fn": {
         "id": "ws_1764410067355_a3rl1g5fn",
         "name": "Default",
-        "updatedAt": 1765439117956,
+        "updatedAt": 1766300241127,
         "settings": {
           "fluentFilterState": {
             "projects": {
               "filters": {},
-              "selectedProject": "PaperBell",
               "advancedFilter": {
                 "rootCondition": "all",
-                "filterGroups": [
-                  {
-                    "id": "fluent-proj-group-1765439061419",
-                    "groupCondition": "all",
-                    "filters": [
-                      {
-                        "id": "fluent-proj-filter-1765439061419",
-                        "property": "project",
-                        "condition": "is",
-                        "value": "PaperBell"
-                      }
-                    ]
-                  }
-                ]
+                "filterGroups": []
               },
-              "viewMode": "kanban"
+              "viewMode": "tree"
             },
             "upcoming": {
               "filters": {},
@@ -2451,11 +2437,11 @@
                 "rootCondition": "all",
                 "filterGroups": [
                   {
-                    "id": "fluent-proj-group-1765439061419",
+                    "id": "fluent-proj-group-1766300205522",
                     "groupCondition": "all",
                     "filters": [
                       {
-                        "id": "fluent-proj-filter-1765439061419",
+                        "id": "fluent-proj-filter-1766300205522",
                         "property": "project",
                         "condition": "is",
                         "value": "PaperBell"
@@ -2468,15 +2454,16 @@
             },
             "inbox": {
               "filters": {},
+              "selectedProject": "PaperBell",
               "advancedFilter": {
                 "rootCondition": "all",
                 "filterGroups": [
                   {
-                    "id": "fluent-proj-group-1764568834682",
+                    "id": "fluent-proj-group-1766300205522",
                     "groupCondition": "all",
                     "filters": [
                       {
-                        "id": "fluent-proj-filter-1764568834682",
+                        "id": "fluent-proj-filter-1766300205522",
                         "property": "project",
                         "condition": "is",
                         "value": "PaperBell"
@@ -2485,7 +2472,7 @@
                   }
                 ]
               },
-              "viewMode": "kanban"
+              "viewMode": "list"
             },
             "today": {
               "filters": {},
@@ -2494,11 +2481,11 @@
                 "rootCondition": "all",
                 "filterGroups": [
                   {
-                    "id": "fluent-proj-group-1765439061419",
+                    "id": "fluent-proj-group-1766300205522",
                     "groupCondition": "all",
                     "filters": [
                       {
-                        "id": "fluent-proj-filter-1765439061419",
+                        "id": "fluent-proj-filter-1766300205522",
                         "property": "project",
                         "condition": "is",
                         "value": "PaperBell"
@@ -2557,14 +2544,28 @@
             },
             "tags": {
               "filters": {},
+              "selectedProject": "PaperBell",
               "advancedFilter": {
                 "rootCondition": "all",
-                "filterGroups": []
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1766300205522",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1766300205522",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
               },
               "viewMode": "list"
             }
           },
-          "fluentActiveViewId": "today"
+          "fluentActiveViewId": "projects"
         }
       }
     }

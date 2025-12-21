@@ -44,8 +44,8 @@ milestones:
     progress: 100
   - task: v5 项目管理
     date: 2024-05-13
-    done: false
-    progress: 0
+    done: true
+    progress: 100
     endDate: 2025-12-11
 abstract: "`PaperBell` 是我在业余时间维护的一个开源项目，旨在总结和分享我的工作流。"
 type: " 软件"
