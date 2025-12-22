@@ -4,11 +4,11 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
-## [4.5.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.0...v4.5.1) (2025-12-22)
+## [4.5.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.4.0...v4.5.0) (2025-12-22)
 
 ### Features
 
-:sparkles: Better project management
+* Better project management
 
 ## [4.4.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.3.4...v4.4.0) (2025-10-20)
 
