@@ -4,6 +4,14 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
+## [4.5.4](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.3...v4.5.4) (2025-12-22)
+
+
+### Bug Fixes
+
+* **ci:** :construction_worker: rename job and simplify asset attachme… ([771542a](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/771542af9fbe2c35dcf5c436e74a6d55a8f4d9cc))
+* **ci:** :construction_worker: rename job and simplify asset attachment process for releases ([344d731](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/344d731ef0ad5cd8fc1e40e5cefacc0bf6515497))
+
 ## [4.5.3](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.2...v4.5.3) (2025-12-22)
 
 
