@@ -4,6 +4,28 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
+## [4.5.3](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.2...v4.5.3) (2025-12-22)
+
+
+### Bug Fixes
+
+* **ci:** :construction_worker: rename job and simplify asset attachme… ([06e699b](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/06e699b08c5ba5b673cafa2a185cb94d0dce9c08))
+* **ci:** :construction_worker: rename job and simplify asset attachment process for releases ([6779c62](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/6779c62588a5ecde0c7e60c2a3c54ceec46ff592))
+
+## [4.5.2](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.1...v4.5.2) (2025-12-22)
+
+
+### Bug Fixes
+
+* **changelog:** correct version comparison for 4.5.0 and update relea… ([96e4ec0](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/96e4ec0bfabae0d507f03827e5af95f66929baac))
+* **changelog:** correct version comparison for 4.5.0 and update release-please workflow condition ([61557f0](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/61557f0eaa180a900d06add5f16daa3ce806be91))
+* **documentation:** :bug: fix README order, update release-please workflow to ignore certain paths and add workflow dispatch trigger ([9e5be02](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/9e5be02dd59081f5a6b6464213819859749142ca))
+* **documentation:** :bug: fix README order, update release-please workflow to ignore certain paths and add workflow dispatch trigger ([0bd4ec6](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/0bd4ec6cbd5d17aab3efe4ce2e7c7a945f699241))
+* fixed tag version attachment ([c69b03a](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/c69b03a0854d981ea8d9aabdcec449fbcdc3dd96))
+* fixed tag version attachment ([3574a99](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/3574a9919f15ea0f4735cbbce458d8d89356c44a))
+* **release-please:** :green_heart: remove checkout step from workflow to streamline release process ([d9eaa88](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/d9eaa88f900533f48f123d20f990fc2561a01c5a))
+* **release-please:** :green_heart: remove checkout step from workflow… ([cd876a1](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/cd876a1043735d61a3b32fcfd01525d339bdc7f3))
+
 ## [4.5.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.4.0...v4.5.0) (2025-12-22)
 
 ### Features
