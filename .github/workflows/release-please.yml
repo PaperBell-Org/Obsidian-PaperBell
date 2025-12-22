@@ -3,6 +3,10 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - 'CHANGELOG.md'
+      - '.release-please-manifest.json'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,6 +15,8 @@ permissions:
 jobs:
   release-please:
     runs-on: ubuntu-latest
+    # Skip if this push is from a release-please PR merge
+    if: ${{ !contains(github.event.head_commit.message, 'chore(main): release') || github.event_name == 'workflow_dispatch' }}
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
