@@ -1,49 +1,29 @@
-setup:
-	make install-tests
-	make install-jupyter
-	make setup-pre-commit
-	make setup-organizor
+# Load environment variables from .env file if it exists
+-include .env
 
-# 安装必要的代码检查工具
-# black: https://github.com/psf/black
-# flake8: https://github.com/pycqa/flake8
-# isort: https://github.com/PyCQA/isort
-# nbstripout: https://github.com/kynan/nbstripout
-# pydocstyle: https://github.com/PyCQA/pydocstyle
-# pre-commit-hooks: https://github.com/pre-commit/pre-commit-hooks
-
-setup-organizor:
-	poetry add hydra-core
-	poetry add --group dev sourcery
-
-setup-pre-commit:
-	poetry add --group dev flake8 isort nbstripout pydocstyle pre-commit-hooks
-	poetry run pre-commit install
-
-install-jupyter:
-	poetry add ipykernel --group dev
-	poetry add --group dev jupyterlab
-	poetry add jupyterlab_execute_time --group dev
-	poetry add jupyterlab-lsp --group dev
-	poetry add python-lsp-server --group dev
-
-install-tests:
-	poetry add pytest allure-pytest --group dev
-
-# https://timvink.github.io/mkdocs-git-authors-plugin/index.html
-install-docs:
-	poetry add --group docs mkdocs mkdocs-material
-	poetry add --group docs mkdocs-git-revision-date-localized-plugin
-	poetry add --group docs mkdocs-minify-plugin
-	poetry add --group docs mkdocs-redirects
-	poetry add --group docs mkdocs-awesome-pages-plugin
-	poetry add --group docs mkdocs-git-authors-plugin
-	poetry add --group docs mkdocstrings\[python\]
-	poetry add --group docs mkdocs-bibtex
-	poetry add --group docs mkdocs-macros-plugin
-	# poetry add --group docs mkdocs-jupyter
-	poetry add --group docs mkdocs-callouts
-	poetry add --group docs mkdocs-glightbox
-
-obsidian-docs:
-	git clone --depth=1 git@github.com:SongshGeo/Obsidian-MkDocs-Vault-Template.git .obsidian
+# Sync PaperBell folder from Obsidian vault
+# Replaces the current PaperBell folder with the one from Obsidian
+# Usage:
+#   1. Create a .env file with: OBSIDIAN_PAPERBELL_PATH=/path/to/Obsidian/PaperBell
+#   2. Or: make sync-paperbell OBSIDIAN_PAPERBELL_PATH=/path/to/Obsidian/PaperBell
+#   3. Or: export OBSIDIAN_PAPERBELL_PATH=/path/to/Obsidian/PaperBell && make sync-paperbell
+sync-paperbell:
+	@if [ -z "$(OBSIDIAN_PAPERBELL_PATH)" ]; then \
+		echo "Error: OBSIDIAN_PAPERBELL_PATH is not set"; \
+		echo "Please set it as an environment variable or pass it as a make argument:"; \
+		echo "  make sync-paperbell OBSIDIAN_PAPERBELL_PATH=/path/to/Obsidian/PaperBell"; \
+		exit 1; \
+	fi
+	@echo "Syncing PaperBell folder from Obsidian vault..."
+	@echo "Source path: $(OBSIDIAN_PAPERBELL_PATH)"
+	@if [ ! -d "$(OBSIDIAN_PAPERBELL_PATH)" ]; then \
+		echo "Error: Source directory $(OBSIDIAN_PAPERBELL_PATH) does not exist"; \
+		exit 1; \
+	fi
+	@if [ -d "PaperBell" ]; then \
+		echo "Removing existing PaperBell folder..."; \
+		rm -rf PaperBell; \
+	fi
+	@echo "Copying PaperBell folder from Obsidian vault..."; \
+	cp -R "$(OBSIDIAN_PAPERBELL_PATH)" ./PaperBell
+	@echo "PaperBell folder synced successfully!"

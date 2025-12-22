@@ -1,0 +1,137 @@
+filters:
+  and:
+    - file.path.startsWith("Projects/")
+    - '!file.name.startsWith("00.")'
+formulas:
+  进度: |
+    if (status == 0) return "0. 计划中";
+    if (status == 1) return "1. 进行中";
+    if (status == 2) return "2. 已完成";
+    if (status == 3) return "3. 已归档";
+    return 其它;
+  官网: link(url, "🌐")
+  代码库: link(github, "💻")
+  文档: link(docs, "📖")
+  资金数量: |
+    if(funds, length(funds), 0)
+  任务进度: |
+    (length(filter(file.tasks, (t) => t.completed)) / length(file.tasks)) * 100
+views:
+  - type: cards
+    name: 项目概览
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.basename
+    columns:
+      - file.name
+      - project
+      - long_name
+      - start
+      - end
+      - status
+      - formula.任务进度
+      - formula.资金数量
+      - formula.官网
+      - navigation
+    viewMode: review
+    taskContent: file.basename
+    taskStatus: note.status
+    taskPriority: note.priority
+    taskProject: note.project
+    taskTags: note.tags
+    taskDueDate: note.dueDate
+    taskStartDate: note.startDate
+    taskCompletedDate: note.completionDate
+    taskContext: note.context
+    image: note.banner
+    imageAspectRatio: 0.55
+  - type: table
+    name: 详细列表
+    order:
+      - formula.进度
+      - file.name
+      - project
+      - long_name
+      - status
+      - formula.任务进度
+      - start
+      - end
+      - related
+      - duty
+      - navigation
+      - formula.资金数量
+      - formula.官网
+    columnSize:
+      formula.进度: 136
+      file.name: 125
+      note.status: 93
+      note.related: 232
+  - type: cards
+    name: 进行中
+    filters:
+      and:
+        - status == "进行中"
+    order:
+      - status
+    cardSize: 200
+    subtitle: |
+      {{project}}
+      开始于 {{start}}
+  - type: table
+    name: 已完成
+    filters:
+      and:
+        - status == "已完成"
+    order:
+      - end DESC
+    columns:
+      - file.name
+      - project
+      - long_name
+      - start
+      - end
+  - type: table
+    name: 项目产出
+    filters:
+      and:
+        - file.path.startsWith("Outputs/")
+        - file.name == "Index.md"
+    order:
+      - file.project
+      - file.mtime DESC
+    columns:
+      - file.name
+      - file.project
+      - file.frontmatter.title
+      - file.frontmatter.status
+      - file.frontmatter.target
+    columnSize:
+      file.name: 150
+      file.project: 100
+      file.frontmatter.title: 300
+  - type: task-genius-projects
+    name: 视图
+    viewMode: projects
+    taskContent: file.basename
+    taskStatus: note.status
+    taskPriority: note.priority
+    taskProject: note.project
+    taskTags: note.tags
+    taskDueDate: note.dueDate
+    taskStartDate: note.startDate
+    taskCompletedDate: note.completionDate
+    taskContext: note.context
+  - type: task-genius-gantt
+    name: 甘特图
+    viewMode: gantt
+    taskContent: file.basename
+    taskStatus: note.status
+    taskPriority: note.priority
+    taskProject: note.project
+    taskTags: note.tags
+    taskDueDate: note.dueDate
+    taskStartDate: note.startDate
+    taskCompletedDate: note.completionDate
+    taskContext: note.context

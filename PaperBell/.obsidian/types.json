@@ -48,6 +48,8 @@
     "TQ_show_urgency": "checkbox",
     "paper_date": "number",
     "url": "multitext",
-    "location": "multitext"
+    "location": "multitext",
+    "related": "multitext",
+    "authors": "text"
   }
 }

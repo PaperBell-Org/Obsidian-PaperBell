@@ -1,4 +1,8 @@
 {
+  "changelog": {
+    "enabled": true,
+    "lastVersion": "9.13.1"
+  },
   "progressBarDisplayMode": "both",
   "supportHoverToShowProgressInfo": true,
   "addProgressBarToNonTaskBullet": false,
@@ -75,6 +79,7 @@
   "useOnlyCountMarks": false,
   "onlyCountTaskMarks": "x|X|>|/",
   "enableTaskStatusSwitcher": false,
+  "enableIndicatorWithCheckbox": false,
   "enableCustomTaskMarks": false,
   "enableTextMarkInSourceMode": false,
   "enableCycleCompleteStatus": false,
@@ -93,6 +98,29 @@
     "Planned": "?"
   },
   "excludeMarksFromCycle": [],
+  "statusCycles": [
+    {
+      "id": "default-cycle",
+      "name": "Default Cycle",
+      "description": "Standard task lifecycle with all states",
+      "priority": 0,
+      "cycle": [
+        "Not Started",
+        "In Progress",
+        "Completed",
+        "Abandoned",
+        "Planned"
+      ],
+      "marks": {
+        "Not Started": " ",
+        "In Progress": "/",
+        "Completed": "x",
+        "Abandoned": "-",
+        "Planned": "?"
+      },
+      "enabled": true
+    }
+  ],
   "enableTaskGeniusIcons": false,
   "enablePriorityPicker": true,
   "enablePriorityKeyboardShortcuts": false,
@@ -141,7 +169,37 @@
       "folder": "00 - 每日日记/DailyNote",
       "template": "40 - Obsidian/模板/每日日记模板"
     },
-    "enableMinimalMode": true
+    "enableMinimalMode": true,
+    "createFileMode": {
+      "defaultFolder": "",
+      "useTemplate": false,
+      "templateFile": ""
+    },
+    "fileNameTemplates": [
+      {
+        "name": "Daily Note",
+        "template": "{{DATE:YYYY-MM-DD}}"
+      },
+      {
+        "name": "Meeting",
+        "template": "{{DATE:YYYY-MM-DD}} - Meeting"
+      },
+      {
+        "name": "Task",
+        "template": "{{DATE:YYYY-MM-DD}} - Task"
+      },
+      {
+        "name": "Project",
+        "template": "Project - {{DATE:YYYY-MM}}"
+      },
+      {
+        "name": "Notes",
+        "template": "Notes - {{DATE:YYYY-MM-DD-HHmm}}"
+      }
+    ],
+    "minimalModeSettings": {
+      "suggestTrigger": "/"
+    }
   },
   "workflow": {
     "enableWorkflow": false,
@@ -237,11 +295,11 @@
     "inheritFromFrontmatterForSubtasks": false
   },
   "projectConfig": {
-    "enableEnhancedProject": true,
+    "enableEnhancedProject": false,
     "pathMappings": [],
     "metadataConfig": {
       "metadataKey": "project",
-      "enabled": true,
+      "enabled": false,
       "detectionMethods": []
     },
     "configFile": {
@@ -297,6 +355,28 @@
   },
   "viewConfiguration": [
     {
+      "id": "today",
+      "name": "今天",
+      "icon": "calendar-days",
+      "type": "default",
+      "visible": true,
+      "region": "top",
+      "hideCompletedAndAbandonedTasks": true,
+      "filterBlanks": false,
+      "filterRules": {}
+    },
+    {
+      "id": "upcoming",
+      "name": "Upcoming",
+      "icon": "calendar",
+      "type": "default",
+      "visible": true,
+      "region": "top",
+      "hideCompletedAndAbandonedTasks": true,
+      "filterBlanks": false,
+      "filterRules": {}
+    },
+    {
       "id": "inbox",
       "name": "收件箱",
       "icon": "inbox",
@@ -304,7 +384,8 @@
       "visible": true,
       "hideCompletedAndAbandonedTasks": true,
       "filterRules": {},
-      "filterBlanks": false
+      "filterBlanks": false,
+      "region": "top"
     },
     {
       "id": "forecast",
@@ -348,7 +429,8 @@
       "visible": true,
       "hideCompletedAndAbandonedTasks": true,
       "filterRules": {},
-      "filterBlanks": false
+      "filterBlanks": false,
+      "region": "top"
     },
     {
       "id": "review",
@@ -501,6 +583,16 @@
           "notUrgentNotImportant": "#6c757d"
         }
       }
+    },
+    {
+      "id": "working-on",
+      "name": "进行中",
+      "icon": "timer",
+      "type": "default",
+      "visible": true,
+      "hideCompletedAndAbandonedTasks": true,
+      "filterRules": {},
+      "filterBlanks": false
     }
   ],
   "reviewSettings": {
@@ -525,7 +617,7 @@
         "id": "reward-series-episode",
         "name": "观看一集喜欢的剧集",
         "occurrence": "普通",
-        "inventory": 19
+        "inventory": 18
       },
       {
         "id": "reward-champagne-project",
@@ -676,7 +768,11 @@
         "path": "40 - Obsidian",
         "enabled": false
       }
-    ]
+    ],
+    "scopeControls": {
+      "inlineTasksEnabled": true,
+      "fileTasksEnabled": false
+    }
   },
   "onCompletion": {
     "enableOnCompletion": true,
@@ -756,7 +852,6 @@
   },
   "enableCustomDateFormats": false,
   "customDateFormats": [],
-  "experimental": {},
   "onboarding": {
     "completed": false,
     "version": "9.7.7",
@@ -850,6 +945,24 @@
       "caseSensitive": false
     }
   },
+  "fluentView": {
+    "enableFluent": true,
+    "workspaces": [
+      {
+        "id": "default",
+        "name": "Default",
+        "color": "#3498db"
+      }
+    ],
+    "fluentConfig": {
+      "enableWorkspaces": true,
+      "defaultWorkspace": "default",
+      "maxOtherViewsBeforeOverflow": 5
+    },
+    "useWorkspaceSideLeaves": false
+  },
+  "customCalendarViews": [],
+  "experimental": {},
   "enhancedProjectData": {
     "fileProjectMap": {
       "Inputs/Zotero/tsvetkova2024a.md": {
@@ -2294,5 +2407,167 @@
       }
     },
     "projectConfigMap": {}
+  },
+  "workspaces": {
+    "version": 2,
+    "defaultWorkspaceId": "ws_1764410067355_a3rl1g5fn",
+    "activeWorkspaceId": "ws_1764410067355_a3rl1g5fn",
+    "order": [
+      "ws_1764410067355_a3rl1g5fn"
+    ],
+    "byId": {
+      "ws_1764410067355_a3rl1g5fn": {
+        "id": "ws_1764410067355_a3rl1g5fn",
+        "name": "Default",
+        "updatedAt": 1766300241127,
+        "settings": {
+          "fluentFilterState": {
+            "projects": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "tree"
+            },
+            "upcoming": {
+              "filters": {},
+              "selectedProject": "PaperBell",
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1766300205522",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1766300205522",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "viewMode": "list"
+            },
+            "inbox": {
+              "filters": {},
+              "selectedProject": "PaperBell",
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1766300205522",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1766300205522",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "viewMode": "list"
+            },
+            "today": {
+              "filters": {},
+              "selectedProject": "PaperBell",
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1766300205522",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1766300205522",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "viewMode": "list"
+            },
+            "flagged": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "list"
+            },
+            "forecast": {
+              "filters": {},
+              "selectedProject": "PaperBell",
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1764572995748",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1764572995748",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "viewMode": "list"
+            },
+            "review": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "list"
+            },
+            "calendar": {
+              "filters": {},
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": []
+              },
+              "viewMode": "list"
+            },
+            "tags": {
+              "filters": {},
+              "selectedProject": "PaperBell",
+              "advancedFilter": {
+                "rootCondition": "all",
+                "filterGroups": [
+                  {
+                    "id": "fluent-proj-group-1766300205522",
+                    "groupCondition": "all",
+                    "filters": [
+                      {
+                        "id": "fluent-proj-filter-1766300205522",
+                        "property": "project",
+                        "condition": "is",
+                        "value": "PaperBell"
+                      }
+                    ]
+                  }
+                ]
+              },
+              "viewMode": "list"
+            }
+          },
+          "fluentActiveViewId": "projects"
+        }
+      }
+    }
   }
 }

@@ -357,8 +357,6 @@ $highlighting-macros$
 $endif$
 $if(tables)$
 \usepackage{longtable,booktabs,array}
-% 定义 none 计数器以解决 LaTeX 错误
-\newcounter{none}
 $if(multirow)$
 \usepackage{multirow}
 $endif$

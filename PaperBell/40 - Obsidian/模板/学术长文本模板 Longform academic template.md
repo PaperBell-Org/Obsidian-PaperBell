@@ -3,9 +3,9 @@ cate: <%* const options = ["引言", "方法", "结果", "讨论"]; const choice
 date: <% tp.date.now('YYYY-MM-DD') %>
 scene_alias: <% tp.file.title %>
 tags:
-- output
-- project/<% tp.system.prompt("是否属于某个项目?") %>
-banner: "40 - Obsidian/img/<%* tR += `${choice}.jpg`; %>"
+  - output
+  - project/<% tp.system.prompt("是否属于某个项目?") %>
+banner: 40 - Obsidian/img/<%* tR += `${choice}.jpg`; %>
 longform: true
-status: writting
+status: not-started
 ---

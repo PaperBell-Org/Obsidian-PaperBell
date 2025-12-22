@@ -2,35 +2,62 @@
 tags:
   - project/open
   - project/index
+cssclasses: wide-page
 target: tasks
 status: 进行中
 start: 2023-09-27
 end:
 workload: 3
-duty: 负责人
+pi: 宋爽
 url: https://paperbell.cn/
 concepts:
   - obsidian
-participants: "[[宋爽]]"
+participants:
+  - 宋爽
+  - 蒋森
 funds:
 project: PaperBell
+banner: 40 - Obsidian/img/PaperBell.jpg
+navigation:
+  - "[GitHub组织主页](https://github.com/PaperBell-Org)"
+  - "[PaperBell项目文档](https://paperbell.songshgeo.com/)"
+  - "[PaperBell专属插件](https://github.com/PaperBell-Org/Obsidian-PaperBell-Plugin)"
+  - "[PaperBell示例库](https://github.com/PaperBell-Org/Obsidian-PaperBell)"
+  - "[宋爽的主页]( https://cv.songshgeo.com/)"
+milestones:
+  - task: v1 框架搭建
+    date: 2023-09-01
+    done: true
+    progress: 100
+    endDate: 2025-12-11
+  - task: v2 学者追踪
+    date: 2023-10-01
+    done: true
+    progress: 100
+  - task: v3 论文积累
+    date: 2023-11-01
+    done: true
+    progress: 100
+  - task: v4 专属插件
+    date: 2023-12-01
+    done: true
+    progress: 100
+  - task: v5 项目管理
+    date: 2024-05-13
+    done: true
+    progress: 100
+    endDate: 2025-12-11
+abstract: "`PaperBell` 是我在业余时间维护的一个开源项目，旨在总结和分享我的工作流。"
+type: " 软件"
 ---
+## 👥 Participants
 
-## README
-
-介绍:: `PaperBell` 是我在业余时间维护的一个开源项目，旨在总结和分享我的[[工作流]]。
+`$= dv.view("40 - Obsidian/脚本/project_participants")`
 
 ## 🙋 Milestones
 
-- [x] v1: 框架搭建
-- [x] v2: 学者追踪
-- [x] v3: 论文积累
-- [x] v4: 专属插件
-- [x] v5 项目管理
+`$= dv.view("40 - Obsidian/脚本/timeline_milestones")`
 
-## 🧭 Navigation
+`$= dv.view("40 - Obsidian/脚本/navigation_buttons")`
 
-- [GitHub](https://github.com/PaperBell-Org)组织主页
-- [`PaperBell`项目文档](https://paperbell.songshgeo.com/)
-- [`PaperBell`专属插件](https://github.com/PaperBell-Org/Obsidian-PaperBell-Plugin)
-- [`PaperBell`示例库](https://github.com/PaperBell-Org/Obsidian-PaperBell)
+![[项目检索.base]]
