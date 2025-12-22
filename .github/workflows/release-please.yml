@@ -6,6 +6,8 @@ on:
     paths-ignore:
       - 'CHANGELOG.md'
       - '.release-please-manifest.json'
+  release:
+    types: [created]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +26,9 @@ jobs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: googleapis/release-please-action@v4
         id: release
         with:
@@ -31,10 +36,25 @@ jobs:
           manifest-file: .release-please-manifest.json
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  build-and-attach-assets:
+  build-and-attach-assets-from-release:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Zip PaperBell folder
+        run: zip -r PaperBell.zip PaperBell/
+
+      - name: Upload Release Asset
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.event.release.tag_name }} PaperBell.zip --clobber
+
+  build-and-attach-assets-from-push:
     needs: release-please
     runs-on: ubuntu-latest
-    if: ${{ needs.release-please.outputs.release_created }}
+    if: ${{ needs.release-please.outputs.release_created == 'true' }}
     steps:
       - uses: actions/checkout@v6
 
