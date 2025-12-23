@@ -16,7 +16,7 @@
   "folder_templates": [
     {
       "folder": "Cards",
-      "template": "40 - Obsidian/模板/术语模板.md"
+      "template": "40 - Obsidian/模板/术语模板-手动.md"
     },
     {
       "folder": "00 - 每日日记/DailyNote",
@@ -31,7 +31,7 @@
       "template": "40 - Obsidian/模板/学者模板.md"
     },
     {
-      "folder": "/",
+      "folder": "Drafts",
       "template": "40 - Obsidian/模板/输出笔记模板.md"
     }
   ],
