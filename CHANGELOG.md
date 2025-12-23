@@ -4,6 +4,14 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
+## [4.5.5](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.4...v4.5.5) (2025-12-23)
+
+
+### Bug Fixes
+
+* **templates:** :bug: add manual term template and update folder structure of templator ([b585812](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/b585812c1a4d8dcedd786eb8e129b99ed3d4b2ee))
+* **templates:** :bug: add manual term template and update folder structure of templator ([be4d761](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/be4d76124611aab86c8f6d9b7b66a6fda1cc6a4a))
+
 ## [4.5.4](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.3...v4.5.4) (2025-12-22)
 
 
