@@ -234,17 +234,17 @@
         "name": "添加术语",
         "commands": [
           {
-            "name": "创建术语模板",
+            "name": "创建术语-手动模板",
             "type": "NestedChoice",
             "id": "963bff7f-00e0-4acf-8dbe-16d353e08d3c",
             "choice": {
               "id": "2c0ef45d-2434-4b6d-83cf-28614bdce6be",
-              "name": "创建术语模板",
+              "name": "创建术语-手动模板",
               "type": "Template",
               "command": false,
-              "templatePath": "40 - Obsidian/模板/术语模板.md",
+              "templatePath": "40 - Obsidian/模板/术语模板-手动.md",
               "fileNameFormat": {
-                "enabled": true,
+                "enabled": false,
                 "format": "{{VALUE:name}}"
               },
               "folder": {
@@ -273,52 +273,6 @@
                 "focus": true
               }
             }
-          },
-          {
-            "name": "Wait",
-            "type": "Wait",
-            "id": "5e123e2b-758b-40d7-96de-88f2b49dc4b5",
-            "time": 100
-          },
-          {
-            "name": "添加元信息",
-            "type": "NestedChoice",
-            "id": "b6c03612-3b4e-4715-bf34-6c006a9196a6",
-            "choice": {
-              "id": "ba5784cd-efbc-4f4e-9296-006a1492155e",
-              "name": "添加元信息",
-              "type": "Capture",
-              "command": false,
-              "appendLink": false,
-              "captureTo": "",
-              "captureToActiveFile": true,
-              "createFileIfItDoesntExist": {
-                "enabled": false,
-                "createWithTemplate": false,
-                "template": ""
-              },
-              "format": {
-                "enabled": true,
-                "format": "name: {{VALUE:name}}\nalias:\nch: {{VALUE:中文名}}\nframework:\n"
-              },
-              "insertAfter": {
-                "enabled": true,
-                "after": "---",
-                "insertAtEnd": false,
-                "considerSubsections": false,
-                "createIfNotFound": true,
-                "createIfNotFoundLocation": "top"
-              },
-              "prepend": false,
-              "task": false,
-              "openFileInNewTab": {
-                "enabled": false,
-                "direction": "vertical",
-                "focus": true
-              },
-              "openFile": false,
-              "openFileInMode": "default"
-            }
           }
         ]
       },
@@ -344,7 +298,7 @@
             "name": "AI Assistant",
             "type": "AIAssistant",
             "id": "2fda7929-cf7c-46bb-8be4-21c1a3567e2b",
-            "model": "gpt-3.5-turbo",
+            "model": "gpt-4",
             "systemPrompt": "As an AI assistant within Obsidian, your primary goal is to help users manage their ideas and knowledge more effectively. Format your responses using Markdown syntax. Please use the [[Obsidian]] link format. You can write aliases for the links by writing [[Obsidian|the alias after the pipe symbol]]. To use mathematical notation, use LaTeX syntax. LaTeX syntax for larger equations should be on separate lines, surrounded with double dollar signs ($$). You can also inline math expressions by wrapping it in $ symbols. For example, use $$w_{ij}^{\text{new}}:=w_{ij}^{\text{current}}+etacdotdelta_jcdot x_{ij}$$ on a separate line, but you can write \"($eta$ = learning rate, $delta_j$ = error term, $x_{ij}$ = input)\" inline.",
             "outputVariableName": "output",
             "promptTemplate": {
