@@ -4,6 +4,14 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
+## [4.5.6](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.5...v4.5.6) (2026-01-06)
+
+
+### Bug Fixes
+
+* **plugins:** :arrow_up: update plugin versions and add new Lua scripts for enhanced export compatibility ([3623135](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/3623135e5f5545ae4dcc9dbdd029dae8511e2f79))
+* **plugins:** :arrow_up: update plugin versions and add new Lua scripts for enhanced export compatibility ([bd13241](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/bd1324110979567a72a842da36a975a9b8434c3a))
+
 ## [4.5.5](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.4...v4.5.5) (2025-12-23)
 
 
