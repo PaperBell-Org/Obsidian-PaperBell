@@ -35,7 +35,7 @@
     "quartz": "./quartz/bootstrap-cli.mjs"
   },
   "dependencies": {
-    "@clack/prompts": "^1.0.0",
+    "@clack/prompts": "^1.0.1",
     "@floating-ui/dom": "^1.7.5",
     "@myriaddreamin/rehype-typst": "^0.6.0",
     "@napi-rs/simple-git": "0.1.22",
@@ -82,8 +82,8 @@
     "remark-rehype": "^11.1.2",
     "remark-smartypants": "^3.0.2",
     "rfdc": "^1.4.1",
-    "rimraf": "^6.1.2",
-    "satori": "^0.19.1",
+    "rimraf": "^6.1.3",
+    "satori": "^0.19.2",
     "serve-handler": "^6.1.6",
     "sharp": "^0.34.5",
     "shiki": "^3.22.0",
@@ -102,7 +102,7 @@
     "@types/d3": "^7.4.3",
     "@types/hast": "^3.0.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.2.2",
+    "@types/node": "^25.2.3",
     "@types/pretty-time": "^1.1.5",
     "@types/source-map-support": "^0.5.10",
     "@types/ws": "^8.18.1",
