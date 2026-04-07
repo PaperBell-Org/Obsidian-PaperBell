@@ -30906,7 +30906,7 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian31 = require("obsidian");
 
 // virtual-module:virtual:release-notes
-var releaseNotes = '<a href="https://www.youtube.com/watch?v=tfNqEAQuhXs">\n  <img src="https://pixel-banner.online/img/pixel-banner-v3.6.jpg" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n\n<h2>\u{1F389} What&#39;s New</h2>\n<h3>v3.6.0</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Support for \u{1F3AC} Video Banners!<ul>\n<li>Upload and choose Video files as banners from your vault</li>\n<li>Downloadable \u{1F3AC} Video Banners from the <code>Pixel Banner Plus Collection</code></li>\n</ul>\n</li>\n<li>Added paging controls to the <code>Pixel Banner Plus Collection</code></li>\n<li>New global <code>Banner Max Width</code> setting to control the default max width for all banners</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>Default Saved Banners Folder</code> setting to the <code>General</code> tab</li>\n<li>Renamed <code>Pixel Banner Plus Store</code> to <code>Pixel Banner Plus Collection</code> as many items are free</li>\n</ul>\n<h3>v3.6.1</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with Icon Image selection modal not setting the selected icon image</li>\n</ul>\n<h3>v3.6.2</h3>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Improved debounce logic to prevent multiple banner reloads when opening a note</li>\n</ul>\n<h3>v3.6.3</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Added <code>filesize</code> display to the store modal</li>\n</ul>\n<h3>v3.6.4</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Banner images now support local <code>file</code> protocol for images outside of your vault (e.g. <code>file:///C:\\path\\banner.jpg</code>)</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Allow commas in banner filenames</li>\n</ul>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Ensure pinned banner is the currently displayed image when saving API banners</li>\n<li>Ensure banner icons are only rendered when a main banner image is present</li>\n<li>Banner Icon Image not always rendered until the note was clicked/focused</li>\n</ul>\n<h3>v3.6.5</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fix refresh button to use original comma-separated keywords from frontmatter instead of the cached single keyword</li>\n<li>Resolved issue with the default x/y frontmatter fields not being hidden when the &quot;Hide Pixel Banner Fields&quot; option is enabled</li>\n<li>Updated API call for <code>Pexels</code> to conform to spec changes on their side</li>\n</ul>\n<h3>v3.6.6</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>New folder group entries now inherit the user&#39;s default Content Start Position setting instead of being hardcoded to 150px</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n</ul>\n<h3>v3.6.7</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed ImageViewModal to properly display banner images and videos when clicking the &quot;Show View Image Icon&quot;<ul>\n<li>Added support for MP4 and MOV video files in the ImageViewModal with proper video player controls</li>\n<li>Correctly display actual image URLs instead of keywords for 3rd party API banners in the ImageViewModal</li>\n<li>Local images, videos, and file:/// paths maintain original display behavior</li>\n</ul>\n</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n<li><code>Enter</code> button support for submitting the save image form in the <code>Save Image Modal</code></li>\n<li>New <code>Pin Image URL</code> option to save API images directly as URL references in frontmatter without downloading to vault</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Replaced manual frontmatter string manipulation with Obsidian&#39;s native processFrontMatter API for more reliable metadata updates</li>\n</ul>\n<h3>v3.6.9</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>New <code>Icon Image Size Multiplier</code> setting to the <code>General</code> settings tab to control the global size of banner icon images</li>\n<li>Check for version updates when opening <code>General</code> settings and show update button if available</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>AI Model</code> selection from radio buttons to a dropdown for better organization</li>\n<li>Changed default banner fade value from <code>-70</code> to <code>-40</code></li>\n</ul>\n<h3>v3.6.10</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Icon images and emojis not being displayed properly</li>\n</ul>\n<h3>v3.6.11</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>New toggle to turn on/off <code>Pixel Banner Plus</code> in the main Pixel Banner select modal</li>\n<li><strong>Plain image format support</strong>: Added <code>image</code> option to Image Property Format setting (without brackets), improving compatibility with Make.md and other plugins</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Added unquoted wiki-link support for Image Icons paths (e.g. <code>[[path/icon.png]]</code>)</li>\n<li>Misc code cleanup</li>\n</ul>\n<h3>v3.6.12</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved incorrect <code>Pixel Banner Plus Server</code> URL</li>\n</ul>\n<h3>v3.6.13</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Support for Multiple Image Reference for new AI Image Generation models<ul>\n<li><code>Nano Banana</code></li>\n<li><code>Seedream 4</code></li>\n</ul>\n</li>\n</ul>\n<h3>v3.6.14</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with <code>.webp</code> images not being displayed</li>\n</ul>\n<h3>v3.6.15</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with plain paths not working for video files (<code>.mp4</code>, <code>.mov</code>)</li>\n</ul>\n<h3>v3.6.16</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed an occasional error that could prevent banners from displaying correctly</li>\n</ul>\n<a href="https://www.youtube.com/watch?v=pJFsMfrWak4">\n  <img src="https://pixel-banner.online/img/pixel-banner-transparent-bg.png" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n';
+var releaseNotes = '<a href="https://www.youtube.com/watch?v=tfNqEAQuhXs">\n  <img src="https://pixel-banner.online/img/pixel-banner-v3.6.jpg" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n\n<h2>\u{1F389} What&#39;s New</h2>\n<h3>v3.6.0</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Support for \u{1F3AC} Video Banners!<ul>\n<li>Upload and choose Video files as banners from your vault</li>\n<li>Downloadable \u{1F3AC} Video Banners from the <code>Pixel Banner Plus Collection</code></li>\n</ul>\n</li>\n<li>Added paging controls to the <code>Pixel Banner Plus Collection</code></li>\n<li>New global <code>Banner Max Width</code> setting to control the default max width for all banners</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>Default Saved Banners Folder</code> setting to the <code>General</code> tab</li>\n<li>Renamed <code>Pixel Banner Plus Store</code> to <code>Pixel Banner Plus Collection</code> as many items are free</li>\n</ul>\n<h3>v3.6.1</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with Icon Image selection modal not setting the selected icon image</li>\n</ul>\n<h3>v3.6.2</h3>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Improved debounce logic to prevent multiple banner reloads when opening a note</li>\n</ul>\n<h3>v3.6.3</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Added <code>filesize</code> display to the store modal</li>\n</ul>\n<h3>v3.6.4</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Banner images now support local <code>file</code> protocol for images outside of your vault (e.g. <code>file:///C:\\path\\banner.jpg</code>)</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Allow commas in banner filenames</li>\n</ul>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Ensure pinned banner is the currently displayed image when saving API banners</li>\n<li>Ensure banner icons are only rendered when a main banner image is present</li>\n<li>Banner Icon Image not always rendered until the note was clicked/focused</li>\n</ul>\n<h3>v3.6.5</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fix refresh button to use original comma-separated keywords from frontmatter instead of the cached single keyword</li>\n<li>Resolved issue with the default x/y frontmatter fields not being hidden when the &quot;Hide Pixel Banner Fields&quot; option is enabled</li>\n<li>Updated API call for <code>Pexels</code> to conform to spec changes on their side</li>\n</ul>\n<h3>v3.6.6</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>New folder group entries now inherit the user&#39;s default Content Start Position setting instead of being hardcoded to 150px</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n</ul>\n<h3>v3.6.7</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed ImageViewModal to properly display banner images and videos when clicking the &quot;Show View Image Icon&quot;<ul>\n<li>Added support for MP4 and MOV video files in the ImageViewModal with proper video player controls</li>\n<li>Correctly display actual image URLs instead of keywords for 3rd party API banners in the ImageViewModal</li>\n<li>Local images, videos, and file:/// paths maintain original display behavior</li>\n</ul>\n</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n<li><code>Enter</code> button support for submitting the save image form in the <code>Save Image Modal</code></li>\n<li>New <code>Pin Image URL</code> option to save API images directly as URL references in frontmatter without downloading to vault</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Replaced manual frontmatter string manipulation with Obsidian&#39;s native processFrontMatter API for more reliable metadata updates</li>\n</ul>\n<h3>v3.6.9</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>New <code>Icon Image Size Multiplier</code> setting to the <code>General</code> settings tab to control the global size of banner icon images</li>\n<li>Check for version updates when opening <code>General</code> settings and show update button if available</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>AI Model</code> selection from radio buttons to a dropdown for better organization</li>\n<li>Changed default banner fade value from <code>-70</code> to <code>-40</code></li>\n</ul>\n<h3>v3.6.10</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Icon images and emojis not being displayed properly</li>\n</ul>\n<h3>v3.6.11</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>New toggle to turn on/off <code>Pixel Banner Plus</code> in the main Pixel Banner select modal</li>\n<li><strong>Plain image format support</strong>: Added <code>image</code> option to Image Property Format setting (without brackets), improving compatibility with Make.md and other plugins</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Added unquoted wiki-link support for Image Icons paths (e.g. <code>[[path/icon.png]]</code>)</li>\n<li>Misc code cleanup</li>\n</ul>\n<h3>v3.6.12</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved incorrect <code>Pixel Banner Plus Server</code> URL</li>\n</ul>\n<h3>v3.6.13</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Support for Multiple Image Reference for new AI Image Generation models<ul>\n<li><code>Nano Banana</code></li>\n<li><code>Seedream 4</code></li>\n</ul>\n</li>\n</ul>\n<h3>v3.6.14</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with <code>.webp</code> images not being displayed</li>\n</ul>\n<h3>v3.6.15</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with plain paths not working for video files (<code>.mp4</code>, <code>.mov</code>)</li>\n</ul>\n<h3>v3.6.16</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed an occasional error that could prevent banners from displaying correctly</li>\n</ul>\n<h3>v3.6.18 - 2026-03-08</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed banner flickering on every keystroke when a note contains frontmatter and uses folder group banners (issue #318)</li>\n</ul>\n<h3>v3.6.17 - 2026-03-08</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed content start position not applying correctly when changed in settings (issue #297)</li>\n</ul>\n<h3>v3.6.18 - 2026-03-08</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed banner flickering on every keystroke when a note contains frontmatter and uses folder group banners (issue #318)</li>\n</ul>\n<a href="https://www.youtube.com/watch?v=pJFsMfrWak4">\n  <img src="https://pixel-banner.online/img/pixel-banner-transparent-bg.png" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n';
 
 // src/settings/settings.js
 var import_obsidian6 = require("obsidian");
@@ -33431,6 +33431,7 @@ async function saveSettings(plugin) {
   plugin.loadedImages.clear();
   plugin.lastKeywords.clear();
   plugin.imageCache.clear();
+  plugin.lastFrontmatter.clear();
   plugin.app.workspace.iterateAllLeaves((leaf) => {
     if (leaf.view instanceof import_obsidian23.MarkdownView) {
       plugin.updateBanner(leaf.view, true);
@@ -34087,13 +34088,16 @@ var SUPPORTED_MOVIE_EXTENSIONS = ["mp4", "mov"];
 var SUPPORTED_EXTENSIONS = [...SUPPORTED_IMAGE_EXTENSIONS, ...SUPPORTED_MOVIE_EXTENSIONS];
 var debouncedAddPixelBanner = debounceAndSwallow(addPixelBanner, 350);
 async function addPixelBanner(plugin, el, ctx) {
-  var _a, _b, _c;
+  var _a, _b, _c, _d, _e;
   const { frontmatter, file, isContentChange, yPosition, xPosition, contentStartPosition, bannerImage, isReadingView, updateMode } = ctx;
   const viewContent = el;
   const isEmbedded = viewContent.classList.contains("internal-embed") && viewContent.classList.contains("markdown-embed");
   const isHoverPopover = viewContent.closest(".hover-popover") !== null;
   const hideEmbeddedNoteBanners = getFrontmatterValue(frontmatter, plugin.settings.customHideEmbeddedNoteBannersField) || ((_a = plugin.getFolderSpecificImage(file.path)) == null ? void 0 : _a.hideEmbeddedNoteBanners) || plugin.settings.hideEmbeddedNoteBanners || false;
   if (!isEmbedded && !isHoverPopover && viewContent.classList.contains("view-content")) {
+    const frontmatterContentStartRaw = getFrontmatterValue(frontmatter, plugin.settings.customContentStartField);
+    const initialContentStart = (_c = (_b = frontmatterContentStartRaw !== null ? Number(frontmatterContentStartRaw) : null) != null ? _b : contentStartPosition) != null ? _c : plugin.settings.contentStartPosition;
+    applyContentStartPosition(plugin, viewContent, initialContentStart);
     const sourceEl = viewContent.querySelector(":scope > .markdown-source-view .cm-sizer");
     if (sourceEl) {
       sourceEl.style.paddingTop = "var(--pixel-banner-content-start, 355px)";
@@ -34346,8 +34350,8 @@ async function addPixelBanner(plugin, el, ctx) {
       const bannerIconOverlay = this.querySelector(":scope > .banner-icon-overlay");
       children = Array.from(children).filter(
         (child) => {
-          var _a2, _b2, _c2, _d, _e, _f;
-          return !((_a2 = child.classList) == null ? void 0 : _a2.contains("pixel-banner-image")) && !((_b2 = child.classList) == null ? void 0 : _b2.contains("view-image-icon")) && !((_c2 = child.classList) == null ? void 0 : _c2.contains("pin-icon")) && !((_d = child.classList) == null ? void 0 : _d.contains("refresh-icon")) && !((_e = child.classList) == null ? void 0 : _e.contains("select-image-icon")) && !((_f = child.classList) == null ? void 0 : _f.contains("banner-icon-overlay"));
+          var _a2, _b2, _c2, _d2, _e2, _f;
+          return !((_a2 = child.classList) == null ? void 0 : _a2.contains("pixel-banner-image")) && !((_b2 = child.classList) == null ? void 0 : _b2.contains("view-image-icon")) && !((_c2 = child.classList) == null ? void 0 : _c2.contains("pin-icon")) && !((_d2 = child.classList) == null ? void 0 : _d2.contains("refresh-icon")) && !((_e2 = child.classList) == null ? void 0 : _e2.contains("select-image-icon")) && !((_f = child.classList) == null ? void 0 : _f.contains("banner-icon-overlay"));
         }
       );
       if (bannerElement == null ? void 0 : bannerElement._isPersistentBanner) {
@@ -34487,7 +34491,7 @@ async function addPixelBanner(plugin, el, ctx) {
       if (!hideEmbeddedNoteBanners2 || !isEmbedded) {
         const frontmatterContentStart = getFrontmatterValue(frontmatter, plugin.settings.customContentStartField);
         const parsedFrontmatterStart = frontmatterContentStart ? Number(frontmatterContentStart) : null;
-        effectiveContentStart = (_c = (_b = parsedFrontmatterStart != null ? parsedFrontmatterStart : contentStartPosition) != null ? _b : folderSpecific == null ? void 0 : folderSpecific.contentStartPosition) != null ? _c : plugin.settings.contentStartPosition;
+        effectiveContentStart = (_e = (_d = parsedFrontmatterStart != null ? parsedFrontmatterStart : contentStartPosition) != null ? _d : folderSpecific == null ? void 0 : folderSpecific.contentStartPosition) != null ? _e : plugin.settings.contentStartPosition;
       }
       plugin.applyContentStartPosition(viewContent, effectiveContentStart);
       plugin.applyBannerWidth(viewContent);
@@ -36163,9 +36167,11 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
           return;
         }
         const previousFrontmatter = this.lastFrontmatter.get(file.path);
-        if (JSON.stringify(frontmatter) === JSON.stringify(previousFrontmatter)) {
+        const currentFrontmatterStr = JSON.stringify(frontmatter);
+        if (currentFrontmatterStr === JSON.stringify(previousFrontmatter)) {
           return;
         }
+        this.lastFrontmatter.set(file.path, JSON.parse(currentFrontmatterStr));
         const relevantFields = [
           ...this.settings.customBannerField,
           ...this.settings.customYPositionField,
@@ -36198,11 +36204,9 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         const changedFields = relevantFields.filter(
           (field) => frontmatter[field] !== (previousFrontmatter == null ? void 0 : previousFrontmatter[field])
         );
-        const hasRelevantFieldChange = changedFields.length > 0;
-        if (!hasRelevantFieldChange) {
+        if (changedFields.length === 0) {
           return;
         }
-        this.lastFrontmatter.set(file.path, frontmatter);
         const leaves = this.app.workspace.getLeavesOfType("markdown");
         for (const leaf of leaves) {
           if (leaf.view instanceof import_obsidian31.MarkdownView && leaf.view.file === file) {
@@ -36411,9 +36415,46 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
           if (hasBanner) {
             const file = leaf.view.file;
             const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
+            if (!frontmatter) return;
             const previousFrontmatter = this.lastFrontmatter.get(file.path);
-            if (JSON.stringify(frontmatter) !== JSON.stringify(previousFrontmatter)) {
-              this.updateBanner(leaf.view, false);
+            const currentStr = JSON.stringify(frontmatter);
+            if (currentStr !== JSON.stringify(previousFrontmatter)) {
+              this.lastFrontmatter.set(file.path, JSON.parse(currentStr));
+              const relevantFields = [
+                ...this.settings.customBannerField,
+                ...this.settings.customYPositionField,
+                ...this.settings.customXPositionField,
+                ...this.settings.customContentStartField,
+                ...this.settings.customImageDisplayField,
+                ...this.settings.customImageRepeatField,
+                ...this.settings.customBannerMaxWidthField,
+                ...this.settings.customBannerHeightField,
+                ...this.settings.customFadeField,
+                ...this.settings.customBorderRadiusField,
+                ...this.settings.customTitleColorField,
+                ...this.settings.customBannerShuffleField,
+                ...this.settings.customBannerIconField,
+                ...this.settings.customBannerIconSizeField,
+                ...this.settings.customBannerIconImageSizeMultiplierField,
+                ...this.settings.customBannerIconTextVerticalOffsetField,
+                ...this.settings.customBannerIconRotateField,
+                ...this.settings.customBannerIconImageAlignmentField,
+                ...this.settings.customBannerIconXPositionField,
+                ...this.settings.customBannerIconOpacityField,
+                ...this.settings.customBannerIconColorField,
+                ...this.settings.customBannerIconFontWeightField,
+                ...this.settings.customBannerIconBackgroundColorField,
+                ...this.settings.customBannerIconPaddingXField,
+                ...this.settings.customBannerIconPaddingYField,
+                ...this.settings.customBannerIconBorderRadiusField,
+                ...this.settings.customBannerIconVerticalOffsetField
+              ];
+              const hasRelevantChange = relevantFields.some(
+                (field) => frontmatter[field] !== (previousFrontmatter == null ? void 0 : previousFrontmatter[field])
+              );
+              if (hasRelevantChange) {
+                this.updateBanner(leaf.view, false);
+              }
             }
           }
         }
