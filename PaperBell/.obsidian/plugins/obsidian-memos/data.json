@@ -16,6 +16,7 @@
   "DefaultEditorLocation": "Top",
   "UseButtonToShowEditor": false,
   "FocusOnEditor": true,
+  "ShowClipboardOnFocus": true,
   "OpenDailyMemosWithMemos": true,
   "HideDoneTasks": false,
   "ShowTaskLabel": false,
@@ -49,6 +50,31 @@
     "MemoDefaultCanvasPath": "basic.thino.canvas",
     "MemoDefaultMultiFilePath": "Thino",
     "MemoDefaultSingleFilePath": "basic.thino.md"
+  },
+  "JournalSettings": {
+    "granularity": "day",
+    "useIndependentSettings": false,
+    "headingDateFormat": "YYYY-MM-DD",
+    "daily": {
+      "folder": "",
+      "format": "YYYY-MM-DD",
+      "template": ""
+    },
+    "weekly": {
+      "folder": "",
+      "format": "gggg-[W]ww",
+      "template": ""
+    },
+    "monthly": {
+      "folder": "",
+      "format": "YYYY-MM",
+      "template": ""
+    },
+    "yearly": {
+      "folder": "",
+      "format": "YYYY",
+      "template": ""
+    }
   },
   "MemoDailyTarget": 6,
   "HeatmapColorScheme": "ice",
@@ -86,7 +112,7 @@
   "MomentsIcon": "40 - Obsidian/img/PaperBell.jpg",
   "MomentsQuote": "编织思维星图",
   "DefaultThemeForThino": "modern",
-  "LastUpdatedVersion": "2.8.14",
+  "LastUpdatedVersion": "3.0.3",
   "ShareToThinoWithText": false,
   "ShareToThinoWithTextAppend": "",
   "ShareToThinoWithTextPrepend": "",
@@ -130,5 +156,52 @@
   "ShowScrollToTopButton": true,
   "ZoomImageWhenViewing": false,
   "ViewArchiveInRandomReview": false,
-  "DraggingBehavior": "block-link"
+  "DraggingBehavior": "block-link",
+  "superEnabled": false,
+  "enableSecretMasking": false,
+  "secretContentRegex": "",
+  "secretMaskingStyle": "blur",
+  "fsrsRequestRetention": 0.9,
+  "fsrsMaximumInterval": 36500,
+  "fsrsEnableFuzz": true,
+  "fsrsEnableShortTerm": true,
+  "fsrsWeights": [],
+  "fsrsDailyLimit": 100,
+  "wechat": {
+    "enabled": false,
+    "autoStart": false,
+    "defaultReply": "",
+    "voiceSaveMode": "both",
+    "agentRouting": {
+      "enabled": false,
+      "defaultAgent": "claude",
+      "agents": {
+        "claude": {
+          "type": "cli",
+          "command": "claude",
+          "aliases": [
+            "cc"
+          ]
+        },
+        "codex": {
+          "type": "cli",
+          "command": "codex",
+          "aliases": [
+            "cx"
+          ]
+        },
+        "gemini": {
+          "type": "cli",
+          "command": "gemini",
+          "aliases": [
+            "gm"
+          ]
+        }
+      }
+    }
+  },
+  "general": {
+    "tokenExpiresAt": 0,
+    "userInfo": null
+  }
 }
