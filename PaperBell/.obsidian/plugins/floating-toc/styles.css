@@ -410,7 +410,7 @@ font-weight: bold !important;
   height: 100%;
   display: inline-flex;
   align-items: center;
-  animation: textAppear-72a6a55b 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  //animation: textAppear-72a6a55b 250ms cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
   text-wrap: inherit;
 }
@@ -428,6 +428,7 @@ font-weight: bold !important;
 .heading-list-item .text-wrap .text {
   padding: 0.25rem;
   border-radius: 0.5rem;
+  min-height:auto;
   text-decoration: none;
   cursor: pointer;
   color: var(--floating-toc-font-color);
@@ -717,11 +718,11 @@ body.enable-bold-bar .floating-toc-div:hover .heading-list-item>.line-wrap {
   align-items: flex-start;
   min-width: 6rem;
   max-width: var(--floating-toc-line-width);
-  width: auto;
+  width: fit-content;
   overflow-y: auto;
   background: var(--floating-toc-background-color);
   transition-delay: var(--floating-toc-response-time);
-  
+ 
  }
 
 .floating-toc-div.pin .floating-toc {
@@ -761,6 +762,12 @@ body:not(.enable-heading-nowrap) .floating-toc-div:hover .floating-toc .heading-
 
 .floating-toc-div.pin .floating-toc .heading-list-item {
   max-width: fit-content;
+  width: fit-content;
+}
+
+.floating-toc-div:hover .floating-toc .heading-list-item {
+  max-width: fit-content;
+  width: fit-content;
 }
 
 body.enable-heading-nowrap .floating-toc-div.pin .floating-toc .heading-list-item>.text-wrap,
@@ -798,13 +805,13 @@ display: none;
   padding-left: 2rem;
 }
 
-.workspace-leaf-content .floating-toc-div.pin:is(.floating-left, .floating-both)+.markdown-source-view>.cm-editor {
+body.enable-content-offset .workspace-leaf-content .floating-toc-div.pin:is(.floating-left, .floating-both)+.markdown-source-view>.cm-editor {
   padding-left: min(var(--floating-toc-line-width), var(--actual-toc-width));
 }
 
 
 
-.workspace-leaf-content .floating-toc-div.pin:is(.floating-left, .floating-both)~.markdown-reading-view {
+body.enable-content-offset .workspace-leaf-content .floating-toc-div.pin:is(.floating-left, .floating-both)~.markdown-reading-view {
   padding-left: min(var(--floating-toc-line-width), var(--actual-toc-width));
 }
 
@@ -1143,6 +1150,7 @@ body.enable-bold-bar .floating-toc-div .heading-list-item .line-wrap .line
 
 .heading-list-item.focus .text-wrap .text {
   font-weight: bolder;
+
 }
 /****/
 .heading-list-item:not(.focus, .located) .text-wrap .text {
@@ -2205,4 +2213,40 @@ body.float-outline-style.enable-bold-bar .heading-list-item::before
 .floating-toc:has(.search-highlight)::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb-bg);
   border-radius: 3px;
+}
+
+/* 拖拽重排样式 */
+.heading-list-item.draggable-heading {
+  cursor: move;
+  transition: transform 0.2s ease, opacity 0.2s ease, background 0.2s ease;
+}
+
+.heading-list-item.dragging {
+  opacity: 0.5;
+  background: var(--background-modifier-hover);
+  transform: scale(0.98);
+}
+
+.heading-list-item.drag-over-top {
+  border-top: 2px solid var(--interactive-accent);
+  transition: border-color 0.15s ease;
+}
+
+.heading-list-item.drag-over-bottom {
+  border-bottom: 2px solid var(--interactive-accent);
+  transition: border-color 0.15s ease;
+}
+
+/* 拖拽手柄提示 */
+.heading-list-item.draggable-heading:hover {
+  background: var(--background-modifier-hover);
+}
+
+/* 大纲更新时的平滑过渡 */
+.floating-toc {
+  transition: opacity 0.15s ease;
+}
+
+.floating-toc.updating {
+  opacity: 0.7;
 }

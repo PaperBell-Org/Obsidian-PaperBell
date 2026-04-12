@@ -4,6 +4,14 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
+## [4.5.7](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.6...v4.5.7) (2026-04-07)
+
+
+### Bug Fixes
+
+* **plugins:** :arrow_up: update plugin versions and improve functionality across multiple plugins ([47d96af](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/47d96af41dd73897c842cb8162bf34f7b5783e92))
+* **plugins:** :arrow_up: update plugin versions and improve functionality across multiple plugins ([e924063](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/e924063f8259595201800a02263603fdbc451abd))
+
 ## [4.5.6](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.5...v4.5.6) (2026-01-06)
 
 
