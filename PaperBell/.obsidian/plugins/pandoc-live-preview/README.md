@@ -97,7 +97,7 @@ To get the full academic writing preview experience (Citations + Cross-reference
 ### 方法 1：使用 BRAT 插件（推荐）
 1. 在 Obsidian 社区插件市场搜索并安装 **BRAT**。
 2. 在 BRAT 设置中点击 "Add Beta plugin"。
-3. 输入本仓库地址：`https://github.com/wanxinhao/pandoc-live-preview`。
+3. 输入本仓库地址：`https://github.com/EdgerHao/pandoc-live-preview`。
 4. 点击添加，插件即可自动安装。
 
 ### 方法 2：手动安装
