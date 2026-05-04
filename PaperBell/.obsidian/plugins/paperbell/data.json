@@ -9,6 +9,7 @@
   "landing": {
     "firstLoad": false,
     "completedSteps": {
+      "account": false,
       "renameRepo": false,
       "configurePlugins": {
         "obsidian-pandoc-reference-list": false,
@@ -70,6 +71,13 @@
       "maxAge": 30,
       "refreshInterval": 300000,
       "cacheTimeout": 60000,
+      "literatureFolderPath": "Inputs/Zotero",
+      "literatureDisplaySettings": {
+        "titleWrap": true,
+        "authorWrap": true,
+        "keywordsWrap": true,
+        "tagsWrap": true
+      },
       "folderPath": "Inputs/Zotero"
     },
     "researchFocusMap": {
@@ -84,6 +92,8 @@
       "trackingTags": [
         "project"
       ],
+      "gridSize": 50,
+      "borderRadius": 4,
       "folderPath": "Cards/Concepts",
       "recursive": true
     },
@@ -278,6 +288,14 @@
     "autoUpdate": false,
     "minAppVersion": "4.0.2",
     "customReplacements": {},
+    "updateScope": {
+      "regularFiles": true,
+      "obsidianCore": true,
+      "plugins": true,
+      "themes": true,
+      "snippets": true,
+      "pluginData": false
+    },
     "obsidianConflictHandling": {
       "settings": "prompt",
       "themes": "prompt",
@@ -291,23 +309,6 @@
     "email": "user@example.com",
     "institution": "PaperBell Pro",
     "avatar": "https://avatars.githubusercontent.com/u/196615410?s=400&u=7f34975ce8ebc7e3247d85ab1a0c560012ec4892&v=4"
-  },
-  "displaySettings": {
-    "titleWrap": true,
-    "authorWrap": true,
-    "keywordsWrap": true,
-    "tagsWrap": true
-  },
-  "heatmapSettings": {
-    "gridSize": 50,
-    "borderRadius": 4
-  },
-  "researchFocusSettings": {
-    "trackingTags": [
-      "project"
-    ],
-    "gridSize": 50,
-    "borderRadius": 4
   },
   "componentSettings": {
     "academicOverview": {
@@ -394,14 +395,29 @@
     "autoStartBreaks": false,
     "autoStartWork": false
   },
-  "literatureSettings": {
-    "folderPath": "Inputs/Zotero",
-    "displaySettings": {
-      "titleWrap": true,
-      "authorWrap": true,
-      "keywordsWrap": true,
-      "tagsWrap": true
-    }
+  "baseContainerPaths": {
+    "projects": null,
+    "papers": null,
+    "experiments": null,
+    "tasks": null,
+    "resources": null,
+    "books": null,
+    "literature": null
+  },
+  "aiSkills": {
+    "agentType": "claude-code",
+    "skillsDirectory": ".claude/skills",
+    "builtinSkillStates": {},
+    "marketplaceSkills": []
+  },
+  "agentAutoExec": {
+    "enabled": false,
+    "rules": [],
+    "binaryPaths": {},
+    "globalMaxConcurrent": 2,
+    "showNoticeOnTrigger": true,
+    "maxOutputLinesPerRun": 5000,
+    "maxHistoryRuns": 50
   },
   "ZotLitColors": {
     "enabled": true,
