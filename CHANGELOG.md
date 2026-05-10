@@ -4,6 +4,14 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
+## [4.5.8](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.7...v4.5.8) (2026-05-03)
+
+
+### Bug Fixes
+
+* **plugins:** :arrow_up: update plugin versions and enhance functionality across multiple plugins, including Hover Editor and Memos ([17c2fda](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/17c2fda3f3cc7d4701f07842b437b1542a876db8))
+* **plugins:** :arrow_up: update plugin versions and enhance functionality across multiple plugins, including Hover Editor and Memos ([ffd606d](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/ffd606d73274f959e58b55a59a0a210fff4e3696))
+
 ## [4.5.7](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.6...v4.5.7) (2026-04-07)
 
 
