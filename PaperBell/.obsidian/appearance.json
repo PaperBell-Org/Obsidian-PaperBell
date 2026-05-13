@@ -32,10 +32,12 @@
     "【元数据优化】longform-props"
   ],
   "cssTheme": "AnuPpuccin",
-  "theme": "system",
+  "theme": "moonstone",
   "baseFontSize": 14,
   "accentColor": "#496ba2",
   "showViewHeader": true,
   "translucency": false,
-  "baseFontSizeAction": true
+  "baseFontSizeAction": true,
+  "textFontFamily": "Helvetica Neue",
+  "interfaceFontFamily": "Helvetica Neue,思源黑体-regular"
 }
