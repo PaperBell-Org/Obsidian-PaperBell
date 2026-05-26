@@ -86,7 +86,7 @@
     "satori": "^0.26.0",
     "serve-handler": "^6.1.7",
     "sharp": "^0.34.5",
-    "shiki": "^4.0.2",
+    "shiki": "^4.1.0",
     "source-map-support": "^0.5.21",
     "to-vfile": "^8.0.0",
     "toml": "^4.1.1",
@@ -94,7 +94,7 @@
     "unist-util-visit": "^5.1.0",
     "vfile": "^6.0.3",
     "workerpool": "^10.0.2",
-    "ws": "^8.20.1",
+    "ws": "^8.21.0",
     "yargs": "^18.0.0"
   },
   "devDependencies": {
@@ -102,14 +102,14 @@
     "@types/d3": "^7.4.3",
     "@types/hast": "^3.0.4",
     "@types/js-yaml": "^4.0.9",
-    "@types/node": "^25.9.0",
+    "@types/node": "^25.9.1",
     "@types/pretty-time": "^1.1.5",
     "@types/source-map-support": "^0.5.10",
     "@types/ws": "^8.18.1",
     "@types/yargs": "^17.0.35",
     "esbuild": "^0.28.0",
     "prettier": "^3.8.3",
-    "tsx": "^4.22.2",
+    "tsx": "^4.22.3",
     "typescript": "^6.0.3"
   }
 }
