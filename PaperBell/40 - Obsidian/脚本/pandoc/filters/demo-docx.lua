@@ -60,4 +60,3 @@ function Pandoc(doc)
   top_blocks:extend(doc.blocks)
   return pandoc.Pandoc(top_blocks, meta)
 end
-

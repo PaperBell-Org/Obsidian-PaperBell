@@ -1,9 +1,9 @@
 --[[
   lineno-docx.lua —— Word 导出时添加行号
-  
+
   用法：在 YAML metadata 里设 lineno: true
   效果：Word 文档每页左侧显示行号（逐行编号，每页重新开始）
-  
+
   原理：在文档末尾注入一个连续分节符，其节属性包含行号设置。
   PDF 导出时此 filter 不生效（PDF 靠 LaTeX 的 lineno 包）。
 --]]
