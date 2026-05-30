@@ -18,7 +18,6 @@
   "waitForSync": false,
   "fallbackWaitEnabled": true,
   "fallbackWaitTime": 5,
-  "writeProperty": false,
   "workflows": {
     "CompileWithTitledFormatters": {
       "name": "CompileWithTitledFormatters",
