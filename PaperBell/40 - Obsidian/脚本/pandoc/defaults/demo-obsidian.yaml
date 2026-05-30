@@ -1,0 +1,75 @@
+from: markdown+pipe_tables+table_captions+link_attributes+wikilinks_title_after_pipe
+to: docx
+standalone: true
+
+# 指定 Pandoc 数据目录：当前 defaults 文件夹的上一级，即 pandoc 目录
+data-dir: "${.}/.."
+
+# Word 样式模板
+reference-doc: "${.}/../templates/demo-reference.docx"
+
+# 全局引文库
+bibliography: "${.}/../../mybib.bib"
+
+# 过滤器顺序：
+# 1. pandoc-crossref 先处理图、表、公式编号与交叉引用
+# 2. demo-docx.lua 先把标题、摘要、关键词从 metadata 插入正文
+# 3. citeproc 再处理正文和插入内容中的文献引用
+# 4. 后续 Lua 做图表后置、行号、空格/标点清洗、表格宽度
+filters:
+  - pandoc-crossref
+  - "${.}/../filters/demo-docx.lua"
+  - citeproc
+  - "${.}/../filters/figures-at-end.lua"
+  - "${.}/../filters/lineno-docx.lua"
+  - "${.}/../filters/nbsp-fix.lua"
+  - "${.}/../filters/cjk_format.lua"
+  - "${.}/../filters/fullwidth_tables.lua"
+
+metadata:
+  link-citations: false
+  link-bibliography: false
+
+  # 可在单篇文档 YAML 中打开：
+  # lineno: true
+  # figures-at-end: true
+  # tables-at-end: true
+
+  # 章节标题设置
+  chapters: false
+  chaptersDepth: 1
+  numberSections: false
+  chapDelim: "-"
+
+  # 图表前缀设置
+  figureTitle: "Fig"
+  figPrefix: "Fig"
+  tableTitle: "Tab"
+  tblPrefix: "Tab"
+
+
+# ============================================================ 
+# demo-obsidian.yaml —— Obsidian 静态成稿 DOCX 导出配置 
+# 
+# 用途： 
+# 将 Obsidian / Markdown 中撰写的论文直接导出为 
+# 经过引文处理、中文排版清理和表格优化的 Word 文档。 
+# 
+# 适用场景： 
+# 1. 论文正文主要在 Obsidian 中完成； 
+# 2. 文献引用希望在导出时直接排版定稿； 
+# 3. 需要生成可打印、可提交或可归档的 DOCX 文件。 
+# 
+# 基本流程： 
+# Obsidian Markdown 文档 
+# → pandoc-crossref 处理图表与公式编号 
+# → demo-docx.lua 插入标题、摘要和关键词
+# → citeproc 根据文献库和 CSL 样式排版引文 
+# → figures-at-end.lua 按需后置图表 
+# → lineno-docx.lua 按需添加行号 
+# → nbsp-fix.lua 清理异常空格 
+# → cjk_format.lua 优化中英文混排 
+# → fullwidth_tables.lua 统一表格宽度 
+# → reference-doc 控制最终 Word 样式 
+#  
+# ============================================================
