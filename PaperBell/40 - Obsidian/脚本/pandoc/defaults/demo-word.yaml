@@ -1,0 +1,67 @@
+from: markdown+pipe_tables+table_captions+link_attributes+wikilinks_title_after_pipe
+to: docx
+standalone: true
+
+# Word 模板 ( ${.}/.. 代表退回到 pandoc 目录 )
+reference-doc: "${.}/../templates/demo-reference.docx"
+
+# 文献库 ( ${.}/../.. 代表退回到 脚本 目录 )
+bibliography: "${.}/../../mybib.bib"
+
+# 过滤器顺序：
+# 1. pandoc-crossref 先处理图、表、公式编号与交叉引用
+# 2. demo-docx.lua 先把标题、摘要、关键词从 metadata 插入正文
+# 3. citeproc 再处理正文和插入内容中的文献引用
+# 4. 后续 Lua 做图表后置、行号、空格/标点清洗、表格宽度
+filters:
+  - pandoc-crossref                         # 外置, 需要装到 PATH
+  - "${.}/../filters/demo-docx.lua"  
+  - "${.}/../filters/zotero.lua"            # 本地 lua filter
+  - "${.}/../filters/figures-at-end.lua"
+  - "${.}/../filters/lineno-docx.lua"
+  - "${.}/../filters/nbsp-fix.lua"
+  - "${.}/../filters/cjk_format.lua"
+  - "${.}/../filters/fullwidth_tables.lua"
+
+metadata:
+  link-citations: false
+  link-bibliography: false
+
+  # 可在单篇文档 YAML 中打开：
+  # lineno: true
+  # figures-at-end: true
+  # tables-at-end: true
+
+  # 章节标题设置 
+  chapters: false
+  chaptersDepth: 1
+  numberSections: false
+  chapDelim: "-"
+
+  # 图表前缀设置
+  figureTitle: "Fig"
+  figPrefix: "Fig"
+  tableTitle: "Tab"
+  tblPrefix: "Tab"
+
+# ============================================================ 
+# demo-word.yaml —— Word + Zotero 动态引文导出配置 
+# 
+# 用途： 
+# 将 Markdown 文档导出为 DOCX，并将文中引用转换为 
+# Word 中可由 Zotero 继续刷新和编辑的动态引文字段。 
+# 
+# 适用场景： 
+# 1. 在 Obsidian / Markdown 中完成初稿写作； 
+# 2. 导出 Word 后仍需要调整引用或参考文献； 
+# 3. 需要交给使用 Word + Zotero 的合作者继续修改。 
+# 
+# 基本流程： # Markdown 文档 
+# → pandoc-crossref 处理图表编号与交叉引用 
+# → demo-docx.lua 插入标题、摘要和关键词 
+# → zotero.lua 生成可刷新的 Zotero 引文 
+# → figures-at-end.lua 按需后置图表 
+# → lineno-docx.lua 按需添加行号 
+# → cjk_format.lua 优化中英文混排 
+# → reference-doc 控制 Word 最终样式 
+# ============================================================
