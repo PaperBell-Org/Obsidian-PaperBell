@@ -4,6 +4,22 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
+## [4.6.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.8...v4.6.0) (2026-05-30)
+
+
+### Features
+
+* add Pandoc DOCX export workflow and formatting filters ([532c88d](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/532c88dc5614f652c5f7cc73f9fb9c1e4d2bd5b2))
+* add Pandoc DOCX export workflow and formatting filters ([de7196a](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/de7196ac03ba356763fc195b13c95c4f8dc5611a))
+* **export:** add new Word export options and CSL styles for enhanced document formatting ([48e80fc](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/48e80fc4c100febea13bcdfd50655285fa11abc0))
+* **plugins:** :sparkles: update Longform plugin to version 2.2.0-beta.3, add new metadata modal styles, and enhance scene creation functionality ([3867498](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/3867498fad911022ff33f73515c92ba3f6641fa7))
+
+
+### Bug Fixes
+
+* **plugins:** :arrow_up: update plugin versions, enhance functionality, and improve styles across multiple plugins including Longform and Memos ([92e7491](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/92e74917cc819bdd3c29bbe67e74ad37fecb9845))
+* preserve table style when moving tables to document end ([205c6da](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/205c6da3dce2cf4e37bbc9eef7757548461d05e8))
+
 ## [4.5.8](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.7...v4.5.8) (2026-05-03)
 
 
