@@ -4,6 +4,46 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
+## [4.5.8](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.7...v4.5.8) (2026-05-03)
+
+
+### Bug Fixes
+
+* **plugins:** :arrow_up: update plugin versions and enhance functionality across multiple plugins, including Hover Editor and Memos ([17c2fda](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/17c2fda3f3cc7d4701f07842b437b1542a876db8))
+* **plugins:** :arrow_up: update plugin versions and enhance functionality across multiple plugins, including Hover Editor and Memos ([ffd606d](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/ffd606d73274f959e58b55a59a0a210fff4e3696))
+
+## [4.5.7](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.6...v4.5.7) (2026-04-07)
+
+
+### Bug Fixes
+
+* **plugins:** :arrow_up: update plugin versions and improve functionality across multiple plugins ([47d96af](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/47d96af41dd73897c842cb8162bf34f7b5783e92))
+* **plugins:** :arrow_up: update plugin versions and improve functionality across multiple plugins ([e924063](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/e924063f8259595201800a02263603fdbc451abd))
+
+## [4.5.6](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.5...v4.5.6) (2026-01-06)
+
+
+### Bug Fixes
+
+* **plugins:** :arrow_up: update plugin versions and add new Lua scripts for enhanced export compatibility ([3623135](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/3623135e5f5545ae4dcc9dbdd029dae8511e2f79))
+* **plugins:** :arrow_up: update plugin versions and add new Lua scripts for enhanced export compatibility ([bd13241](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/bd1324110979567a72a842da36a975a9b8434c3a))
+
+## [4.5.5](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.4...v4.5.5) (2025-12-23)
+
+
+### Bug Fixes
+
+* **templates:** :bug: add manual term template and update folder structure of templator ([b585812](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/b585812c1a4d8dcedd786eb8e129b99ed3d4b2ee))
+* **templates:** :bug: add manual term template and update folder structure of templator ([be4d761](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/be4d76124611aab86c8f6d9b7b66a6fda1cc6a4a))
+
+## [4.5.4](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.3...v4.5.4) (2025-12-22)
+
+
+### Bug Fixes
+
+* **ci:** :construction_worker: rename job and simplify asset attachme… ([771542a](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/771542af9fbe2c35dcf5c436e74a6d55a8f4d9cc))
+* **ci:** :construction_worker: rename job and simplify asset attachment process for releases ([344d731](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/344d731ef0ad5cd8fc1e40e5cefacc0bf6515497))
+
 ## [4.5.3](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.2...v4.5.3) (2025-12-22)
 
 
