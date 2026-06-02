@@ -17,3 +17,15 @@
   margin-left: var(--size-4-2);
   color: var(--text-muted);
 }
+
+.longform-metadata-modal {
+  min-height: 360px;
+  height: auto;
+  max-height: 85vh;
+}
+
+.longform-metadata-modal-content {
+  min-height: 320px;
+  height: auto;
+  overflow-y: auto;
+}
