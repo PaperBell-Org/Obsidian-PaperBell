@@ -18,7 +18,6 @@
   "cm-chs-patch",
   "calendar",
   "dataview",
-  "longform",
   "obsidian-enhancing-export",
   "floating-toc",
   "obsidian-tracker",
@@ -26,5 +25,7 @@
   "pexels-banner",
   "datacore",
   "paperbell",
-  "obsidian-map-view"
+  "obsidian-map-view",
+  "obsidian42-brat",
+  "longform-paperbell"
 ]
