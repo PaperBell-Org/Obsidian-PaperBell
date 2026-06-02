@@ -4,6 +4,14 @@
 
 * trigger release-please ([22d9ea2](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/22d9ea24c09580c08984d9c92643ccc781ee5c9b))
 
+## [4.6.1](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.6.0...v4.6.1) (2026-06-02)
+
+
+### Bug Fixes
+
+* **plugins:** remove legacy Longform plugin, add Longform-PaperBell plugin, and update community plugins list ([189eab3](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/189eab305ed735b7a17c3d49ee22df730847dd78))
+* **plugins:** remove legacy Longform plugin, add Longform-PaperBell plugin, and update community plugins list ([d69d46d](https://github.com/PaperBell-Org/Obsidian-PaperBell/commit/d69d46dc9d1690e72347cc1c9108f54faf3bbda9))
+
 ## [4.6.0](https://github.com/PaperBell-Org/Obsidian-PaperBell/compare/v4.5.8...v4.6.0) (2026-05-30)
 
 
