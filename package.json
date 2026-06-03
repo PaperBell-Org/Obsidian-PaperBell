@@ -35,9 +35,9 @@
     "quartz": "./quartz/bootstrap-cli.mjs"
   },
   "dependencies": {
-    "@clack/prompts": "^1.4.0",
+    "@clack/prompts": "^1.5.0",
     "@floating-ui/dom": "^1.7.6",
-    "@myriaddreamin/rehype-typst": "^0.6.0",
+    "@myriaddreamin/rehype-typst": "^0.7.0",
     "@napi-rs/simple-git": "0.1.22",
     "@tweenjs/tween.js": "^25.0.0",
     "async-mutex": "^0.5.0",
@@ -54,7 +54,7 @@
     "hast-util-to-jsx-runtime": "^2.3.6",
     "hast-util-to-string": "^3.0.1",
     "is-absolute-url": "^5.0.0",
-    "js-yaml": "^4.1.1",
+    "js-yaml": "^4.2.0",
     "lightningcss": "^1.32.0",
     "mdast-util-find-and-replace": "^3.0.2",
     "mdast-util-to-hast": "^13.2.1",
@@ -86,7 +86,7 @@
     "satori": "^0.26.0",
     "serve-handler": "^6.1.7",
     "sharp": "^0.34.5",
-    "shiki": "^4.1.0",
+    "shiki": "^4.2.0",
     "source-map-support": "^0.5.21",
     "to-vfile": "^8.0.0",
     "toml": "^4.1.1",
@@ -109,7 +109,7 @@
     "@types/yargs": "^17.0.35",
     "esbuild": "^0.28.0",
     "prettier": "^3.8.3",
-    "tsx": "^4.22.3",
+    "tsx": "^4.22.4",
     "typescript": "^6.0.3"
   }
 }
