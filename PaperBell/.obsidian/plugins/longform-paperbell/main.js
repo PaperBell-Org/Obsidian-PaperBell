@@ -21155,7 +21155,7 @@ function calculateWorkflow(workflow, isMultiScene) {
         calculatedKinds,
     ];
 }
-function compile(app, draft, workflow, kinds, statusCallback) {
+function compile(app, draft, workflow, kinds, statusCallback, options) {
     return __awaiter(this, void 0, void 0, function* () {
         let currentInput;
         if (draft.format === "single") {
@@ -21213,6 +21213,8 @@ function compile(app, draft, workflow, kinds, statusCallback) {
                 utilities: {
                     normalizePath: obsidian.normalizePath,
                 },
+                suppressOpenAfter: options === null || options === void 0 ? void 0 : options.suppressOpenAfter,
+                projectRoot: options === null || options === void 0 ? void 0 : options.projectRoot,
             };
             console.log(`[Longform] Running compile step ${step.description.name} with context:`, context);
             statusCallback({
@@ -21618,6 +21620,28 @@ const StripFrontmatterStep = makeBuiltinStep({
     },
 });
 
+/**
+ * The per-draft name used by the `$2` placeholder in the Save-as-Note output path.
+ * Uses the draft's explicit `draftTitle` when set, otherwise falls back to the
+ * index file's basename (without the `.md` extension) so the name is always
+ * distinct across the drafts of a project.
+ */
+function draftOutputName(draft) {
+    var _a, _b;
+    const indexBasename = ((_a = draft.vaultPath.split("/").pop()) !== null && _a !== void 0 ? _a : "").replace(/\.md$/, "");
+    return (_b = draft.draftTitle) !== null && _b !== void 0 ? _b : indexBasename;
+}
+/**
+ * Substitutes the Save-as-Note output-path placeholders for a given draft:
+ *   - `$1` → the project title (shared across a project's drafts)
+ *   - `$2` → this draft's name (see {@link draftOutputName})
+ * All occurrences of each token are replaced.
+ */
+function applyTargetPlaceholders(target, draft) {
+    const draftName = draftOutputName(draft);
+    return target.split("$2").join(draftName).split("$1").join(draft.title);
+}
+
 const WriteToNoteStep = makeBuiltinStep({
     id: "write-to-note",
     description: {
@@ -21628,7 +21652,7 @@ const WriteToNoteStep = makeBuiltinStep({
             {
                 id: "target",
                 name: "Output path",
-                description: "Path for the created manuscript note. Paths starting with '/' are relative to your vault root; otherwise relative to your project. $1 will be replaced with your project's title.",
+                description: "Path for the created manuscript note. Paths starting with '/' are relative to your vault root; otherwise relative to your project. $1 is replaced with your project's title; $2 is replaced with this draft's name (e.g. \"compiled/$2.md\" gives each draft its own file).",
                 type: CompileStepOptionType.Text,
                 default: "manuscript.md",
             },
@@ -21647,15 +21671,14 @@ const WriteToNoteStep = makeBuiltinStep({
                 throw new Error("Cannot write non-manuscript as note.");
             }
             else {
-                let target = context.optionValues["target"];
-                target = target.replace("$1", context.draft.title);
+                const target = applyTargetPlaceholders(context.optionValues["target"], context.draft);
                 const openAfter = context.optionValues["open-after"];
                 if (!target || target.length == 0) {
                     throw new Error("Invalid path for Save as Note.");
                 }
                 const filePath = resolvePath(context.projectPath, target);
                 yield writeToFile(context.app, filePath, input.contents);
-                if (openAfter) {
+                if (openAfter && !context.suppressOpenAfter) {
                     console.log("[Longform] Attempting to open:", filePath);
                     context.app.workspace.openLinkText(filePath, "/", true).catch((err) => {
                         console.error("[Longform] Could not open", filePath, err);
@@ -21883,6 +21906,59 @@ function yamlString(s) {
     return `"${String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+/** The folder containing an index note, derived from its vault path. */
+function draftParentFolder(vaultPath) {
+    return vaultPath.split("/").slice(0, -1).join("/");
+}
+/**
+ * The lowest common ancestor folder shared by a set of folder paths, computed
+ * segment-wise. Returns "" (the vault root) when there is no shared prefix.
+ */
+function lowestCommonAncestorFolder(folders) {
+    if (folders.length === 0)
+        return "";
+    const split = folders.map((f) => f.split("/").filter((s) => s.length > 0));
+    let common = split[0];
+    for (const segs of split.slice(1)) {
+        let i = 0;
+        while (i < common.length && i < segs.length && common[i] === segs[i]) {
+            i++;
+        }
+        common = common.slice(0, i);
+    }
+    return common.join("/");
+}
+/**
+ * The "project root" for a set of drafts: the lowest common ancestor of every
+ * draft's folder. Shared resources (e.g. metadata.json) are searched for between
+ * a draft's own folder and this root, inclusive.
+ */
+function projectRootPath(projectDrafts) {
+    return lowestCommonAncestorFolder(projectDrafts.map((d) => draftParentFolder(d.vaultPath)));
+}
+/**
+ * Ordered candidate paths for a named resource, searched from `startDir` upward
+ * to `rootDir` (inclusive). At each level both `<dir>/<baseName>` and
+ * `<dir>/source/<baseName>` are produced. When `rootDir` is not an ancestor of
+ * (or equal to) `startDir`, only `startDir` is searched — so callers that don't
+ * know a project root degrade to the original single-folder behavior.
+ */
+function projectResourceCandidatePaths(startDir, rootDir, baseName) {
+    const startSegs = startDir.split("/").filter((s) => s.length > 0);
+    const rootSegs = (rootDir !== null && rootDir !== void 0 ? rootDir : "").split("/").filter((s) => s.length > 0);
+    const rootIsAncestor = rootSegs.length <= startSegs.length &&
+        rootSegs.every((s, i) => s === startSegs[i]);
+    const minLen = rootIsAncestor ? rootSegs.length : startSegs.length;
+    const candidates = [];
+    for (let len = startSegs.length; len >= minLen; len--) {
+        const dir = startSegs.slice(0, len).join("/");
+        const prefix = dir.length > 0 ? `${dir}/` : "";
+        candidates.push(`${prefix}${baseName}`);
+        candidates.push(`${prefix}source/${baseName}`);
+    }
+    return candidates;
+}
+
 const AddZenodoFrontmatterStep = makeBuiltinStep({
     id: "add-zenodo-frontmatter",
     description: {
@@ -21893,7 +21969,7 @@ const AddZenodoFrontmatterStep = makeBuiltinStep({
             {
                 id: "metadata-file",
                 name: "Metadata file",
-                description: "Filename of the Zenodo deposition metadata JSON in your project folder (or its 'source/' subfolder). Trailing '.json' is optional.",
+                description: "Filename of the Zenodo deposition metadata JSON. Searched for in the draft's folder (or its 'source/' subfolder) and any parent folder up to the project root, so multiple drafts can share one file. Trailing '.json' is optional.",
                 type: CompileStepOptionType.Text,
                 default: "metadata.json",
             },
@@ -21907,7 +21983,7 @@ const AddZenodoFrontmatterStep = makeBuiltinStep({
         ],
     },
     compile(input, context) {
-        var _a, _b;
+        var _a, _b, _c;
         return __awaiter(this, void 0, void 0, function* () {
             if (context.kind !== CompileStepKind.Manuscript) {
                 throw new Error("Cannot add frontmatter to non-manuscript.");
@@ -21917,10 +21993,7 @@ const AddZenodoFrontmatterStep = makeBuiltinStep({
             const baseName = metaFileName.endsWith(".json")
                 ? metaFileName
                 : `${metaFileName}.json`;
-            const candidatePaths = [
-                `${context.projectPath}/${baseName}`,
-                `${context.projectPath}/source/${baseName}`,
-            ];
+            const candidatePaths = projectResourceCandidatePaths(context.projectPath, (_c = context.projectRoot) !== null && _c !== void 0 ? _c : context.projectPath, baseName);
             let file = null;
             let foundPath = "";
             for (const path of candidatePaths) {
@@ -22024,7 +22097,7 @@ const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
             {
                 id: "json-file",
                 name: "JSON file",
-                description: "Filename of the JSON data file in your project folder (or its 'source/' subfolder). Trailing '.json' is optional.",
+                description: "Filename of the JSON data file. Searched for in the draft's folder (or its 'source/' subfolder) and any parent folder up to the project root. Trailing '.json' is optional.",
                 type: CompileStepOptionType.Text,
                 default: "results.json",
             },
@@ -22052,7 +22125,7 @@ const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
         ],
     },
     compile(input, context) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         return __awaiter(this, void 0, void 0, function* () {
             if (context.kind !== CompileStepKind.Manuscript) {
                 throw new Error("Cannot replace placeholders on non-manuscript.");
@@ -22064,10 +22137,7 @@ const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
             const baseName = jsonFileName.endsWith(".json")
                 ? jsonFileName
                 : `${jsonFileName}.json`;
-            const candidatePaths = [
-                `${context.projectPath}/${baseName}`,
-                `${context.projectPath}/source/${baseName}`,
-            ];
+            const candidatePaths = projectResourceCandidatePaths(context.projectPath, (_d = context.projectRoot) !== null && _d !== void 0 ? _d : context.projectPath, baseName);
             let file = null;
             let foundPath = "";
             for (const path of candidatePaths) {
@@ -28468,16 +28538,16 @@ class AutoTextArea extends SvelteComponent {
 /* src/view/compile/CompileView.svelte generated by Svelte v3.49.0 */
 
 function add_css$c(target) {
-	append_styles(target, "svelte-1hf1yah", ".longform-workflow-picker-container.svelte-1hf1yah.svelte-1hf1yah{padding:var(--size-4-2);background:var(--background-primary);display:flex;flex-direction:column}#longform-workflows.svelte-1hf1yah.svelte-1hf1yah{color:var(--color-accent-2)}.longform-workflow-picker.svelte-1hf1yah.svelte-1hf1yah{display:flex;flex-direction:row;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:var(--size-4-2)}.longform-workflow-picker.svelte-1hf1yah .longform-hint.svelte-1hf1yah{font-size:1em}select.svelte-1hf1yah.svelte-1hf1yah{background-color:transparent;border:none;padding:var(--size-4-1) 0;margin:0;font-family:inherit;font-size:inherit;cursor:inherit;line-height:inherit;outline:none;box-shadow:none}.select.svelte-1hf1yah.svelte-1hf1yah{cursor:pointer}.select.svelte-1hf1yah>select.svelte-1hf1yah{color:var(--text-accent)}.select.svelte-1hf1yah>select.svelte-1hf1yah:hover{text-decoration:underline;color:var(--text-accent-hover)}.longform-compile-container.svelte-1hf1yah .longform-sortable-step-list{list-style-type:none;padding:0;margin:0}.options-button.svelte-1hf1yah.svelte-1hf1yah{background-color:var(--background-secondary-alt);color:var(--text-accent)}.options-button.svelte-1hf1yah.svelte-1hf1yah:hover{background-color:var(--background-primary);color:var(--text-accent-hover)}.add-step-container.svelte-1hf1yah.svelte-1hf1yah{display:flex;flex-direction:row;align-items:center;justify-content:center}.add-step-container.svelte-1hf1yah button.svelte-1hf1yah{font-weight:bold;color:var(--text-accent)}.add-step-container.svelte-1hf1yah button.svelte-1hf1yah:hover{text-decoration:underline;color:var(--text-accent-hover)}.longform-compile-instructions.svelte-1hf1yah.svelte-1hf1yah{font-size:var(--font-smallest);padding:var(--size-4-4) var(--size-4-4) var(--size-4-1) var(--size-4-8);color:var(--text-muted)}.longform-compile-instructions.svelte-1hf1yah li.svelte-1hf1yah{margin-bottom:var(--size-4-1)\n    }.longform-compile-instructions.svelte-1hf1yah strong.svelte-1hf1yah{color:var(--color-accent-2)}.compile-button.svelte-1hf1yah.svelte-1hf1yah{font-weight:bold;background-color:var(--interactive-accent);color:var(--text-on-accent)}.compile-button.svelte-1hf1yah.svelte-1hf1yah:hover{background-color:var(--interactive-accent-hover);color:var(--text-on-accent)}.compile-button.svelte-1hf1yah.svelte-1hf1yah:disabled{background-color:var(--text-muted);color:var(--text-faint)}.longform-compile-run-container.svelte-1hf1yah.svelte-1hf1yah{display:flex;flex-direction:row;align-items:center;justify-content:space-between;margin-top:var(--size-4-8)}.longform-compile-run-container.svelte-1hf1yah .compile-status.svelte-1hf1yah{color:var(--text-muted)}.compile-status-error{color:var(--text-error) !important}.compile-status-success{color:var(--interactive-success) !important}.step-ghost{background-color:var(--interactive-accent-hover);color:var(--text-on-accent)}");
+	append_styles(target, "svelte-1br8pmp", ".longform-workflow-picker-container.svelte-1br8pmp.svelte-1br8pmp{padding:var(--size-4-2);background:var(--background-primary);display:flex;flex-direction:column}#longform-workflows.svelte-1br8pmp.svelte-1br8pmp{color:var(--color-accent-2)}.longform-workflow-picker.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:var(--size-4-2)}.longform-workflow-picker.svelte-1br8pmp .longform-hint.svelte-1br8pmp{font-size:1em}select.svelte-1br8pmp.svelte-1br8pmp{background-color:transparent;border:none;padding:var(--size-4-1) 0;margin:0;font-family:inherit;font-size:inherit;cursor:inherit;line-height:inherit;outline:none;box-shadow:none}.select.svelte-1br8pmp.svelte-1br8pmp{cursor:pointer}.select.svelte-1br8pmp>select.svelte-1br8pmp{color:var(--text-accent)}.select.svelte-1br8pmp>select.svelte-1br8pmp:hover{text-decoration:underline;color:var(--text-accent-hover)}.longform-compile-container.svelte-1br8pmp .longform-sortable-step-list{list-style-type:none;padding:0;margin:0}.options-button.svelte-1br8pmp.svelte-1br8pmp{background-color:var(--background-secondary-alt);color:var(--text-accent)}.options-button.svelte-1br8pmp.svelte-1br8pmp:hover{background-color:var(--background-primary);color:var(--text-accent-hover)}.add-step-container.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;align-items:center;justify-content:center}.add-step-container.svelte-1br8pmp button.svelte-1br8pmp{font-weight:bold;color:var(--text-accent)}.add-step-container.svelte-1br8pmp button.svelte-1br8pmp:hover{text-decoration:underline;color:var(--text-accent-hover)}.longform-compile-instructions.svelte-1br8pmp.svelte-1br8pmp{font-size:var(--font-smallest);padding:var(--size-4-4) var(--size-4-4) var(--size-4-1) var(--size-4-8);color:var(--text-muted)}.longform-compile-instructions.svelte-1br8pmp li.svelte-1br8pmp{margin-bottom:var(--size-4-1)\n    }.longform-compile-instructions.svelte-1br8pmp strong.svelte-1br8pmp{color:var(--color-accent-2)}.compile-button.svelte-1br8pmp.svelte-1br8pmp{font-weight:bold;background-color:var(--interactive-accent);color:var(--text-on-accent)}.compile-button.svelte-1br8pmp.svelte-1br8pmp:hover{background-color:var(--interactive-accent-hover);color:var(--text-on-accent)}.compile-button.svelte-1br8pmp.svelte-1br8pmp:disabled{background-color:var(--text-muted);color:var(--text-faint)}.longform-compile-run-container.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;align-items:center;justify-content:space-between;margin-top:var(--size-4-8)}.longform-compile-buttons.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;align-items:center;gap:var(--size-4-2)}.longform-compile-run-container.svelte-1br8pmp .compile-status.svelte-1br8pmp{color:var(--text-muted)}.compile-status-error{color:var(--text-error) !important}.compile-status-success{color:var(--interactive-success) !important}.step-ghost{background-color:var(--interactive-accent-hover);color:var(--text-on-accent)}");
 }
 
 function get_each_context$4(ctx, list, i) {
 	const child_ctx = ctx.slice();
-	child_ctx[44] = list[i];
+	child_ctx[48] = list[i];
 	return child_ctx;
 }
 
-// (177:0) {#if $selectedDraft}
+// (235:0) {#if $selectedDraft}
 function create_if_block$b(ctx) {
 	let div3;
 	let div1;
@@ -28491,14 +28561,14 @@ function create_if_block$b(ctx) {
 	let current;
 
 	function select_block_type(ctx, dirty) {
-		if (/*workflowInputState*/ ctx[6] !== "hidden") return create_if_block_5$2;
+		if (/*workflowInputState*/ ctx[6] !== "hidden") return create_if_block_6$1;
 		return create_else_block$4;
 	}
 
 	let current_block_type = select_block_type(ctx);
 	let if_block0 = current_block_type(ctx);
-	let if_block1 = /*$workflows*/ ctx[4][/*currentWorkflowName*/ ctx[1]] && create_if_block_4$2(ctx);
-	let if_block2 = /*$workflows*/ ctx[4][/*currentWorkflowName*/ ctx[1]] && create_if_block_2$6(ctx);
+	let if_block1 = /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]] && create_if_block_5$2(ctx);
+	let if_block2 = /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]] && create_if_block_3$2(ctx);
 	let if_block3 = /*$currentWorkflow*/ ctx[2] && /*$currentWorkflow*/ ctx[2].steps.length > 0 && create_if_block_1$8(ctx);
 
 	return {
@@ -28514,20 +28584,20 @@ function create_if_block$b(ctx) {
 			t2 = space();
 			ul = element("ul");
 
-			ul.innerHTML = `<li class="svelte-1hf1yah">Compile workflows run their steps in order.</li> 
-      <li class="svelte-1hf1yah"><strong class="svelte-1hf1yah">Scene</strong> workflows run once per scene.</li> 
-      <li class="svelte-1hf1yah"><strong class="svelte-1hf1yah">Join</strong> workflows run once and combine the rest of your scene steps into a single manuscript.</li> 
-      <li class="svelte-1hf1yah"><strong class="svelte-1hf1yah">Manuscript</strong> steps run once on the joined manuscript.</li> 
-      <li class="svelte-1hf1yah">Drag to rearrange. <a href="https://github.com/kevboh/longform/blob/main/docs/COMPILE.md">Documentation here.</a></li>`;
+			ul.innerHTML = `<li class="svelte-1br8pmp">Compile workflows run their steps in order.</li> 
+      <li class="svelte-1br8pmp"><strong class="svelte-1br8pmp">Scene</strong> workflows run once per scene.</li> 
+      <li class="svelte-1br8pmp"><strong class="svelte-1br8pmp">Join</strong> workflows run once and combine the rest of your scene steps into a single manuscript.</li> 
+      <li class="svelte-1br8pmp"><strong class="svelte-1br8pmp">Manuscript</strong> steps run once on the joined manuscript.</li> 
+      <li class="svelte-1br8pmp">Drag to rearrange. <a href="https://github.com/kevboh/longform/blob/main/docs/COMPILE.md">Documentation here.</a></li>`;
 
 			t16 = space();
 			div2 = element("div");
 			if (if_block3) if_block3.c();
-			attr(div0, "class", "longform-workflow-picker svelte-1hf1yah");
-			attr(div1, "class", "longform-workflow-picker-container svelte-1hf1yah");
-			attr(ul, "class", "longform-compile-instructions svelte-1hf1yah");
-			attr(div2, "class", "longform-compile-run-container svelte-1hf1yah");
-			attr(div3, "class", "longform-compile-container svelte-1hf1yah");
+			attr(div0, "class", "longform-workflow-picker svelte-1br8pmp");
+			attr(div1, "class", "longform-workflow-picker-container svelte-1br8pmp");
+			attr(ul, "class", "longform-compile-instructions svelte-1br8pmp");
+			attr(div2, "class", "longform-compile-run-container svelte-1br8pmp");
+			attr(div3, "class", "longform-compile-container svelte-1br8pmp");
 		},
 		m(target, anchor) {
 			insert(target, div3, anchor);
@@ -28558,15 +28628,15 @@ function create_if_block$b(ctx) {
 				}
 			}
 
-			if (/*$workflows*/ ctx[4][/*currentWorkflowName*/ ctx[1]]) {
+			if (/*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]]) {
 				if (if_block1) {
 					if_block1.p(ctx, dirty);
 
-					if (dirty[0] & /*$workflows, currentWorkflowName*/ 18) {
+					if (dirty[0] & /*$workflows, currentWorkflowName*/ 10) {
 						transition_in(if_block1, 1);
 					}
 				} else {
-					if_block1 = create_if_block_4$2(ctx);
+					if_block1 = create_if_block_5$2(ctx);
 					if_block1.c();
 					transition_in(if_block1, 1);
 					if_block1.m(div1, null);
@@ -28581,15 +28651,15 @@ function create_if_block$b(ctx) {
 				check_outros();
 			}
 
-			if (/*$workflows*/ ctx[4][/*currentWorkflowName*/ ctx[1]]) {
+			if (/*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]]) {
 				if (if_block2) {
 					if_block2.p(ctx, dirty);
 
-					if (dirty[0] & /*$workflows, currentWorkflowName*/ 18) {
+					if (dirty[0] & /*$workflows, currentWorkflowName*/ 10) {
 						transition_in(if_block2, 1);
 					}
 				} else {
-					if_block2 = create_if_block_2$6(ctx);
+					if_block2 = create_if_block_3$2(ctx);
 					if_block2.c();
 					transition_in(if_block2, 1);
 					if_block2.m(div3, t2);
@@ -28638,7 +28708,7 @@ function create_if_block$b(ctx) {
 	};
 }
 
-// (200:8) {:else}
+// (258:8) {:else}
 function create_else_block$4(ctx) {
 	let t0;
 	let button;
@@ -28646,7 +28716,7 @@ function create_else_block$4(ctx) {
 	let dispose;
 
 	function select_block_type_1(ctx, dirty) {
-		if (/*allWorkflowNames*/ ctx[0].length == 0) return create_if_block_6$1;
+		if (/*allWorkflowNames*/ ctx[0].length == 0) return create_if_block_7$1;
 		return create_else_block_1$1;
 	}
 
@@ -28659,17 +28729,17 @@ function create_else_block$4(ctx) {
 			t0 = space();
 			button = element("button");
 			button.textContent = "▼";
-			attr(button, "class", "options-button svelte-1hf1yah");
+			attr(button, "class", "options-button svelte-1br8pmp");
 			attr(button, "title", "Workflow Actions");
 		},
 		m(target, anchor) {
 			if_block.m(target, anchor);
 			insert(target, t0, anchor);
 			insert(target, button, anchor);
-			/*button_binding*/ ctx[29](button);
+			/*button_binding*/ ctx[32](button);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*click_handler*/ ctx[30]);
+				dispose = listen(button, "click", /*click_handler*/ ctx[33]);
 				mounted = true;
 			}
 		},
@@ -28690,15 +28760,15 @@ function create_else_block$4(ctx) {
 			if_block.d(detaching);
 			if (detaching) detach(t0);
 			if (detaching) detach(button);
-			/*button_binding*/ ctx[29](null);
+			/*button_binding*/ ctx[32](null);
 			mounted = false;
 			dispose();
 		}
 	};
 }
 
-// (181:8) {#if workflowInputState !== "hidden"}
-function create_if_block_5$2(ctx) {
+// (239:8) {#if workflowInputState !== "hidden"}
+function create_if_block_6$1(ctx) {
 	let input;
 	let input_placeholder_value;
 	let mounted;
@@ -28716,12 +28786,12 @@ function create_if_block_5$2(ctx) {
 		m(target, anchor) {
 			insert(target, input, anchor);
 			set_input_value(input, /*workflowInputValue*/ ctx[7]);
-			/*input_binding*/ ctx[27](input);
+			/*input_binding*/ ctx[30](input);
 
 			if (!mounted) {
 				dispose = [
-					listen(input, "input", /*input_input_handler*/ ctx[26]),
-					listen(input, "keydown", /*keydown_handler*/ ctx[28]),
+					listen(input, "input", /*input_input_handler*/ ctx[29]),
+					listen(input, "keydown", /*keydown_handler*/ ctx[31]),
 					action_destroyer(focusOnInit.call(null, input))
 				];
 
@@ -28741,14 +28811,14 @@ function create_if_block_5$2(ctx) {
 		},
 		d(detaching) {
 			if (detaching) detach(input);
-			/*input_binding*/ ctx[27](null);
+			/*input_binding*/ ctx[30](null);
 			mounted = false;
 			run_all(dispose);
 		}
 	};
 }
 
-// (203:10) {:else}
+// (261:10) {:else}
 function create_else_block_1$1(ctx) {
 	let div;
 	let select;
@@ -28772,8 +28842,8 @@ function create_else_block_1$1(ctx) {
 			}
 
 			attr(select, "id", "longform-workflows");
-			attr(select, "class", "svelte-1hf1yah");
-			attr(div, "class", "select svelte-1hf1yah");
+			attr(select, "class", "svelte-1br8pmp");
+			attr(div, "class", "select svelte-1br8pmp");
 		},
 		m(target, anchor) {
 			insert(target, div, anchor);
@@ -28783,10 +28853,10 @@ function create_else_block_1$1(ctx) {
 				each_blocks[i].m(select, null);
 			}
 
-			select_option(select, /*$selectedDraft*/ ctx[3].workflow);
+			select_option(select, /*$selectedDraft*/ ctx[4].workflow);
 
 			if (!mounted) {
-				dispose = listen(select, "change", /*selectedWorkflow*/ ctx[13]);
+				dispose = listen(select, "change", /*selectedWorkflow*/ ctx[15]);
 				mounted = true;
 			}
 		},
@@ -28814,8 +28884,8 @@ function create_else_block_1$1(ctx) {
 				each_blocks.length = each_value.length;
 			}
 
-			if (dirty[0] & /*$selectedDraft, allWorkflowNames*/ 9 && select_value_value !== (select_value_value = /*$selectedDraft*/ ctx[3].workflow)) {
-				select_option(select, /*$selectedDraft*/ ctx[3].workflow);
+			if (dirty[0] & /*$selectedDraft, allWorkflowNames*/ 17 && select_value_value !== (select_value_value = /*$selectedDraft*/ ctx[4].workflow)) {
+				select_option(select, /*$selectedDraft*/ ctx[4].workflow);
 			}
 		},
 		d(detaching) {
@@ -28827,15 +28897,15 @@ function create_else_block_1$1(ctx) {
 	};
 }
 
-// (201:10) {#if allWorkflowNames.length == 0}
-function create_if_block_6$1(ctx) {
+// (259:10) {#if allWorkflowNames.length == 0}
+function create_if_block_7$1(ctx) {
 	let span;
 
 	return {
 		c() {
 			span = element("span");
 			span.textContent = "Create a new workflow to begin →";
-			attr(span, "class", "longform-hint svelte-1hf1yah");
+			attr(span, "class", "longform-hint svelte-1br8pmp");
 		},
 		m(target, anchor) {
 			insert(target, span, anchor);
@@ -28847,10 +28917,10 @@ function create_if_block_6$1(ctx) {
 	};
 }
 
-// (210:16) {#each allWorkflowNames as workflowOption}
+// (268:16) {#each allWorkflowNames as workflowOption}
 function create_each_block$4(ctx) {
 	let option;
-	let t_value = /*workflowOption*/ ctx[44] + "";
+	let t_value = /*workflowOption*/ ctx[48] + "";
 	let t;
 	let option_value_value;
 
@@ -28858,7 +28928,7 @@ function create_each_block$4(ctx) {
 		c() {
 			option = element("option");
 			t = text(t_value);
-			option.__value = option_value_value = /*workflowOption*/ ctx[44];
+			option.__value = option_value_value = /*workflowOption*/ ctx[48];
 			option.value = option.__value;
 		},
 		m(target, anchor) {
@@ -28866,9 +28936,9 @@ function create_each_block$4(ctx) {
 			append(option, t);
 		},
 		p(ctx, dirty) {
-			if (dirty[0] & /*allWorkflowNames*/ 1 && t_value !== (t_value = /*workflowOption*/ ctx[44] + "")) set_data(t, t_value);
+			if (dirty[0] & /*allWorkflowNames*/ 1 && t_value !== (t_value = /*workflowOption*/ ctx[48] + "")) set_data(t, t_value);
 
-			if (dirty[0] & /*allWorkflowNames*/ 1 && option_value_value !== (option_value_value = /*workflowOption*/ ctx[44])) {
+			if (dirty[0] & /*allWorkflowNames*/ 1 && option_value_value !== (option_value_value = /*workflowOption*/ ctx[48])) {
 				option.__value = option_value_value;
 				option.value = option.__value;
 			}
@@ -28879,14 +28949,14 @@ function create_each_block$4(ctx) {
 	};
 }
 
-// (232:6) {#if $workflows[currentWorkflowName]}
-function create_if_block_4$2(ctx) {
+// (290:6) {#if $workflows[currentWorkflowName]}
+function create_if_block_5$2(ctx) {
 	let autotextarea;
 	let updating_value;
 	let current;
 
 	function autotextarea_value_binding(value) {
-		/*autotextarea_value_binding*/ ctx[31](value);
+		/*autotextarea_value_binding*/ ctx[34](value);
 	}
 
 	let autotextarea_props = {
@@ -28895,8 +28965,8 @@ function create_if_block_4$2(ctx) {
 		maxRows: 5
 	};
 
-	if (/*$workflows*/ ctx[4][/*currentWorkflowName*/ ctx[1]].description !== void 0) {
-		autotextarea_props.value = /*$workflows*/ ctx[4][/*currentWorkflowName*/ ctx[1]].description;
+	if (/*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]].description !== void 0) {
+		autotextarea_props.value = /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]].description;
 	}
 
 	autotextarea = new AutoTextArea({ props: autotextarea_props });
@@ -28913,9 +28983,9 @@ function create_if_block_4$2(ctx) {
 		p(ctx, dirty) {
 			const autotextarea_changes = {};
 
-			if (!updating_value && dirty[0] & /*$workflows, currentWorkflowName*/ 18) {
+			if (!updating_value && dirty[0] & /*$workflows, currentWorkflowName*/ 10) {
 				updating_value = true;
-				autotextarea_changes.value = /*$workflows*/ ctx[4][/*currentWorkflowName*/ ctx[1]].description;
+				autotextarea_changes.value = /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]].description;
 				add_flush_callback(() => updating_value = false);
 			}
 
@@ -28936,27 +29006,27 @@ function create_if_block_4$2(ctx) {
 	};
 }
 
-// (241:4) {#if $workflows[currentWorkflowName]}
-function create_if_block_2$6(ctx) {
+// (299:4) {#if $workflows[currentWorkflowName]}
+function create_if_block_3$2(ctx) {
 	let sortablelist;
 	let updating_items;
 	let t;
 	let div;
-	let show_if = Object.keys(/*$workflows*/ ctx[4]).length > 0;
+	let show_if = Object.keys(/*$workflows*/ ctx[3]).length > 0;
 	let current;
 
 	function sortablelist_items_binding(value) {
-		/*sortablelist_items_binding*/ ctx[33](value);
+		/*sortablelist_items_binding*/ ctx[36](value);
 	}
 
 	let sortablelist_props = {
-		sortableOptions: /*sortableOptions*/ ctx[20],
+		sortableOptions: /*sortableOptions*/ ctx[22],
 		class: "longform-sortable-step-list",
 		$$slots: {
 			default: [
 				create_default_slot$1,
-				({ item }) => ({ 43: item }),
-				({ item }) => [0, item ? 4096 : 0]
+				({ item }) => ({ 47: item }),
+				({ item }) => [0, item ? 65536 : 0]
 			]
 		},
 		$$scope: { ctx }
@@ -28968,8 +29038,8 @@ function create_if_block_2$6(ctx) {
 
 	sortablelist = new SortableList({ props: sortablelist_props });
 	binding_callbacks.push(() => bind(sortablelist, 'items', sortablelist_items_binding));
-	sortablelist.$on("orderChanged", /*itemOrderChanged*/ ctx[21]);
-	let if_block = show_if && create_if_block_3$2(ctx);
+	sortablelist.$on("orderChanged", /*itemOrderChanged*/ ctx[23]);
+	let if_block = show_if && create_if_block_4$2(ctx);
 
 	return {
 		c() {
@@ -28977,7 +29047,7 @@ function create_if_block_2$6(ctx) {
 			t = space();
 			div = element("div");
 			if (if_block) if_block.c();
-			attr(div, "class", "add-step-container svelte-1hf1yah");
+			attr(div, "class", "add-step-container svelte-1br8pmp");
 		},
 		m(target, anchor) {
 			mount_component(sortablelist, target, anchor);
@@ -28989,7 +29059,7 @@ function create_if_block_2$6(ctx) {
 		p(ctx, dirty) {
 			const sortablelist_changes = {};
 
-			if (dirty[0] & /*$workflows, currentWorkflowName, $currentWorkflow*/ 22 | dirty[1] & /*$$scope, item*/ 69632) {
+			if (dirty[0] & /*$workflows, currentWorkflowName, $currentWorkflow*/ 14 | dirty[1] & /*$$scope, item*/ 1114112) {
 				sortablelist_changes.$$scope = { dirty, ctx };
 			}
 
@@ -29000,13 +29070,13 @@ function create_if_block_2$6(ctx) {
 			}
 
 			sortablelist.$set(sortablelist_changes);
-			if (dirty[0] & /*$workflows*/ 16) show_if = Object.keys(/*$workflows*/ ctx[4]).length > 0;
+			if (dirty[0] & /*$workflows*/ 8) show_if = Object.keys(/*$workflows*/ ctx[3]).length > 0;
 
 			if (show_if) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block_3$2(ctx);
+					if_block = create_if_block_4$2(ctx);
 					if_block.c();
 					if_block.m(div, null);
 				}
@@ -29033,21 +29103,21 @@ function create_if_block_2$6(ctx) {
 	};
 }
 
-// (242:6) <SortableList         bind:items         let:item         {sortableOptions}         on:orderChanged={itemOrderChanged}         class="longform-sortable-step-list"       >
+// (300:6) <SortableList         bind:items         let:item         {sortableOptions}         on:orderChanged={itemOrderChanged}         class="longform-sortable-step-list"       >
 function create_default_slot$1(ctx) {
 	let compilestepview;
 	let current;
 
 	function removeStep_handler() {
-		return /*removeStep_handler*/ ctx[32](/*item*/ ctx[43]);
+		return /*removeStep_handler*/ ctx[35](/*item*/ ctx[47]);
 	}
 
 	compilestepview = new CompileStepView({
 			props: {
-				ordinal: /*item*/ ctx[43].index + 1,
-				step: /*$workflows*/ ctx[4][/*currentWorkflowName*/ ctx[1]].steps[/*item*/ ctx[43].index],
-				calculatedKind: /*kindAtIndex*/ ctx[18](/*item*/ ctx[43].index),
-				error: /*errorAtIndex*/ ctx[19](/*item*/ ctx[43].index)
+				ordinal: /*item*/ ctx[47].index + 1,
+				step: /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]].steps[/*item*/ ctx[47].index],
+				calculatedKind: /*kindAtIndex*/ ctx[20](/*item*/ ctx[47].index),
+				error: /*errorAtIndex*/ ctx[21](/*item*/ ctx[47].index)
 			}
 		});
 
@@ -29064,10 +29134,10 @@ function create_default_slot$1(ctx) {
 		p(new_ctx, dirty) {
 			ctx = new_ctx;
 			const compilestepview_changes = {};
-			if (dirty[1] & /*item*/ 4096) compilestepview_changes.ordinal = /*item*/ ctx[43].index + 1;
-			if (dirty[0] & /*$workflows, currentWorkflowName*/ 18 | dirty[1] & /*item*/ 4096) compilestepview_changes.step = /*$workflows*/ ctx[4][/*currentWorkflowName*/ ctx[1]].steps[/*item*/ ctx[43].index];
-			if (dirty[1] & /*item*/ 4096) compilestepview_changes.calculatedKind = /*kindAtIndex*/ ctx[18](/*item*/ ctx[43].index);
-			if (dirty[1] & /*item*/ 4096) compilestepview_changes.error = /*errorAtIndex*/ ctx[19](/*item*/ ctx[43].index);
+			if (dirty[1] & /*item*/ 65536) compilestepview_changes.ordinal = /*item*/ ctx[47].index + 1;
+			if (dirty[0] & /*$workflows, currentWorkflowName*/ 10 | dirty[1] & /*item*/ 65536) compilestepview_changes.step = /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]].steps[/*item*/ ctx[47].index];
+			if (dirty[1] & /*item*/ 65536) compilestepview_changes.calculatedKind = /*kindAtIndex*/ ctx[20](/*item*/ ctx[47].index);
+			if (dirty[1] & /*item*/ 65536) compilestepview_changes.error = /*errorAtIndex*/ ctx[21](/*item*/ ctx[47].index);
 			compilestepview.$set(compilestepview_changes);
 		},
 		i(local) {
@@ -29085,8 +29155,8 @@ function create_default_slot$1(ctx) {
 	};
 }
 
-// (266:8) {#if Object.keys($workflows).length > 0}
-function create_if_block_3$2(ctx) {
+// (324:8) {#if Object.keys($workflows).length > 0}
+function create_if_block_4$2(ctx) {
 	let button;
 	let mounted;
 	let dispose;
@@ -29095,13 +29165,13 @@ function create_if_block_3$2(ctx) {
 		c() {
 			button = element("button");
 			button.textContent = "+ Add Step";
-			attr(button, "class", "svelte-1hf1yah");
+			attr(button, "class", "svelte-1br8pmp");
 		},
 		m(target, anchor) {
 			insert(target, button, anchor);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*addStep*/ ctx[17]);
+				dispose = listen(button, "click", /*addStep*/ ctx[19]);
 				mounted = true;
 			}
 		},
@@ -29114,50 +29184,60 @@ function create_if_block_3$2(ctx) {
 	};
 }
 
-// (292:6) {#if $currentWorkflow && $currentWorkflow.steps.length > 0}
+// (350:6) {#if $currentWorkflow && $currentWorkflow.steps.length > 0}
 function create_if_block_1$8(ctx) {
+	let div;
 	let button;
 	let t0;
 	let button_disabled_value;
 	let button_aria_label_value;
 	let t1;
+	let t2;
 	let span;
 
-	let t2_value = (/*validation*/ ctx[11].error === WorkflowError.Valid
+	let t3_value = (/*validation*/ ctx[11].error === WorkflowError.Valid
 	? /*defaultCompileStatus*/ ctx[10]
 	: /*validation*/ ctx[11].error) + "";
 
-	let t2;
+	let t3;
 	let mounted;
 	let dispose;
+	let if_block = /*$selectedProjectHasMultipleDrafts*/ ctx[14] && create_if_block_2$6(ctx);
 
 	return {
 		c() {
+			div = element("div");
 			button = element("button");
 			t0 = text("Compile");
 			t1 = space();
+			if (if_block) if_block.c();
+			t2 = space();
 			span = element("span");
-			t2 = text(t2_value);
-			attr(button, "class", "compile-button svelte-1hf1yah");
-			button.disabled = button_disabled_value = /*validation*/ ctx[11].error !== WorkflowError.Valid;
+			t3 = text(t3_value);
+			attr(button, "class", "compile-button svelte-1br8pmp");
+			button.disabled = button_disabled_value = /*validation*/ ctx[11].error !== WorkflowError.Valid || /*isCompiling*/ ctx[13];
 			attr(button, "aria-label", button_aria_label_value = /*validation*/ ctx[11].error);
-			attr(span, "class", "compile-status svelte-1hf1yah");
+			attr(div, "class", "longform-compile-buttons svelte-1br8pmp");
+			attr(span, "class", "compile-status svelte-1br8pmp");
 		},
 		m(target, anchor) {
-			insert(target, button, anchor);
+			insert(target, div, anchor);
+			append(div, button);
 			append(button, t0);
-			insert(target, t1, anchor);
+			append(div, t1);
+			if (if_block) if_block.m(div, null);
+			insert(target, t2, anchor);
 			insert(target, span, anchor);
-			append(span, t2);
-			/*span_binding*/ ctx[34](span);
+			append(span, t3);
+			/*span_binding*/ ctx[37](span);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*doCompile*/ ctx[22]);
+				dispose = listen(button, "click", /*doCompile*/ ctx[24]);
 				mounted = true;
 			}
 		},
 		p(ctx, dirty) {
-			if (dirty[0] & /*validation*/ 2048 && button_disabled_value !== (button_disabled_value = /*validation*/ ctx[11].error !== WorkflowError.Valid)) {
+			if (dirty[0] & /*validation, isCompiling*/ 10240 && button_disabled_value !== (button_disabled_value = /*validation*/ ctx[11].error !== WorkflowError.Valid || /*isCompiling*/ ctx[13])) {
 				button.disabled = button_disabled_value;
 			}
 
@@ -29165,15 +29245,66 @@ function create_if_block_1$8(ctx) {
 				attr(button, "aria-label", button_aria_label_value);
 			}
 
-			if (dirty[0] & /*validation, defaultCompileStatus*/ 3072 && t2_value !== (t2_value = (/*validation*/ ctx[11].error === WorkflowError.Valid
+			if (/*$selectedProjectHasMultipleDrafts*/ ctx[14]) {
+				if (if_block) {
+					if_block.p(ctx, dirty);
+				} else {
+					if_block = create_if_block_2$6(ctx);
+					if_block.c();
+					if_block.m(div, null);
+				}
+			} else if (if_block) {
+				if_block.d(1);
+				if_block = null;
+			}
+
+			if (dirty[0] & /*validation, defaultCompileStatus*/ 3072 && t3_value !== (t3_value = (/*validation*/ ctx[11].error === WorkflowError.Valid
 			? /*defaultCompileStatus*/ ctx[10]
-			: /*validation*/ ctx[11].error) + "")) set_data(t2, t2_value);
+			: /*validation*/ ctx[11].error) + "")) set_data(t3, t3_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+			if (if_block) if_block.d();
+			if (detaching) detach(t2);
+			if (detaching) detach(span);
+			/*span_binding*/ ctx[37](null);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (358:10) {#if $selectedProjectHasMultipleDrafts}
+function create_if_block_2$6(ctx) {
+	let button;
+	let t;
+	let mounted;
+	let dispose;
+
+	return {
+		c() {
+			button = element("button");
+			t = text("Compile All Drafts");
+			attr(button, "class", "compile-button svelte-1br8pmp");
+			button.disabled = /*isCompiling*/ ctx[13];
+			attr(button, "title", "Compile every draft in this project, each to its own file.");
+		},
+		m(target, anchor) {
+			insert(target, button, anchor);
+			append(button, t);
+
+			if (!mounted) {
+				dispose = listen(button, "click", /*doCompileAll*/ ctx[25]);
+				mounted = true;
+			}
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*isCompiling*/ 8192) {
+				button.disabled = /*isCompiling*/ ctx[13];
+			}
 		},
 		d(detaching) {
 			if (detaching) detach(button);
-			if (detaching) detach(t1);
-			if (detaching) detach(span);
-			/*span_binding*/ ctx[34](null);
 			mounted = false;
 			dispose();
 		}
@@ -29183,7 +29314,7 @@ function create_if_block_1$8(ctx) {
 function create_fragment$c(ctx) {
 	let if_block_anchor;
 	let current;
-	let if_block = /*$selectedDraft*/ ctx[3] && create_if_block$b(ctx);
+	let if_block = /*$selectedDraft*/ ctx[4] && create_if_block$b(ctx);
 
 	return {
 		c() {
@@ -29196,11 +29327,11 @@ function create_fragment$c(ctx) {
 			current = true;
 		},
 		p(ctx, dirty) {
-			if (/*$selectedDraft*/ ctx[3]) {
+			if (/*$selectedDraft*/ ctx[4]) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 
-					if (dirty[0] & /*$selectedDraft*/ 8) {
+					if (dirty[0] & /*$selectedDraft*/ 16) {
 						transition_in(if_block, 1);
 					}
 				} else {
@@ -29241,13 +29372,17 @@ function focusOnInit(el) {
 
 function instance$c($$self, $$props, $$invalidate) {
 	let $currentWorkflow;
-	let $selectedDraft;
 	let $workflows;
+	let $selectedProject;
+	let $selectedDraft;
 	let $drafts;
+	let $selectedProjectHasMultipleDrafts;
 	component_subscribe($$self, currentWorkflow, $$value => $$invalidate(2, $currentWorkflow = $$value));
-	component_subscribe($$self, selectedDraft, $$value => $$invalidate(3, $selectedDraft = $$value));
-	component_subscribe($$self, workflows, $$value => $$invalidate(4, $workflows = $$value));
-	component_subscribe($$self, drafts, $$value => $$invalidate(25, $drafts = $$value));
+	component_subscribe($$self, workflows, $$value => $$invalidate(3, $workflows = $$value));
+	component_subscribe($$self, selectedProject, $$value => $$invalidate(40, $selectedProject = $$value));
+	component_subscribe($$self, selectedDraft, $$value => $$invalidate(4, $selectedDraft = $$value));
+	component_subscribe($$self, drafts, $$value => $$invalidate(28, $drafts = $$value));
+	component_subscribe($$self, selectedProjectHasMultipleDrafts, $$value => $$invalidate(14, $selectedProjectHasMultipleDrafts = $$value));
 	var _a;
 	let workflowContextButton;
 	let workflowInputState = "hidden";
@@ -29278,7 +29413,7 @@ function instance$c($$self, $$props, $$invalidate) {
 			$$invalidate(6, workflowInputState = "rename");
 		} else if (type == "delete") {
 			showConfirmModal(`Delete ${currentWorkflowName}?`, "Really delete this workflow? This can’t be undone.", "Delete", () => {
-				$$invalidate(24, isDeletingWorkflow = true);
+				$$invalidate(27, isDeletingWorkflow = true);
 				const toDelete = currentWorkflowName;
 				const remaining = allWorkflowNames.filter(n => n != toDelete);
 
@@ -29289,7 +29424,7 @@ function instance$c($$self, $$props, $$invalidate) {
 				}
 
 				set_store_value(workflows, $workflows = delete $workflows[toDelete] && $workflows, $workflows);
-				$$invalidate(24, isDeletingWorkflow = false);
+				$$invalidate(27, isDeletingWorkflow = false);
 			});
 		}
 	}
@@ -29396,9 +29531,75 @@ function instance$c($$self, $$props, $$invalidate) {
 	}
 
 	const compile = getContext("compile");
+	let isCompiling = false;
 
 	function doCompile() {
-		compile($selectedDraft, $currentWorkflow, calculatedKinds, onCompileStatusChange);
+		const projectRoot = projectRootPath($selectedProject !== null && $selectedProject !== void 0
+		? $selectedProject
+		: [$selectedDraft]);
+
+		compile($selectedDraft, $currentWorkflow, calculatedKinds, onCompileStatusChange, { projectRoot });
+	}
+
+	function doCompileAll() {
+		return __awaiter(this, void 0, void 0, function* () {
+			const projectDrafts = $selectedProject !== null && $selectedProject !== void 0
+			? $selectedProject
+			: [];
+
+			if (projectDrafts.length === 0) {
+				return;
+			}
+
+			const projectRoot = projectRootPath(projectDrafts);
+			$$invalidate(13, isCompiling = true);
+			let compiledCount = 0;
+
+			for (let i = 0; i < projectDrafts.length; i++) {
+				const draft = projectDrafts[i];
+				const label = `${draftTitle(draft)} (${i + 1}/${projectDrafts.length})`;
+
+				const workflow = draft.workflow
+				? $workflows[draft.workflow]
+				: $currentWorkflow;
+
+				if (!workflow) {
+					new obsidian.Notice(`Skipped ${label}: no workflow assigned.`);
+					continue;
+				}
+
+				const [validationResult, kinds] = calculateWorkflow(workflow, draft.format === "scenes");
+
+				if (validationResult.error !== WorkflowError.Valid) {
+					new obsidian.Notice(`Skipped ${label}: ${validationResult.error}`);
+					continue;
+				}
+
+				// Prefix per-step status with which draft we're on; swallow the per-draft
+				// success notice so we only announce once at the end.
+				const wrappedStatus = status => {
+					if (status.kind === "CompileStatusStep") {
+						$$invalidate(9, compileStatus.innerText = `Compiling ${label} — step ${status.stepIndex + 1}/${status.totalSteps}`, compileStatus);
+					} else if (status.kind === "CompileStatusError") {
+						onCompileStatusChange(status);
+					}
+				};
+
+				try {
+					yield compile(draft, workflow, kinds, wrappedStatus, { suppressOpenAfter: true, projectRoot });
+					compiledCount++;
+				} catch(error) {
+					console.error("[Longform]", error);
+					new obsidian.Notice(`Failed to compile ${label}. See console for details.`);
+				}
+			}
+
+			$$invalidate(13, isCompiling = false);
+			$$invalidate(9, compileStatus.innerText = `Compiled ${compiledCount} draft${compiledCount === 1 ? "" : "s"}.`, compileStatus);
+			compileStatus.classList.add("compile-status-success");
+			restoreDefaultStatusAfter();
+			new obsidian.Notice(`Compiled ${compiledCount} draft${compiledCount === 1 ? "" : "s"}.`);
+		});
 	}
 
 	function input_input_handler() {
@@ -29464,14 +29665,14 @@ function instance$c($$self, $$props, $$invalidate) {
 	}
 
 	$$self.$$.update = () => {
-		if ($$self.$$.dirty[0] & /*$workflows, _a*/ 8388624) {
+		if ($$self.$$.dirty[0] & /*$workflows, _a*/ 67108872) {
 			// WORKFLOW MANAGEMENT
-			$$invalidate(0, allWorkflowNames = $$invalidate(23, _a = Object.keys($workflows).sort()) !== null && _a !== void 0
+			$$invalidate(0, allWorkflowNames = $$invalidate(26, _a = Object.keys($workflows).sort()) !== null && _a !== void 0
 			? _a
 			: []);
 		}
 
-		if ($$self.$$.dirty[0] & /*$selectedDraft, isDeletingWorkflow, currentWorkflowName, allWorkflowNames, $drafts*/ 50331659) {
+		if ($$self.$$.dirty[0] & /*$selectedDraft, isDeletingWorkflow, currentWorkflowName, allWorkflowNames, $drafts*/ 402653203) {
 			{
 				if ($selectedDraft) {
 					$$invalidate(1, currentWorkflowName = $selectedDraft.workflow);
@@ -29486,13 +29687,13 @@ function instance$c($$self, $$props, $$invalidate) {
 			}
 		}
 
-		if ($$self.$$.dirty[0] & /*$selectedDraft, $drafts*/ 33554440) {
+		if ($$self.$$.dirty[0] & /*$selectedDraft, $drafts*/ 268435472) {
 			{
 				currentDraftIndex = $selectedDraft && $drafts.findIndex(d => d.vaultPath === $selectedDraft.vaultPath);
 			}
 		}
 
-		if ($$self.$$.dirty[0] & /*$currentWorkflow, $selectedDraft*/ 12) {
+		if ($$self.$$.dirty[0] & /*$currentWorkflow, $selectedDraft*/ 20) {
 			{
 				if ($currentWorkflow) {
 					$$invalidate(11, [validation, calculatedKinds] = calculateWorkflow($currentWorkflow, $selectedDraft.format === "scenes"), validation);
@@ -29521,8 +29722,8 @@ function instance$c($$self, $$props, $$invalidate) {
 		allWorkflowNames,
 		currentWorkflowName,
 		$currentWorkflow,
-		$selectedDraft,
 		$workflows,
+		$selectedDraft,
 		workflowContextButton,
 		workflowInputState,
 		workflowInputValue,
@@ -29531,6 +29732,8 @@ function instance$c($$self, $$props, $$invalidate) {
 		defaultCompileStatus,
 		validation,
 		items,
+		isCompiling,
+		$selectedProjectHasMultipleDrafts,
 		selectedWorkflow,
 		showCompileActionsMenu,
 		workflowAction,
@@ -29541,6 +29744,7 @@ function instance$c($$self, $$props, $$invalidate) {
 		sortableOptions,
 		itemOrderChanged,
 		doCompile,
+		doCompileAll,
 		_a,
 		isDeletingWorkflow,
 		$drafts,
@@ -38113,8 +38317,8 @@ class ExplorerPane extends obsidian.ItemView {
             context.set("renameFolder", (oldPath, newPath) => {
                 this.app.vault.adapter.rename(oldPath, newPath);
             });
-            context.set("compile", (draft, workflow, kinds, statusCallback) => {
-                compile(this.app, draft, workflow, kinds, statusCallback);
+            context.set("compile", (draft, workflow, kinds, statusCallback, options) => {
+                return compile(this.app, draft, workflow, kinds, statusCallback, options);
             });
             context.set("openCompileStepMenu", () => new AddStepModalContainer(this.app).open());
             context.set("showCompileActionsMenu", (x, y, currentWorkflowName, action) => {
@@ -38145,13 +38349,11 @@ class ExplorerPane extends obsidian.ItemView {
                 new NewDraftModalContainer(this.app).open();
             });
             context.set("showMetadataModal", () => {
+                var _a;
                 const draft = get_store_value(selectedDraft);
                 if (!draft)
                     return;
-                const projectPath = draft.vaultPath
-                    .split("/")
-                    .slice(0, -1)
-                    .join("/");
+                const projectPath = projectRootPath((_a = get_store_value(selectedProject)) !== null && _a !== void 0 ? _a : [draft]);
                 new MetadataModal(this.app, projectPath, draft.title).open();
             });
             this.explorerView = new ExplorerView({
@@ -39197,6 +39399,7 @@ const compileCurrent = (plugin) => ({
     id: "longform-compile-current",
     name: "Compile current project with current workflow",
     checkCallback: (checking) => {
+        var _a;
         const draft = get_store_value(selectedDraft);
         const workflow = get_store_value(currentWorkflow);
         if (checking) {
@@ -39215,7 +39418,8 @@ const compileCurrent = (plugin) => ({
                 new obsidian.Notice("Compile complete.");
             }
         }
-        compile(plugin.app, draft, workflow, calculatedKinds, onCompileStatusChange);
+        const projectRoot = projectRootPath((_a = get_store_value(projects)[draft.title]) !== null && _a !== void 0 ? _a : [draft]);
+        compile(plugin.app, draft, workflow, calculatedKinds, onCompileStatusChange, { projectRoot });
     },
 });
 const compileSelection = (plugin) => ({
@@ -39297,7 +39501,7 @@ const compileSelection = (plugin) => ({
                             new obsidian.Notice("Compile complete.");
                         }
                     }
-                    compile(plugin.app, draft, workflow, calculatedKinds, onCompileStatusChange);
+                    compile(plugin.app, draft, workflow, calculatedKinds, onCompileStatusChange, { projectRoot: projectRootPath(project) });
                 }).open();
             }).open();
         }).open();

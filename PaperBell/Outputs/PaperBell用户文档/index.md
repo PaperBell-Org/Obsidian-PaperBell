@@ -1,7 +1,8 @@
 ---
 longform:
   format: scenes
-  title: PaperBell用户文档
+  title: PaperBell 用户文档
+  draftTitle: Manuscript
   workflow: CompileWithTitledFormatters
   sceneFolder: 功能介绍
   scenes:

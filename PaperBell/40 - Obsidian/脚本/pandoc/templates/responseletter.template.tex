@@ -1,0 +1,26 @@
+%% pandoc LaTeX template for responseletter.sty
+%% Build via the Makefile (pandoc + XeLaTeX). Variables come from response.yaml
+%% (and the Makefile injects `draft` in draft mode).
+\documentclass{article}
+\usepackage[type=$if(type)$$type$$else$author-response$endif$$if(draft)$, draft$else$, final$endif$]{responseletter}
+
+\ResponseSetup{
+$if(papertitle)$  papertitle = {$papertitle$},
+$endif$$if(authors)$  authors    = {$authors$},
+$endif$$if(journal)$  journal    = {$journal$},
+$endif$$if(doi)$  doi        = {$doi$},
+$endif$$if(lettertitle)$  lettertitle = {$lettertitle$},
+$endif$$if(cjkfont)$  cjkfont    = {$cjkfont$},
+$endif$$if(cjksffont)$  cjksffont  = {$cjksffont$},
+$endif$}
+
+$for(header-includes)$
+$header-includes$
+$endfor$
+
+\begin{document}
+\makeletterhead
+
+$body$
+
+\end{document}
