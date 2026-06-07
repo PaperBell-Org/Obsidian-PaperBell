@@ -281,10 +281,9 @@
     "componentSettings": {}
   },
   "updater": {
-    "repository": "PaperBell-Org/Obsidian-PaperBell",
-    "excludePatterns": [
-      "**/*.js"
-    ],
+    "repository": "PaperBell-Org/longform-maintaining",
+    "targetPluginId": "longform",
+    "excludePatterns": [],
     "autoUpdate": false,
     "minAppVersion": "4.0.2",
     "customReplacements": {},

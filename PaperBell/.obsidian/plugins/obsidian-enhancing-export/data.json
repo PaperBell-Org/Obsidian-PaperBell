@@ -13,6 +13,18 @@
       "extension": ".docx"
     },
     {
+      "name": "PaperBell (回复信·草稿)",
+      "type": "pandoc",
+      "arguments": "--defaults=\"${vaultDir}/40 - Obsidian/脚本/pandoc/defaults/response-letter.yaml\" --resource-path=\"${currentDir}\" --resource-path=\"${attachmentFolderPath}\" --resource-path=\"${currentDir}/figs\" --resource-path=\"${currentDir}/../figs\" --resource-path=\"${currentDir}/../imgs\" --resource-path=\"${currentDir}/imgs\" --resource-path=\"${currentDir}/images\" --resource-path=\"${currentDir}/../images\" --csl=\"${vaultDir}/40 - Obsidian/脚本/pandoc/csl/${metadata.csl}.csl\" --metadata=draft:true -o \"${outputPath}\"",
+      "extension": ".pdf"
+    },
+    {
+      "name": "PaperBell (回复信·终稿)",
+      "type": "pandoc",
+      "arguments": "--defaults=\"${vaultDir}/40 - Obsidian/脚本/pandoc/defaults/response-letter.yaml\" --resource-path=\"${currentDir}\" --resource-path=\"${attachmentFolderPath}\" --resource-path=\"${currentDir}/figs\" --resource-path=\"${currentDir}/../figs\" --resource-path=\"${currentDir}/../imgs\" --resource-path=\"${currentDir}/imgs\" --resource-path=\"${currentDir}/images\" --resource-path=\"${currentDir}/../images\" --csl=\"${vaultDir}/40 - Obsidian/脚本/pandoc/csl/${metadata.csl}.csl\" --metadata=draft:false -o \"${outputPath}\"",
+      "extension": ".pdf"
+    },
+    {
       "name": "Markdown"
     },
     {
@@ -66,11 +78,13 @@
   ],
   "defaultExportDirectoryMode": "Same",
   "openExportedFile": true,
-  "env": {},
+  "env": {
+    "TEXINPUTS": "${vaultDir}/40 - Obsidian/脚本/pandoc/templates/:${pluginDir}/textemplate/:"
+  },
   "showExportProgressBar": true,
   "lastEditName": "PaperBell (Word)",
   "lastExportDirectory": {
-    "darwin": "/Users/songshgeo/Documents/Obsidian/PaperBell/Outputs/PaperBell用户文档"
+    "darwin": "/Users/songshgeo/Documents/Obsidian/PaperBell/40 - Obsidian/模板"
   },
-  "lastExportType": "PaperBell (Word)"
+  "lastExportType": "PaperBell (回复信·终稿)"
 }

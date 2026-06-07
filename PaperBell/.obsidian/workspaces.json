@@ -323,20 +323,15 @@
                   "type": "fluent-task-genius-view",
                   "state": {
                     "currentWorkspace": "ws_1764410067355_a3rl1g5fn",
-                    "viewMode": "list",
+                    "viewMode": "tree",
                     "viewModeByViewId": {
-                      "projects": "calendar",
-                      "inbox": "list",
-                      "today": "list",
-                      "flagged": "list",
-                      "forecast": "list",
-                      "review": "list",
-                      "calendar": "list"
+                      "projects": "tree"
                     },
                     "searchQuery": "",
                     "filters": {},
                     "filterInputValue": "",
-                    "currentViewId": "calendar"
+                    "selectedProject": "PaperBell",
+                    "currentViewId": "projects"
                   },
                   "icon": "task-genius",
                   "title": "Task Genius"
@@ -596,9 +591,18 @@
                   "icon": "calendar-clock",
                   "title": "时间轴"
                 }
+              },
+              {
+                "id": "086ba97a60439621",
+                "type": "leaf",
+                "state": {
+                  "type": "claudian-view",
+                  "state": {},
+                  "icon": "bot",
+                  "title": "Claudian"
+                }
               }
-            ],
-            "currentTab": 2
+            ]
           }
         ],
         "direction": "horizontal",
@@ -606,9 +610,11 @@
       },
       "left-ribbon": {
         "hiddenItems": {
+          "paperbell:打开视图仪表板": false,
+          "bases:新建数据库": false,
+          "obsidian-memos:Thino Super": false,
+          "obsidian42-brat:BRAT": false,
           "paperbell:搜索机构": false,
-          "paperbell:打开部分视图仪表板": false,
-          "bases:创建新数据库": false,
           "pexels-banner:🚩 Pixel Banner Menu": false,
           "daily-notes:打开/创建今天的日记": false,
           "homepage:Open homepage": false,
@@ -622,11 +628,12 @@
           "command-palette:打开命令面板": false,
           "markdown-importer:打开 Markdown 格式转换器": false,
           "workspaces:管理工作区布局": false,
-          "obsidian-task-progress-bar:打开 Task Genius 视图": false
+          "obsidian-task-progress-bar:打开 Task Genius 视图": false,
+          "realclaudian:Open Claudian": false
         }
       },
       "active": "0fe3999b908523ec",
-      "mtime": "2025-11-30T10:09:18+01:00"
+      "mtime": "2026-06-06T16:13:17+02:00"
     }
   },
   "active": "主工作区"
