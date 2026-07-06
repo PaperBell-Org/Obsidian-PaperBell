@@ -1,7 +1,7 @@
 {
   "version": 3,
   "projects": {},
-  "selectedDraftVaultPath": "Outputs/demo/Index.md",
+  "selectedDraftVaultPath": "Outputs/paper-demo/Manuscript/Index.md",
   "userScriptFolder": "40 - Obsidian/脚本/longform",
   "sessionStorage": "file",
   "sessions": [],
@@ -78,7 +78,7 @@
     },
     "PaperBell-Standard": {
       "name": "PaperBell-Standard",
-      "description": "",
+      "description": "Research, to be connected.",
       "steps": [
         {
           "id": "strip-frontmatter",
@@ -119,22 +119,16 @@
           "optionValues": {}
         },
         {
-          "id": "40 - Obsidian/脚本/longform/编译后增加头文件.js",
+          "id": "add-zenodo-frontmatter",
           "optionValues": {
-            "note-name": "Index",
-            "author-name": "Unknown Author",
-            "lineno": false,
-            "csl-style": "",
-            "target-journal": "",
-            "acronym": "",
-            "figures-at-end": false,
-            "template": ""
+            "metadata-file": "metadata.json",
+            "error-on-missing-file": true
           }
         },
         {
           "id": "write-to-note",
           "optionValues": {
-            "target": "DEMO_manuscript.md",
+            "target": "$1_$2.md",
             "open-after": true
           }
         }

@@ -1,0 +1,7 @@
+{
+  "diffStyle": "split",
+  "dateInHistoryView": true,
+  "authorInHistoryView": "hide",
+  "commitDateFormat": "YYYY-MM-DD HH:mm",
+  "commitMessage": "vault backup: {{date}}"
+}
