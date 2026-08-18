@@ -1,0 +1,56 @@
+filters:
+  and:
+    - file.tags.some((t) => t.startsWith("project/") && t != "project/index" && t != "project/open")
+    - note.archived != true
+formulas:
+  所属项目: |
+    file.tags.find((t) => t.startsWith("project/") && t != "project/index" && t != "project/open")?.replace("project/", "") ?? "未分配"
+  已完成: |
+    length(filter(file.tasks, (t) => t.completed))
+  未完成: |
+    length(filter(file.tasks, (t) => !t.completed))
+  任务进度: |
+    if(length(file.tasks) == 0, 0, (length(filter(file.tasks, (t) => t.completed)) / length(file.tasks)) * 100)
+properties:
+  note.project:
+    displayName: 项目
+  formula.所属项目:
+    displayName: 项目标签
+views:
+  - type: table
+    name: 按笔记
+    order:
+      - file.name
+      - formula.所属项目
+      - formula.已完成
+      - formula.未完成
+      - formula.任务进度
+    sort:
+      - property: formula.未完成
+        direction: DESC
+    columnSize:
+      file.name: 220
+  - type: task-genius-projects
+    name: 按项目
+    viewMode: projects
+    taskContent: file.basename
+    taskStatus: note.status
+    taskPriority: note.priority
+    taskProject: formula.所属项目
+    taskTags: note.tags
+    taskDueDate: note.dueDate
+    taskStartDate: note.startDate
+    taskCompletedDate: note.completionDate
+    taskContext: note.context
+  - type: task-genius-gantt
+    name: 甘特图
+    viewMode: gantt
+    taskContent: file.basename
+    taskStatus: note.status
+    taskPriority: note.priority
+    taskProject: formula.所属项目
+    taskTags: note.tags
+    taskDueDate: note.dueDate
+    taskStartDate: note.startDate
+    taskCompletedDate: note.completionDate
+    taskContext: note.context

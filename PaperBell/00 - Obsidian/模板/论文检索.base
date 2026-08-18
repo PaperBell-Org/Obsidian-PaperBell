@@ -1,0 +1,41 @@
+filters:
+  and:
+    - file.folder.startsWith("20 - Inputs/Zotero")
+formulas:
+  论文题目: file.asLink(title)
+properties:
+  formula.论文题目:
+    displayName: 论文
+  note.journal:
+    displayName: 期刊
+  note.paper_date:
+    displayName: 年
+views:
+  - type: table
+    name: 筛选文献
+    filters:
+      and:
+        - authors.containsAny(this.aliases)
+    order:
+      - formula.论文题目
+      - paper_date
+      - journal
+    sort:
+      - property: paper_date
+        direction: DESC
+    columnSize:
+      formula.论文题目: 386
+      note.paper_date: 49
+      note.journal: 284
+  - type: table
+    name: 所有文献
+    order:
+      - formula.论文题目
+      - paper_date
+      - journal
+    sort:
+      - property: file.name
+        direction: ASC
+    columnSize:
+      formula.论文题目: 835
+      note.journal: 284

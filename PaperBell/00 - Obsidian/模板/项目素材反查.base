@@ -1,0 +1,62 @@
+formulas:
+  当前机构: list(institute)[0]
+  论文题目: file.asLink(title)
+properties:
+  note.journal:
+    displayName: 期刊
+  note.paper_date:
+    displayName: 年份
+  note.email:
+    displayName: 邮箱
+  formula.论文题目:
+    displayName: 论文
+  formula.当前机构:
+    displayName: 当前机构
+views:
+  - type: table
+    name: 相关论文
+    filters:
+      and:
+        - file.hasTag("paper")
+        - keywords.containsAny(this.keywords)
+    order:
+      - formula.论文题目
+      - journal
+      - paper_date
+    sort:
+      - property: paper_date
+        direction: DESC
+  - type: table
+    name: 相关学者
+    filters:
+      and:
+        - file.hasTag("scholar")
+        - keywords.containsAny(this.keywords)
+    order:
+      - file.name
+      - formula.当前机构
+      - email
+  - type: cards
+    name: 参与者
+    filters:
+      and:
+        - file.hasTag("scholar")
+        - or:
+            - this.participants.contains(name)
+            - this.participants.contains(file.name)
+    order:
+      - file.name
+      - formula.当前机构
+      - email
+    image: note.photo
+    cardSize: 170
+    imageAspectRatio: 1
+  - type: cards
+    name: 相关书籍
+    filters:
+      and:
+        - file.path.startsWith("20 - Inputs/Books")
+        - keywords.containsAny(this.keywords)
+    image: note.cover
+    cardSize: 150
+    imageAspectRatio: 1.4

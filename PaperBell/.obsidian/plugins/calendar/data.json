@@ -3,8 +3,8 @@
   "weekStart": "locale",
   "wordsPerDot": 250,
   "showWeeklyNote": true,
-  "weeklyNoteFormat": "gggg年W周记录",
-  "weeklyNoteTemplate": "40 - Obsidian/模板/每周周记模板.md",
-  "weeklyNoteFolder": "00 - 每日日记/WeeklyNote",
+  "weeklyNoteFormat": "YYYY年第WW周记录",
+  "weeklyNoteTemplate": "00 - Obsidian/模板/每周周记模板.md",
+  "weeklyNoteFolder": "30 - Metadata/WeeklyNote",
   "localeOverride": "system-default"
 }

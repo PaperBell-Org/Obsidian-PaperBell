@@ -1,0 +1,42 @@
+{
+  "title": "PaperBell：基于 Obsidian 的学术写作管理系统",
+  "publication_date": "2026-06-06",
+  "upload_type": "publication",
+  "publication_type": "article",
+  "description": "这是一个测试用的手稿，展示 PaperBell 如何管理论文撰写：从 Longform 分场景写作，到 Pandoc 导出为投稿级 PDF。",
+  "creators": [
+    {
+      "name": "Chen, Yan",
+      "affiliation": "Qiming Institute, China",
+      "orcid": "0000-0000-0000-0000",
+      "email": "yan.chen@example.edu"
+    },
+    {
+      "name": "Fang, Yu",
+      "affiliation": "Wenlan University, China",
+      "email": "yu.fang@wenlan.edu"
+    }
+  ],
+  "keywords": [
+    "academic writing",
+    "Obsidian",
+    "Longform",
+    "Pandoc",
+    "knowledge management"
+  ],
+  "journal_title": "PaperBell Documentation",
+  "version": "v1.0",
+  "_longform": {
+    "acronym": "DEMO",
+    "csl": "nature",
+    "template": "paperbell",
+    "lineno": false,
+    "figures_at_end": false,
+    "author_affiliations": {
+      "Chen, Yan": ["Qiming Institute, China", "Wenlan University, China"],
+      "Fang, Yu": ["Wenlan University, China"]
+    },
+    "corresponding": ["Chen, Yan"],
+    "extra_yaml": "corresponding_email: yan.chen@example.edu\ntitlepage: true\nnumbersections: true\n"
+  }
+}

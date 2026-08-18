@@ -6,6 +6,32 @@ if you want to view the source visit the plugins github repository
 'use strict';
 
 var obsidian = require('obsidian');
+var child_process = require('child_process');
+var fs = require('fs');
+var path = require('path');
+var os = require('os');
+
+function _interopNamespace(e) {
+    if (e && e.__esModule) return e;
+    var n = Object.create(null);
+    if (e) {
+        Object.keys(e).forEach(function (k) {
+            if (k !== 'default') {
+                var d = Object.getOwnPropertyDescriptor(e, k);
+                Object.defineProperty(n, k, d.get ? d : {
+                    enumerable: true,
+                    get: function () { return e[k]; }
+                });
+            }
+        });
+    }
+    n["default"] = e;
+    return Object.freeze(n);
+}
+
+var fs__namespace = /*#__PURE__*/_interopNamespace(fs);
+var path__namespace = /*#__PURE__*/_interopNamespace(path);
+var os__namespace = /*#__PURE__*/_interopNamespace(os);
 
 /******************************************************************************
 Copyright (c) Microsoft Corporation.
@@ -2502,14 +2528,14 @@ function assign(tar, src) {
         tar[k] = src[k];
     return tar;
 }
-function run(fn) {
+function run$1(fn) {
     return fn();
 }
 function blank_object() {
     return Object.create(null);
 }
 function run_all(fns) {
-    fns.forEach(run);
+    fns.forEach(run$1);
 }
 function is_function(thing) {
     return typeof thing === 'function';
@@ -3041,7 +3067,7 @@ function mount_component(component, target, anchor, customElement) {
     if (!customElement) {
         // onMount happens before the initial afterUpdate
         add_render_callback(() => {
-            const new_on_destroy = on_mount.map(run).filter(is_function);
+            const new_on_destroy = on_mount.map(run$1).filter(is_function);
             if (on_destroy) {
                 on_destroy.push(...new_on_destroy);
             }
@@ -3260,11 +3286,89 @@ function derived(stores, fn, initial_value) {
     });
 }
 
+/** The folder containing an index note, derived from its vault path. */
+function draftParentFolder(vaultPath) {
+    return vaultPath.split("/").slice(0, -1).join("/");
+}
+/**
+ * The real index file backing a draft. For an asset of a single-file
+ * `format: project` index this is the shared index path; for a legacy draft
+ * (whose own file is the index) it collapses to `vaultPath`. Use this — never
+ * the raw `vaultPath`, which may be a synthetic `<indexPath>::<assetId>` key —
+ * for any filesystem access (folder derivation, frontmatter reads/writes).
+ */
+function draftIndexPath(draft) {
+    var _a;
+    return (_a = draft.indexPath) !== null && _a !== void 0 ? _a : draft.vaultPath;
+}
+/** The folder containing a draft's real index file. */
+function draftIndexFolder(draft) {
+    return draftParentFolder(draftIndexPath(draft));
+}
+/**
+ * The real note to open/reveal for a draft: a single asset's external body
+ * note if it has one, otherwise its index file. Never the synthetic `vaultPath`
+ * of a project asset, which is not a real file on disk.
+ */
+function draftNotePath(draft) {
+    if (draft.format === "single" && draft.bodyPath)
+        return draft.bodyPath;
+    return draftIndexPath(draft);
+}
+/**
+ * The lowest common ancestor folder shared by a set of folder paths, computed
+ * segment-wise. Returns "" (the vault root) when there is no shared prefix.
+ */
+function lowestCommonAncestorFolder(folders) {
+    if (folders.length === 0)
+        return "";
+    const split = folders.map((f) => f.split("/").filter((s) => s.length > 0));
+    let common = split[0];
+    for (const segs of split.slice(1)) {
+        let i = 0;
+        while (i < common.length && i < segs.length && common[i] === segs[i]) {
+            i++;
+        }
+        common = common.slice(0, i);
+    }
+    return common.join("/");
+}
+/**
+ * The "project root" for a set of drafts: the lowest common ancestor of every
+ * draft's folder. Shared resources (e.g. metadata.json) are searched for between
+ * a draft's own folder and this root, inclusive.
+ */
+function projectRootPath(projectDrafts) {
+    return lowestCommonAncestorFolder(projectDrafts.map((d) => draftIndexFolder(d)));
+}
+/**
+ * Ordered candidate paths for a named resource, searched from `startDir` upward
+ * to `rootDir` (inclusive). At each level both `<dir>/<baseName>` and
+ * `<dir>/source/<baseName>` are produced. When `rootDir` is not an ancestor of
+ * (or equal to) `startDir`, only `startDir` is searched — so callers that don't
+ * know a project root degrade to the original single-folder behavior.
+ */
+function projectResourceCandidatePaths(startDir, rootDir, baseName) {
+    const startSegs = startDir.split("/").filter((s) => s.length > 0);
+    const rootSegs = (rootDir !== null && rootDir !== void 0 ? rootDir : "").split("/").filter((s) => s.length > 0);
+    const rootIsAncestor = rootSegs.length <= startSegs.length &&
+        rootSegs.every((s, i) => s === startSegs[i]);
+    const minLen = rootIsAncestor ? rootSegs.length : startSegs.length;
+    const candidates = [];
+    for (let len = startSegs.length; len >= minLen; len--) {
+        const dir = startSegs.slice(0, len).join("/");
+        const prefix = dir.length > 0 ? `${dir}/` : "";
+        candidates.push(`${prefix}${baseName}`);
+        candidates.push(`${prefix}source/${baseName}`);
+    }
+    return candidates;
+}
+
 function projectFolderPath(draft, vault) {
-    return vault.getAbstractFileByPath(draft.vaultPath).parent.path;
+    return vault.getAbstractFileByPath(draftIndexPath(draft)).parent.path;
 }
 function sceneFolderPath(draft, vault) {
-    const root = vault.getAbstractFileByPath(draft.vaultPath).parent.path;
+    const root = vault.getAbstractFileByPath(draftIndexPath(draft)).parent.path;
     return obsidian.normalizePath(`${root}/${draft.sceneFolder}`);
 }
 function scenePathForFolder(sceneName, folderPath) {
@@ -3277,7 +3381,7 @@ function scenePath(sceneName, draft, vault) {
 function findScene(path, drafts) {
     for (const draft of drafts) {
         if (draft.format === "scenes") {
-            const parentPath = draft.vaultPath.split("/").slice(0, -1).join("/");
+            const parentPath = draftIndexFolder(draft);
             if (parentPath !== "" && !parentPath) {
                 continue;
             }
@@ -3292,7 +3396,11 @@ function findScene(path, drafts) {
 }
 function draftForPath(path, drafts) {
     for (const draft of drafts) {
-        if (draft.vaultPath === path) {
+        // The real index file, or a single asset's external body note, both map to
+        // their draft directly; multi-scene drafts are matched by scene below.
+        if (draft.vaultPath === path ||
+            draftIndexPath(draft) === path ||
+            (draft.format === "single" && draft.bodyPath === path)) {
             return draft;
         }
         else {
@@ -3307,7 +3415,8 @@ function draftForPath(path, drafts) {
 function scenePathForLocation(location, path, drafts, vault) {
     for (const draft of drafts) {
         if (draft.format === "scenes") {
-            const root = vault.getAbstractFileByPath(draft.vaultPath).parent.path;
+            const root = vault.getAbstractFileByPath(draftIndexPath(draft)).parent
+                .path;
             const index = draft.scenes.findIndex((s) => obsidian.normalizePath(`${root}/${draft.sceneFolder}/${s.title}.md`) === path);
             if (index >= 0) {
                 if (location.position === "next" && index < draft.scenes.length - 1) {
@@ -20577,7 +20686,7 @@ function createNoteWithPotentialTemplate(app, path, template) {
                 }
             }
             catch (error) {
-                console.error(`[Longform] Error using plugin [${pluginUsed}]:`, error);
+                console.error(`[PaperOut] Error using plugin [${pluginUsed}]:`, error);
             }
             if (contents !== "") {
                 yield app.vault.adapter.write(path, contents);
@@ -20601,7 +20710,7 @@ function createNote(app, path, initialContent = "") {
                 yield app.vault.createFolder(pathComponents.join("/"));
             }
             catch (e) {
-                console.error(`[Longform] Failed to create new note at "${path}"`, e);
+                console.error(`[PaperOut] Failed to create new note at "${path}"`, e);
                 return null;
             }
         }
@@ -20613,7 +20722,7 @@ function createNote(app, path, initialContent = "") {
             return yield app.vault.create(path, initialContent);
         }
         catch (e) {
-            console.error(`[Longform] Failed to create new note at "${path}"`, e);
+            console.error(`[PaperOut] Failed to create new note at "${path}"`, e);
             return null;
         }
     });
@@ -20628,7 +20737,7 @@ function createWithTemplater(app, file, templatePath) {
     return __awaiter(this, void 0, void 0, function* () {
         const templaterPlugin = app.plugins.getPlugin("templater-obsidian");
         if (!templaterPlugin) {
-            console.error("[Longform] Attempted to use Templater plugin while disabled.");
+            console.error("[PaperOut] Attempted to use Templater plugin while disabled.");
             return;
         }
         const template = app.vault.getAbstractFileByPath(templatePath);
@@ -20640,7 +20749,7 @@ function createWithTemplates(app, templatePath) {
     return __awaiter(this, void 0, void 0, function* () {
         const corePlugin = app.internalPlugins.getEnabledPluginById("templates");
         if (!corePlugin) {
-            console.error("[Longform] Attempted to use core template plugin while disabled.");
+            console.error("[PaperOut] Attempted to use core template plugin while disabled.");
             return;
         }
         // Get template body
@@ -20733,6 +20842,13 @@ const draftWordCounts = writable({});
  * Writeable store of whether the plugin is waiting for sync.
  */
 const waitingForSync = writable(false);
+/**
+ * Writeable store of the basenames (without `.yaml`) of the downloaded Pandoc
+ * `defaults/` presets. Populates the "Template / preset" dropdown on the Run
+ * Pandoc Export compile step. Refreshed on layout-ready and after assets are
+ * downloaded via `refreshPandocTemplates`.
+ */
+const pandocTemplates = writable([]);
 // DERIVED STORES
 /**
  * Derived store of all projects—drafts grouped by title.
@@ -20786,6 +20902,262 @@ const currentWorkflow = derived([workflows, selectedDraft], ([$workflows, $selec
     }
     return null;
 });
+
+/**
+ * Pure logic for the single-file `format: project` index. A project index is a
+ * note whose `longform` frontmatter lists several *assets* (main text,
+ * supplementary, response letter, cover letter, …); each asset expands into one
+ * `Draft` so the rest of the plugin (compile, stores, sidebar) is unchanged.
+ *
+ * This module is intentionally free of any `obsidian` import so it stays unit
+ * testable. Anything touching the vault (scene-folder scans, frontmatter I/O)
+ * lives in `store-vault-sync.ts`, which consumes the drafts produced here.
+ */
+// ── Scene ⇄ nested-array conversion ─────────────────────────────────────────
+// These are pure and shared by both the legacy per-file drafts and project
+// assets. They live here (not in draft-utils, which imports obsidian) so both
+// the model and the tests can use them without pulling in obsidian.
+function indentedScenesToArrays(indented) {
+    const result = [];
+    // track our current indentation level
+    let currentIndent = 0;
+    // array for the current indentation level
+    let currentNesting = result;
+    // memoized arrays so that later, lesser indents can use earlier-created array
+    const nestingAt = {};
+    nestingAt[0] = currentNesting;
+    indented.forEach(({ title, indent }) => {
+        if (indent > currentIndent) {
+            // we're at a deeper indentation level than current,
+            // so build up a nest and memoize it
+            while (currentIndent < indent) {
+                currentIndent = currentIndent + 1;
+                const newNesting = [];
+                currentNesting.push(newNesting);
+                nestingAt[currentIndent] = newNesting;
+                currentNesting = newNesting;
+            }
+        }
+        else if (indent < currentIndent) {
+            // we're at a lesser indentation level than current,
+            // so drop back to previously memoized nesting
+            currentNesting = nestingAt[indent];
+            currentIndent = indent;
+        }
+        // actually insert the value
+        currentNesting.push(title);
+    });
+    return result;
+}
+function arraysToIndentedScenes(arr, result = [], currentIndent = -1) {
+    if (arr instanceof Array) {
+        if (arr.length === 0) {
+            return result;
+        }
+        const next = arr.shift();
+        const inner = arraysToIndentedScenes(next, [], currentIndent + 1);
+        return arraysToIndentedScenes(arr, [...result, ...inner], currentIndent);
+    }
+    else {
+        return [
+            {
+                title: arr,
+                indent: currentIndent,
+            },
+        ];
+    }
+}
+// ── Asset id + path helpers ─────────────────────────────────────────────────
+/** A stable, readable asset id. Keeps unicode (CJK) names rather than dropping them. */
+function slugifyAssetName(name) {
+    const ascii = (name || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    return ascii || (name || "").trim() || "asset";
+}
+/** Join a folder and a relative name into a vault path (handles the root). */
+function joinPath$1(folder, name) {
+    const cleaned = name.replace(/^\.\//, "");
+    return folder ? `${folder}/${cleaned}` : cleaned;
+}
+/**
+ * The stable id of an asset within its index. Prefer an explicit `id`; fall
+ * back to the display `name` so a hand-authored index without ids still yields
+ * a deterministic synthetic key that survives reloads.
+ */
+function assetIdFor(asset) {
+    var _a, _b;
+    return ((_b = (_a = asset.id) !== null && _a !== void 0 ? _a : asset.name) !== null && _b !== void 0 ? _b : "").trim() || "asset";
+}
+/** The synthetic, unique identity key for an asset draft (never touches disk). */
+function syntheticAssetPath(indexPath, assetId) {
+    return `${indexPath}::${assetId}`;
+}
+// ── Expansion ───────────────────────────────────────────────────────────────
+/**
+ * True when a parsed `longform` frontmatter entry is a single-file project
+ * index (as opposed to a legacy per-file `scenes`/`single` draft).
+ */
+function isProjectIndexEntry(longformEntry) {
+    return !!longformEntry && longformEntry.format === "project";
+}
+/**
+ * Expand a parsed `longform` frontmatter entry into one `Draft` per asset.
+ *
+ * - `format: "project"` → one draft per `assets[]` entry, each carrying a
+ *   synthetic `vaultPath`, the shared `indexPath`, its `assetId`, and (for
+ *   single assets) a `bodyPath` pointing at the external body note.
+ * - `format: "scenes" | "single"` (legacy) → a single draft whose `vaultPath`
+ *   IS the index file and whose `indexPath`/`assetId` are `null`.
+ *
+ * Scene drafts are returned with the scenes parsed straight from frontmatter
+ * and `unknownFiles: []`; the caller reconciles them against the real scene
+ * folder on disk. Returns `[]` for an unrecognized `format`.
+ */
+function expandProjectIndex(longformEntry, indexPath, fallbackTitle) {
+    var _a, _b, _c, _d, _e, _f, _g;
+    if (!longformEntry)
+        return [];
+    const indexFolder = draftParentFolder(indexPath);
+    if (isProjectIndexEntry(longformEntry)) {
+        const title = (_a = longformEntry.title) !== null && _a !== void 0 ? _a : fallbackTitle;
+        const assets = Array.isArray(longformEntry.assets)
+            ? longformEntry.assets
+            : [];
+        return assets
+            .filter((a) => a && (a.format === "scenes" || a.format === "single"))
+            .map((asset) => {
+            var _a, _b, _c, _d, _e, _f;
+            const assetId = assetIdFor(asset);
+            const vaultPath = syntheticAssetPath(indexPath, assetId);
+            const workflow = (_a = asset.workflow) !== null && _a !== void 0 ? _a : null;
+            if (asset.format === "single") {
+                return {
+                    format: "single",
+                    title,
+                    titleInFrontmatter: true,
+                    draftTitle: (_b = asset.name) !== null && _b !== void 0 ? _b : null,
+                    vaultPath,
+                    workflow,
+                    indexPath,
+                    assetId,
+                    bodyPath: joinPath$1(indexFolder, asset.file),
+                };
+            }
+            // clone the raw scenes: arraysToIndentedScenes mutates its input
+            const rawScenes = Array.isArray(asset.scenes)
+                ? JSON.parse(JSON.stringify(asset.scenes))
+                : [];
+            return {
+                format: "scenes",
+                title,
+                titleInFrontmatter: true,
+                draftTitle: (_c = asset.name) !== null && _c !== void 0 ? _c : null,
+                vaultPath,
+                workflow,
+                indexPath,
+                assetId,
+                sceneFolder: (_d = asset.folder) !== null && _d !== void 0 ? _d : "/",
+                scenes: arraysToIndentedScenes(rawScenes),
+                ignoredFiles: (_e = asset.ignoredFiles) !== null && _e !== void 0 ? _e : [],
+                unknownFiles: [],
+                sceneTemplate: (_f = asset.sceneTemplate) !== null && _f !== void 0 ? _f : null,
+            };
+        });
+    }
+    // Legacy single-draft index.
+    const format = longformEntry.format;
+    const titleInFrontmatter = !!longformEntry.title;
+    const title = (_b = longformEntry.title) !== null && _b !== void 0 ? _b : fallbackTitle;
+    const workflow = (_c = longformEntry.workflow) !== null && _c !== void 0 ? _c : null;
+    const draftTitle = (_d = longformEntry.draftTitle) !== null && _d !== void 0 ? _d : null;
+    if (format === "scenes") {
+        const rawScenes = Array.isArray(longformEntry.scenes)
+            ? JSON.parse(JSON.stringify(longformEntry.scenes))
+            : [];
+        return [
+            {
+                format: "scenes",
+                title,
+                titleInFrontmatter,
+                draftTitle,
+                vaultPath: indexPath,
+                workflow,
+                indexPath: null,
+                assetId: null,
+                sceneFolder: (_e = longformEntry.sceneFolder) !== null && _e !== void 0 ? _e : "/",
+                scenes: arraysToIndentedScenes(rawScenes),
+                ignoredFiles: (_f = longformEntry.ignoredFiles) !== null && _f !== void 0 ? _f : [],
+                unknownFiles: [],
+                sceneTemplate: (_g = longformEntry.sceneTemplate) !== null && _g !== void 0 ? _g : null,
+            },
+        ];
+    }
+    if (format === "single") {
+        return [
+            {
+                format: "single",
+                title,
+                titleInFrontmatter,
+                draftTitle,
+                vaultPath: indexPath,
+                workflow,
+                indexPath: null,
+                assetId: null,
+                bodyPath: null,
+            },
+        ];
+    }
+    return [];
+}
+// ── Serialization (Draft → on-disk asset entry) ─────────────────────────────
+/**
+ * Build the on-disk `assets[]` entry for one asset draft — the inverse of
+ * {@link expandProjectIndex}. `folder`/`file` are stored relative to the index
+ * file's folder (that is how the draft's `sceneFolder`/`bodyPath` were derived).
+ */
+function assetEntryFromDraft(draft) {
+    var _a, _b, _c, _d, _e, _f;
+    const name = (_b = (_a = draft.draftTitle) !== null && _a !== void 0 ? _a : draft.assetId) !== null && _b !== void 0 ? _b : draft.title;
+    const base = {
+        name,
+        id: (_c = draft.assetId) !== null && _c !== void 0 ? _c : undefined,
+        workflow: (_d = draft.workflow) !== null && _d !== void 0 ? _d : undefined,
+    };
+    if (draft.format === "single") {
+        const indexFolder = draftParentFolder((_e = draft.indexPath) !== null && _e !== void 0 ? _e : draft.vaultPath);
+        const file = relativeToFolder((_f = draft.bodyPath) !== null && _f !== void 0 ? _f : "", indexFolder);
+        return Object.assign(Object.assign({}, base), { format: "single", file });
+    }
+    const entry = Object.assign(Object.assign({}, base), { format: "scenes", folder: draft.sceneFolder, scenes: indentedScenesToArrays(draft.scenes) });
+    if (draft.sceneTemplate)
+        entry.sceneTemplate = draft.sceneTemplate;
+    if (draft.ignoredFiles && draft.ignoredFiles.length > 0) {
+        entry.ignoredFiles = draft.ignoredFiles;
+    }
+    return entry;
+}
+/** Strip a folder prefix from a path, yielding a folder-relative name. */
+function relativeToFolder(path, folder) {
+    if (folder && path.startsWith(`${folder}/`)) {
+        return path.slice(folder.length + 1);
+    }
+    return path;
+}
+/**
+ * Write a project index's `longform` frontmatter from the title and the assets'
+ * drafts. Mirrors `setDraftOnFrontmatterObject` but produces the
+ * `format: project` container. `obj` is a plain frontmatter object.
+ */
+function setProjectAssetsOnFrontmatterObject(obj, title, assets) {
+    obj["longform"] = {
+        format: "project",
+        title,
+        assets: assets.map((d) => assetEntryFromDraft(d)),
+    };
+}
 
 function draftTitle(draft) {
     var _a;
@@ -20858,56 +21230,6 @@ function setDraftOnFrontmatterObject(obj, draft) {
         obj["longform"]["ignoredFiles"] = draft.ignoredFiles;
     }
 }
-function indentedScenesToArrays(indented) {
-    const result = [];
-    // track our current indentation level
-    let currentIndent = 0;
-    // array for the current indentation level
-    let currentNesting = result;
-    // memoized arrays so that later, lesser indents can use earlier-created array
-    const nestingAt = {};
-    nestingAt[0] = currentNesting;
-    indented.forEach(({ title, indent }) => {
-        if (indent > currentIndent) {
-            // we're at a deeper indentation level than current,
-            // so build up a nest and memoize it
-            while (currentIndent < indent) {
-                currentIndent = currentIndent + 1;
-                const newNesting = [];
-                currentNesting.push(newNesting);
-                nestingAt[currentIndent] = newNesting;
-                currentNesting = newNesting;
-            }
-        }
-        else if (indent < currentIndent) {
-            // we're at a lesser indentation level than current,
-            // so drop back to previously memoized nesting
-            currentNesting = nestingAt[indent];
-            currentIndent = indent;
-        }
-        // actually insert the value
-        currentNesting.push(title);
-    });
-    return result;
-}
-function arraysToIndentedScenes(arr, result = [], currentIndent = -1) {
-    if (arr instanceof Array) {
-        if (arr.length === 0) {
-            return result;
-        }
-        const next = arr.shift();
-        const inner = arraysToIndentedScenes(next, [], currentIndent + 1);
-        return arraysToIndentedScenes(arr, [...result, ...inner], currentIndent);
-    }
-    else {
-        return [
-            {
-                title: arr,
-                indent: currentIndent,
-            },
-        ];
-    }
-}
 function numberScenes(scenes) {
     const numbering = [0];
     let lastNumberedIndent = 0;
@@ -20963,7 +21285,7 @@ function insertDraftIntoFrontmatter(app, path, draft) {
             });
         }
         catch (error) {
-            console.error("[Longform] insertDraftIntoFrontmatter: processFrontMatter error:", error);
+            console.error("[PaperOut] insertDraftIntoFrontmatter: processFrontMatter error:", error);
         }
     });
 }
@@ -21006,6 +21328,8 @@ var CompileStepOptionType;
     CompileStepOptionType[CompileStepOptionType["Text"] = 1] = "Text";
     /** Key-value text */
     CompileStepOptionType[CompileStepOptionType["MultilineText"] = 2] = "MultilineText";
+    /** A single-select dropdown. Choices come from `choices` or `dynamicChoices`. */
+    CompileStepOptionType[CompileStepOptionType["Dropdown"] = 3] = "Dropdown";
 })(CompileStepOptionType || (CompileStepOptionType = {}));
 function makeBuiltinStep(v, isScript = false) {
     return Object.assign(Object.assign({}, v), { description: Object.assign(Object.assign({}, v.description), { canonicalID: v.id, isScript: isScript }), optionValues: v.description.options.reduce((agg, opt) => {
@@ -21013,7 +21337,7 @@ function makeBuiltinStep(v, isScript = false) {
         }, {}) });
 }
 function typeMismatchError(expected, got, context) {
-    return new Error(`[Longform] A compile step received a type it did not expect. It expected "${expected}", but got "${got}" with step kind "${context.kind}"`);
+    return new Error(`[PaperOut] A compile step received a type it did not expect. It expected "${expected}", but got "${got}" with step kind "${context.kind}"`);
 }
 const PLACEHOLDER_MISSING_STEP = {
     id: "placeholder-missing-step",
@@ -21028,6 +21352,116 @@ const PLACEHOLDER_MISSING_STEP = {
     optionValues: {},
     compile: (a) => a,
 };
+
+/**
+ * Tagging for compile failures that are really *configuration* problems — the
+ * user is missing a tool or an asset — rather than the export genuinely going
+ * wrong. The UI reads the tag to offer a way to fix it instead of just showing
+ * the log.
+ *
+ * The tag rides as a property on the thrown Error rather than an Error subclass
+ * on purpose: the reader is `compile()` in this same folder, and an `instanceof`
+ * check would force the compile core to import a step-side module. Keeping both
+ * halves here means the dependency runs core → step, never the reverse.
+ */
+/** The Pandoc toolchain or its assets are missing or misconfigured. */
+const RECOVERABLE_PANDOC_SETUP = "pandoc-setup";
+/** The property {@link RecoverableKind} rides on. */
+const RECOVERABLE_PROPERTY = "longformRecoverable";
+/** Build an Error tagged as a recoverable Pandoc setup problem. */
+function pandocSetupError(message) {
+    const error = new Error(message);
+    error[RECOVERABLE_PROPERTY] =
+        RECOVERABLE_PANDOC_SETUP;
+    return error;
+}
+/** Read the recoverable tag off an unknown thrown value, if it has one. */
+function recoverableKindOf(error) {
+    if (typeof error !== "object" || error === null)
+        return undefined;
+    const value = error[RECOVERABLE_PROPERTY];
+    return value === RECOVERABLE_PANDOC_SETUP ? value : undefined;
+}
+
+/**
+ * The canonical id of the only built-in Join step. {@link stripJoinStepsForSingle}
+ * matches on it exactly rather than on "this step is Join-only" — see the note there.
+ */
+const CONCATENATE_TEXT_ID = "concatenate-text";
+/**
+ * A copy of `workflow` with Join steps removed, for compiling a single-file draft.
+ *
+ * `compile()` feeds a single-format draft a one-element input array and keeps it
+ * that way, unwrapping and rewrapping around Manuscript steps. There is nothing
+ * to concatenate, and letting a Join step run would replace the array with a
+ * bare `{ contents }` that the next Manuscript step would index into and crash
+ * on. Dropping the step is the equivalent no-op, and it lets the PaperBell
+ * workflows (three of the four contain `concatenate-text`) run against a single
+ * note instead of failing validation with `WorkflowError.JoinForSingle`.
+ *
+ * Matches `concatenate-text` by canonical id on purpose: a user script step may
+ * also declare a Join-only kind, and silently dropping someone's custom step
+ * would be a far worse surprise than a validation error.
+ *
+ * Deliberately silent: this runs inside the compile pane's reactive block, which
+ * re-evaluates on every keystroke in the workflow description field, so logging
+ * here would flood the console. The skip is already visible — the pane's step
+ * count and `compile()`'s own per-step logging both reflect the reduced list.
+ */
+function stripJoinStepsForSingle(workflow) {
+    const steps = workflow.steps.filter((s) => s.description.canonicalID !== CONCATENATE_TEXT_ID);
+    return steps.length === workflow.steps.length ? workflow : Object.assign(Object.assign({}, workflow), { steps });
+}
+/**
+ * The workflow to actually run for a draft of this shape. Pair this with
+ * `calculateWorkflow(effective, isMultiScene)` and pass the same `effective`
+ * workflow to `compile()` — every call site must agree, or a workflow would
+ * validate in one place and fail in another.
+ */
+function effectiveWorkflow(workflow, isMultiScene) {
+    return isMultiScene ? workflow : stripJoinStepsForSingle(workflow);
+}
+/**
+ * For each step of `effective`, its index in `original`. Relies on the stripped
+ * workflow reusing the very same step objects, which `stripJoinStepsForSingle`
+ * guarantees (it filters, never clones).
+ */
+function originalStepIndices(original, effective) {
+    if (effective === original) {
+        return original.steps.map((_s, i) => i);
+    }
+    const indices = [];
+    let e = 0;
+    for (let o = 0; o < original.steps.length && e < effective.steps.length; o++) {
+        if (original.steps[o] === effective.steps[e]) {
+            indices.push(o);
+            e++;
+        }
+    }
+    return indices;
+}
+/**
+ * Re-align per-step results computed against `effective` back onto `original`'s
+ * step list, with `null` where a step was skipped. The compile pane edits and
+ * renders the original workflow, so anything derived from the effective one
+ * (step kinds, error positions) has to be mapped back or it will label the
+ * wrong rows.
+ */
+function alignToOriginalSteps(original, effective, values) {
+    const indices = originalStepIndices(original, effective);
+    const aligned = original.steps.map(() => null);
+    indices.forEach((originalIndex, effectiveIndex) => {
+        if (effectiveIndex < values.length) {
+            aligned[originalIndex] = values[effectiveIndex];
+        }
+    });
+    return aligned;
+}
+/** A step position reported against `effective`, expressed against `original`. */
+function alignStepPosition(original, effective, position) {
+    const indices = originalStepIndices(original, effective);
+    return position < indices.length ? indices[position] : position;
+}
 
 function formatOptionValues(values) {
     const formattedOptions = {};
@@ -21156,10 +21590,13 @@ function calculateWorkflow(workflow, isMultiScene) {
     ];
 }
 function compile(app, draft, workflow, kinds, statusCallback, options) {
+    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         let currentInput;
         if (draft.format === "single") {
-            const path = draft.vaultPath;
+            // A project single asset exports its external body note (bodyPath); a legacy
+            // single draft's own index file is the body (vaultPath).
+            const path = (_a = draft.bodyPath) !== null && _a !== void 0 ? _a : draft.vaultPath;
             const contents = yield app.vault.adapter.read(path);
             const metadata = app.metadataCache.getCache(path);
             currentInput = [
@@ -21197,7 +21634,7 @@ function compile(app, draft, workflow, kinds, statusCallback, options) {
             const kind = index < kinds.length ? kinds[index] : null;
             if (kind === null) {
                 const error = `No step kind data for step at position ${index}.`;
-                console.error(`[Longform] ${error}`);
+                console.error(`[PaperOut] ${error}`);
                 statusCallback({
                     kind: "CompileStatusError",
                     error,
@@ -21216,7 +21653,7 @@ function compile(app, draft, workflow, kinds, statusCallback, options) {
                 suppressOpenAfter: options === null || options === void 0 ? void 0 : options.suppressOpenAfter,
                 projectRoot: options === null || options === void 0 ? void 0 : options.projectRoot,
             };
-            console.log(`[Longform] Running compile step ${step.description.name} with context:`, context);
+            console.log(`[PaperOut] Running compile step ${step.description.name} with context:`, context);
             statusCallback({
                 kind: "CompileStatusStep",
                 stepIndex: index,
@@ -21237,15 +21674,24 @@ function compile(app, draft, workflow, kinds, statusCallback, options) {
                 }
             }
             catch (error) {
-                console.error("[Longform]", error);
+                console.error("[PaperOut]", error);
+                const recoverable = recoverableKindOf(error);
+                // A recoverable setup problem is a curated, user-facing checklist — a
+                // stack trace on top of it is noise.
+                const detail = recoverable
+                    ? error.message
+                    : error instanceof Error
+                        ? (_b = error.stack) !== null && _b !== void 0 ? _b : error.message
+                        : String(error);
                 statusCallback({
                     kind: "CompileStatusError",
-                    error: `${error}`,
+                    error: `Step "${step.description.name}" failed:\n\n${detail}`,
+                    recoverable,
                 });
                 return;
             }
         }
-        console.log(`[Longform] Compile workflow "${workflow.name}" finished with final result:`, currentInput);
+        console.log(`[PaperOut] Compile workflow "${workflow.name}" finished with final result:`, currentInput);
         statusCallback({
             kind: "CompileStatusSuccess",
         });
@@ -21285,6 +21731,169 @@ const DEFAULT_WORKFLOWS = {
                 optionValues: {
                     target: "manuscript.md",
                     "open-after": true,
+                },
+            },
+        ],
+    },
+    /**
+     * The zero-setup export. One step, no project required: pair it with its
+     * "Run workflow: Quick Export" command and any open note becomes an export.
+     * Name is load-bearing — it keys `data.json` and the command id, and
+     * `mergeMissingWorkflows` only ever adds, so a rename would strand the old
+     * entry (and its command) in every existing vault forever.
+     */
+    "Quick Export": {
+        name: "Quick Export",
+        description: "Export the note you have open — any markdown file, no project needed — via Pandoc. " +
+            "Needs no downloaded assets: pandoc alone produces the file, PDF additionally needing " +
+            "a TeX engine (switch this step's Format to “docx” if you'd rather install nothing else). " +
+            "Clear Format and set `template: <preset>` in the note's frontmatter to export with a " +
+            "downloaded preset instead, and `csl:` to pick a citation style. " +
+            "The file lands next to the note, named after it, and re-exporting overwrites it.",
+        steps: [
+            {
+                id: "run-pandoc-export",
+                optionValues: {
+                    template: "",
+                    // The only workflow that opts into the preset-free export. The
+                    // PaperBell pipelines leave this blank so a missing preset still
+                    // fails loudly rather than silently dropping their layout.
+                    format: "pdf",
+                    "dry-run": false,
+                    "open-after": true,
+                    filename: "",
+                },
+            },
+        ],
+    },
+    // ── PaperBell academic pipelines (see docs/PANDOC_EXPORT.md, 回复信手稿引用规范) ──
+    // Manuscript & SI keep HTML comments (remove-html-comments:false) so <!--ms:-->
+    // reference markers survive to the harvest pass; Pandoc drops the comments in the
+    // PDF anyway. Response/Cover Letter set run-pandoc-export's preset explicitly.
+    "PaperBell Manuscript": {
+        name: "PaperBell Manuscript",
+        description: "Compile the main manuscript to PDF, then harvest line/figure numbers so a response letter can cite it.",
+        steps: [
+            { id: "strip-frontmatter", optionValues: {} },
+            { id: "concatenate-text", optionValues: { separator: "\\n\\n" } },
+            {
+                id: "remove-comments",
+                optionValues: {
+                    "remove-markdown-comments": true,
+                    "remove-html-comments": false,
+                },
+            },
+            {
+                id: "replace-json-placeholders",
+                optionValues: {
+                    "json-file": "metadata.json, results.json",
+                    "start-delim": "{{",
+                    "end-delim": "}}",
+                    "error-on-missing": false,
+                },
+            },
+            {
+                id: "add-zenodo-frontmatter",
+                optionValues: {
+                    "metadata-file": "metadata.json",
+                    "error-on-missing-file": true,
+                },
+            },
+            { id: "write-to-note", optionValues: { target: "$1_$2.md", "open-after": true } },
+            {
+                id: "run-pandoc-export",
+                optionValues: {
+                    template: "",
+                    "dry-run": false,
+                    "open-after": true,
+                    filename: "{acronym}_{date}",
+                },
+            },
+            { id: "harvest-manuscript-lines", optionValues: { enabled: true } },
+        ],
+    },
+    "PaperBell Supplementary": {
+        name: "PaperBell Supplementary",
+        description: "Compile the Supplementary Information (S-numbered figures/tables) to PDF and harvest its line/figure numbers.",
+        steps: [
+            { id: "strip-frontmatter", optionValues: {} },
+            { id: "concatenate-text", optionValues: { separator: "\\n\\n" } },
+            {
+                id: "remove-comments",
+                optionValues: {
+                    "remove-markdown-comments": true,
+                    "remove-html-comments": false,
+                },
+            },
+            {
+                id: "replace-json-placeholders",
+                optionValues: {
+                    "json-file": "metadata.json, results.json",
+                    "start-delim": "{{",
+                    "end-delim": "}}",
+                    "error-on-missing": false,
+                },
+            },
+            {
+                id: "add-zenodo-frontmatter",
+                optionValues: {
+                    "metadata-file": "metadata.json",
+                    "error-on-missing-file": true,
+                },
+            },
+            {
+                id: "supplementary-info",
+                optionValues: { abstract: true, "summarize-sections": true },
+            },
+            { id: "write-to-note", optionValues: { target: "$1_$2.md", "open-after": true } },
+            {
+                id: "run-pandoc-export",
+                optionValues: {
+                    template: "",
+                    "dry-run": false,
+                    "open-after": true,
+                    filename: "{acronym}_SI_{date}",
+                },
+            },
+            { id: "harvest-manuscript-lines", optionValues: { enabled: true } },
+        ],
+    },
+    "PaperBell Response Letter": {
+        name: "PaperBell Response Letter",
+        description: "Compile a response letter that cites the manuscript/SI (```manuscript / @id) with synced text, line numbers, and figure numbers from the latest Manuscript/SI compile.",
+        steps: [
+            { id: "strip-frontmatter", optionValues: {} },
+            { id: "concatenate-text", optionValues: { separator: "\\n\\n" } },
+            {
+                id: "add-zenodo-frontmatter",
+                optionValues: {
+                    "metadata-file": "metadata.json",
+                    "error-on-missing-file": false,
+                },
+            },
+            { id: "write-to-note", optionValues: { target: "$1_Response.md", "open-after": true } },
+            {
+                id: "run-pandoc-export",
+                optionValues: {
+                    template: "response-letter",
+                    "dry-run": false,
+                    "open-after": true,
+                    filename: "{acronym}_Response_{date}",
+                },
+            },
+        ],
+    },
+    "PaperBell Cover Letter": {
+        name: "PaperBell Cover Letter",
+        description: "Export a single-file cover letter to PDF via the cover_letter preset (moderncv letterhead). Keeps the note's own to/date/manuscript/enclosure frontmatter; journal/title/corresponding author come from metadata.json via cover_letter.lua.",
+        steps: [
+            {
+                id: "run-pandoc-export",
+                optionValues: {
+                    template: "cover_letter",
+                    "dry-run": false,
+                    "open-after": true,
+                    filename: "{acronym}_Cover_{date}",
                 },
             },
         ],
@@ -21624,11 +22233,12 @@ const StripFrontmatterStep = makeBuiltinStep({
  * The per-draft name used by the `$2` placeholder in the Save-as-Note output path.
  * Uses the draft's explicit `draftTitle` when set, otherwise falls back to the
  * index file's basename (without the `.md` extension) so the name is always
- * distinct across the drafts of a project.
+ * distinct across the drafts of a project. Uses the real index path, never the
+ * synthetic `vaultPath` of a project asset.
  */
 function draftOutputName(draft) {
     var _a, _b;
-    const indexBasename = ((_a = draft.vaultPath.split("/").pop()) !== null && _a !== void 0 ? _a : "").replace(/\.md$/, "");
+    const indexBasename = ((_a = draftIndexPath(draft).split("/").pop()) !== null && _a !== void 0 ? _a : "").replace(/\.md$/, "");
     return (_b = draft.draftTitle) !== null && _b !== void 0 ? _b : indexBasename;
 }
 /**
@@ -21679,9 +22289,9 @@ const WriteToNoteStep = makeBuiltinStep({
                 const filePath = resolvePath(context.projectPath, target);
                 yield writeToFile(context.app, filePath, input.contents);
                 if (openAfter && !context.suppressOpenAfter) {
-                    console.log("[Longform] Attempting to open:", filePath);
+                    console.log("[PaperOut] Attempting to open:", filePath);
                     context.app.workspace.openLinkText(filePath, "/", true).catch((err) => {
-                        console.error("[Longform] Could not open", filePath, err);
+                        console.error("[PaperOut] Could not open", filePath, err);
                     });
                 }
                 return input;
@@ -21692,7 +22302,7 @@ const WriteToNoteStep = makeBuiltinStep({
 function writeToFile(app, filePath, contents) {
     return __awaiter(this, void 0, void 0, function* () {
         yield ensureContainingFolderExists(app, filePath);
-        console.log("[Longform] Writing to:", filePath);
+        console.log("[PaperOut] Writing to:", filePath);
         yield app.vault.adapter.write(filePath, contents);
     });
 }
@@ -21750,7 +22360,7 @@ function resolveRelativeFilePath(projectPathComponents, filePathComponents, atSt
             // move up one folder
             if (projectPathComponents.length === 0) {
                 // we moved up too many folders and ran out.
-                throw new Error("[Longform] Invalid path for Save as Note.");
+                throw new Error("[PaperOut] Invalid path for Save as Note.");
             }
             // remove the lowest-level folder from the project path to move up,
             // and take this first component off the top of the filePathComponents
@@ -21760,7 +22370,7 @@ function resolveRelativeFilePath(projectPathComponents, filePathComponents, atSt
             // relative to current folder
             if (!atStartOfFilePath) {
                 // illegal path like: ././filename.md
-                throw new Error("[Longform] Invalid path for Save as Note.");
+                throw new Error("[PaperOut] Invalid path for Save as Note.");
             }
             // stay here, but remove the first filepath component
             return resolveRelativeFilePath(projectPathComponents, filePathComponents.slice(1), false);
@@ -21841,6 +22451,7 @@ function buildPandocYaml(metadata) {
         return affiliationIndex.length;
     };
     const authorsOut = metadata.creators.map((creator) => {
+        var _a;
         const explicit = authorAffiliations[creator.name];
         const affilNames = explicit && explicit.length > 0
             ? explicit
@@ -21851,6 +22462,7 @@ function buildPandocYaml(metadata) {
             name: creator.name,
             affiliationIndices: affilNames.map(indexFor),
             corresponding: correspondingSet.has(creator.name),
+            email: ((_a = creator.email) !== null && _a !== void 0 ? _a : "").trim(),
         };
     });
     const lines = [];
@@ -21863,7 +22475,10 @@ function buildPandocYaml(metadata) {
             lines.push(`    affiliation: [${a.affiliationIndices.join(", ")}]`);
         }
         if (a.corresponding) {
-            lines.push(`    corresponding: ${yamlString("yes")}`);
+            // The LaTeX template prints this value as the "Corresponding author: …"
+            // line, so emit the author's email when available; fall back to the "yes"
+            // flag (still truthy for the author-name marker) when no email is given.
+            lines.push(`    corresponding: ${yamlString(a.email || "yes")}`);
         }
     }
     if (affiliationIndex.length > 0) {
@@ -21904,59 +22519,6 @@ function buildPandocYaml(metadata) {
 /** Quote a value as a YAML double-quoted string, escaping `\` and `"`. */
 function yamlString(s) {
     return `"${String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
-}
-
-/** The folder containing an index note, derived from its vault path. */
-function draftParentFolder(vaultPath) {
-    return vaultPath.split("/").slice(0, -1).join("/");
-}
-/**
- * The lowest common ancestor folder shared by a set of folder paths, computed
- * segment-wise. Returns "" (the vault root) when there is no shared prefix.
- */
-function lowestCommonAncestorFolder(folders) {
-    if (folders.length === 0)
-        return "";
-    const split = folders.map((f) => f.split("/").filter((s) => s.length > 0));
-    let common = split[0];
-    for (const segs of split.slice(1)) {
-        let i = 0;
-        while (i < common.length && i < segs.length && common[i] === segs[i]) {
-            i++;
-        }
-        common = common.slice(0, i);
-    }
-    return common.join("/");
-}
-/**
- * The "project root" for a set of drafts: the lowest common ancestor of every
- * draft's folder. Shared resources (e.g. metadata.json) are searched for between
- * a draft's own folder and this root, inclusive.
- */
-function projectRootPath(projectDrafts) {
-    return lowestCommonAncestorFolder(projectDrafts.map((d) => draftParentFolder(d.vaultPath)));
-}
-/**
- * Ordered candidate paths for a named resource, searched from `startDir` upward
- * to `rootDir` (inclusive). At each level both `<dir>/<baseName>` and
- * `<dir>/source/<baseName>` are produced. When `rootDir` is not an ancestor of
- * (or equal to) `startDir`, only `startDir` is searched — so callers that don't
- * know a project root degrade to the original single-folder behavior.
- */
-function projectResourceCandidatePaths(startDir, rootDir, baseName) {
-    const startSegs = startDir.split("/").filter((s) => s.length > 0);
-    const rootSegs = (rootDir !== null && rootDir !== void 0 ? rootDir : "").split("/").filter((s) => s.length > 0);
-    const rootIsAncestor = rootSegs.length <= startSegs.length &&
-        rootSegs.every((s, i) => s === startSegs[i]);
-    const minLen = rootIsAncestor ? rootSegs.length : startSegs.length;
-    const candidates = [];
-    for (let len = startSegs.length; len >= minLen; len--) {
-        const dir = startSegs.slice(0, len).join("/");
-        const prefix = dir.length > 0 ? `${dir}/` : "";
-        candidates.push(`${prefix}${baseName}`);
-        candidates.push(`${prefix}source/${baseName}`);
-    }
-    return candidates;
 }
 
 const AddZenodoFrontmatterStep = makeBuiltinStep({
@@ -22027,11 +22589,10 @@ const AddZenodoFrontmatterStep = makeBuiltinStep({
 });
 
 /**
- * Resolve a dot/bracket path expression against a value.
- * Supports `a.b.c` and `a.b[0].c` mixed notation. Returns `undefined`
- * for any segment that does not resolve.
+ * Tokenize a dot/bracket path expression into its segments.
+ * Supports `a.b.c` and `a.b[0].c` mixed notation.
  */
-function getByPath(root, pathExpr) {
+function tokenizePath(pathExpr) {
     const tokens = [];
     let buf = "";
     for (let i = 0; i < pathExpr.length; i++) {
@@ -22061,6 +22622,15 @@ function getByPath(root, pathExpr) {
     }
     if (buf)
         tokens.push(buf);
+    return tokens;
+}
+/**
+ * Resolve a dot/bracket path expression against a value.
+ * Supports `a.b.c` and `a.b[0].c` mixed notation. Returns `undefined`
+ * for any segment that does not resolve.
+ */
+function getByPath(root, pathExpr) {
+    const tokens = tokenizePath(pathExpr);
     let cur = root;
     for (const t of tokens) {
         if (cur === null || cur === undefined)
@@ -22081,6 +22651,96 @@ function getByPath(root, pathExpr) {
     }
     return cur;
 }
+/**
+ * Set a value at a dot/bracket path on `root`, mutating and returning it.
+ *
+ * Intermediate object keys that are missing are created as plain objects so a
+ * brand-new top-level variable (e.g. `{{deadline}}`) can be defined. Existing
+ * scalar leaves are overwritten. Returns `false` (and makes no change) when the
+ * path traverses through an array index or a non-object value that can't be
+ * safely created/updated — callers should surface a "use the full editor"
+ * message in that case.
+ */
+function setByPath(root, pathExpr, value) {
+    const tokens = tokenizePath(pathExpr);
+    if (tokens.length === 0)
+        return false;
+    // Only support object-key paths for in-place editing; array creation/indexing
+    // is out of scope for the lightweight double-click editor.
+    if (tokens.some((t) => /^\d+$/.test(t)))
+        return false;
+    let cur = root;
+    for (let i = 0; i < tokens.length - 1; i++) {
+        const t = tokens[i];
+        const next = cur[t];
+        if (next === undefined || next === null) {
+            const created = {};
+            cur[t] = created;
+            cur = created;
+        }
+        else if (typeof next === "object" && !Array.isArray(next)) {
+            cur = next;
+        }
+        else {
+            // would have to overwrite a scalar/array with an object — refuse
+            return false;
+        }
+    }
+    cur[tokens[tokens.length - 1]] = value;
+    return true;
+}
+/**
+ * Render a resolved JSON value the way placeholders are substituted: `null`
+ * becomes the empty string, objects/arrays are JSON-stringified, everything
+ * else is coerced with `String`. Shared by the compile step and live rendering
+ * so previewed and compiled output agree.
+ */
+function formatPlaceholderValue(value) {
+    if (value === null || value === undefined)
+        return "";
+    if (typeof value === "object") {
+        try {
+            return JSON.stringify(value);
+        }
+        catch (_a) {
+            return String(value);
+        }
+    }
+    return String(value);
+}
+/**
+ * Parse the `json-file` option into a list of filenames. Accepts a single name
+ * or several separated by commas, semicolons, or newlines. A trailing `.json`
+ * is optional on each entry and normalized on. Order is preserved: later files
+ * win on key conflicts when merged.
+ */
+function parseJsonFileList(raw) {
+    return String(raw !== null && raw !== void 0 ? raw : "")
+        .split(/[,;\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .map((name) => (name.endsWith(".json") ? name : `${name}.json`));
+}
+/** True for a non-null, non-array object literal. */
+function isPlainObject$2(v) {
+    return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+/**
+ * Deep-merge two parsed JSON values. Plain objects are merged key-by-key
+ * (recursing on shared keys); everything else (scalars, arrays) from `b`
+ * overrides `a`. `undefined` in `b` leaves `a` untouched. Used to combine
+ * several data files (e.g. metadata.json + results.json) into one namespace.
+ */
+function deepMerge(a, b) {
+    if (isPlainObject$2(a) && isPlainObject$2(b)) {
+        const out = Object.assign({}, a);
+        for (const key of Object.keys(b)) {
+            out[key] = key in a ? deepMerge(a[key], b[key]) : b[key];
+        }
+        return out;
+    }
+    return b === undefined ? a : b;
+}
 /** Build a global regex matching `<start> path <end>` placeholders. */
 function buildPlaceholderRegex(startDelim, endDelim) {
     const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -22096,10 +22756,10 @@ const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
         options: [
             {
                 id: "json-file",
-                name: "JSON file",
-                description: "Filename of the JSON data file. Searched for in the draft's folder (or its 'source/' subfolder) and any parent folder up to the project root. Trailing '.json' is optional.",
+                name: "JSON file(s)",
+                description: "Filename(s) of the JSON data file(s). Separate several with commas — they are merged into one namespace, with later files winning on key conflicts (e.g. 'metadata.json, results.json'). Each is searched for in the draft's folder (or its 'source/' subfolder) and any parent folder up to the project root. Trailing '.json' is optional.",
                 type: CompileStepOptionType.Text,
-                default: "results.json",
+                default: "metadata.json, results.json",
             },
             {
                 id: "start-delim",
@@ -22130,34 +22790,47 @@ const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
             if (context.kind !== CompileStepKind.Manuscript) {
                 throw new Error("Cannot replace placeholders on non-manuscript.");
             }
-            const jsonFileName = String((_a = context.optionValues["json-file"]) !== null && _a !== void 0 ? _a : "results.json").trim();
+            const fileList = parseJsonFileList(String((_a = context.optionValues["json-file"]) !== null && _a !== void 0 ? _a : "metadata.json, results.json"));
             const startDelim = String((_b = context.optionValues["start-delim"]) !== null && _b !== void 0 ? _b : "{{");
             const endDelim = String((_c = context.optionValues["end-delim"]) !== null && _c !== void 0 ? _c : "}}");
             const errorOnMissing = Boolean(context.optionValues["error-on-missing"]);
-            const baseName = jsonFileName.endsWith(".json")
-                ? jsonFileName
-                : `${jsonFileName}.json`;
-            const candidatePaths = projectResourceCandidatePaths(context.projectPath, (_d = context.projectRoot) !== null && _d !== void 0 ? _d : context.projectPath, baseName);
-            let file = null;
-            let foundPath = "";
-            for (const path of candidatePaths) {
-                const f = context.app.vault.getAbstractFileByPath(path);
-                if (f instanceof obsidian.TFile) {
-                    file = f;
-                    foundPath = path;
-                    break;
+            if (fileList.length === 0) {
+                throw new Error("[Replace JSON Placeholders] No JSON file configured.");
+            }
+            // Resolve, read, and merge each file into one namespace. Files listed later
+            // win on key conflicts. A listed file that isn't found is skipped (unless
+            // none of them are found, which is an error).
+            let data = {};
+            const foundNames = [];
+            const searchedFor = [];
+            for (const baseName of fileList) {
+                const candidatePaths = projectResourceCandidatePaths(context.projectPath, (_d = context.projectRoot) !== null && _d !== void 0 ? _d : context.projectPath, baseName);
+                searchedFor.push(`${baseName} (${candidatePaths.join(" or ")})`);
+                let file = null;
+                let foundPath = "";
+                for (const path of candidatePaths) {
+                    const f = context.app.vault.getAbstractFileByPath(path);
+                    if (f instanceof obsidian.TFile) {
+                        file = f;
+                        foundPath = path;
+                        break;
+                    }
                 }
+                if (!file)
+                    continue;
+                const raw = yield context.app.vault.cachedRead(file);
+                let parsed;
+                try {
+                    parsed = JSON.parse(raw);
+                }
+                catch (e) {
+                    throw new Error(`[Replace JSON Placeholders] Invalid JSON in ${foundPath}: ${e.message}`);
+                }
+                data = deepMerge(data, parsed);
+                foundNames.push(foundPath);
             }
-            if (!file) {
-                throw new Error(`[Replace JSON Placeholders] JSON file not found at ${candidatePaths.join(" or ")}`);
-            }
-            const raw = yield context.app.vault.cachedRead(file);
-            let data;
-            try {
-                data = JSON.parse(raw);
-            }
-            catch (e) {
-                throw new Error(`[Replace JSON Placeholders] Invalid JSON in ${foundPath}: ${e.message}`);
+            if (foundNames.length === 0) {
+                throw new Error(`[Replace JSON Placeholders] None of the configured JSON files were found. Searched for: ${searchedFor.join("; ")}`);
             }
             const pattern = buildPlaceholderRegex(startDelim, endDelim);
             const replaced = input.contents.replace(pattern, (match, rawPath) => {
@@ -22169,19 +22842,1651 @@ const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
                     }
                     return match;
                 }
-                if (value === null)
-                    return "";
-                if (typeof value === "object") {
-                    try {
-                        return JSON.stringify(value);
-                    }
-                    catch (_a) {
-                        return String(value);
-                    }
-                }
-                return String(value);
+                return formatPlaceholderValue(value);
             });
             return { contents: replaced };
+        });
+    },
+});
+
+/**
+ * Default vault-relative folder the Pandoc assets are downloaded into. Used as
+ * the fallback when the "Pandoc assets folder" setting is empty.
+ */
+const DEFAULT_ASSETS_DIR = "PaperBell/pandoc";
+/**
+ * Directories to add to PATH for the pandoc subprocess on macOS and Linux.
+ * Obsidian's GUI process does not inherit the login shell PATH there, so
+ * pandoc/xelatex/pandoc-crossref are otherwise not found (spawn ENOENT).
+ */
+const COMMON_BIN_DIRS = [
+    "/opt/homebrew/bin",
+    "/usr/local/bin",
+    "/usr/bin",
+    "/bin",
+    "/Library/TeX/texbin", // MacTeX: xelatex
+];
+/**
+ * Windows fallbacks, for an install that never made it onto PATH. Deliberately
+ * short: Windows processes *do* inherit PATH and every installer writes to it,
+ * so PATH is the real mechanism and this is only a safety net. Chasing vendor
+ * layouts here is a losing game — MiKTeX and TeX Live are absent on purpose
+ * (they add themselves to PATH, and TeX Live's directory carries a year).
+ */
+function windowsBinDirs(home) {
+    const P = path__namespace.win32;
+    const localAppData = P.join(home, "AppData", "Local");
+    return [
+        P.join(localAppData, "Pandoc"),
+        P.join("C:\\Program Files", "Pandoc"),
+        "C:\\ProgramData\\chocolatey\\bin",
+        P.join(home, "scoop", "shims"),
+        P.join(localAppData, "Microsoft", "WinGet", "Links"),
+    ];
+}
+/** The `path` flavour for this platform — `path.win32` semantics on Windows. */
+function flavour(env) {
+    return env.isWindows ? path__namespace.win32 : path__namespace.posix;
+}
+/**
+ * The `PlatformEnv` for the machine we're running on, plus the user's
+ * "Extra binary folders" setting. The single place that reads `process`/`os`,
+ * so every function above stays injectable and testable off-platform.
+ */
+function currentPlatformEnv(extraBinFolders) {
+    var _a;
+    return {
+        isWindows: process.platform === "win32",
+        home: os__namespace.homedir(),
+        envPath: (_a = process.env.PATH) !== null && _a !== void 0 ? _a : "",
+        extraDirs: splitDirList(extraBinFolders),
+    };
+}
+/**
+ * Split the "Extra binary folders" textarea: one folder per line. Unlike the
+ * bibliography list this does NOT split on commas — a Windows directory name
+ * may legally contain one.
+ */
+function splitDirList(raw) {
+    return (raw !== null && raw !== void 0 ? raw : "")
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+}
+function homeBinDirs(home, P) {
+    return [
+        P.join(home, ".local", "bin"),
+        P.join(home, ".cargo", "bin"),
+        P.join(home, "bin"),
+    ];
+}
+/**
+ * Every directory to search for binaries, in priority order: the user's own
+ * folders, the platform's install locations, home-relative bins, then PATH.
+ *
+ * PATH last but present — that omission is what made every Windows install
+ * fail, since there the process *does* inherit it and every installer writes
+ * to it.
+ */
+function binSearchDirs(env) {
+    const P = flavour(env);
+    const platformDirs = env.isWindows
+        ? windowsBinDirs(env.home)
+        : COMMON_BIN_DIRS;
+    return [
+        ...env.extraDirs,
+        ...platformDirs,
+        ...homeBinDirs(env.home, P),
+        ...env.envPath.split(P.delimiter),
+    ]
+        .map((d) => d.trim())
+        .filter((d) => d.length > 0);
+}
+/**
+ * Build a PATH string with the common binary dirs prepended (deduplicated),
+ * so a spawned pandoc can find itself and its own subprocesses (xelatex,
+ * pandoc-crossref) regardless of the GUI process's inherited PATH.
+ *
+ * The separator is the platform's, not a hardcoded ":" — on Windows the latter
+ * splits `C:\Program Files\Pandoc` into `C` and `\Program Files\Pandoc`, so
+ * pandoc's own lookups fail even when pandoc itself was found.
+ */
+function buildExecPath(env) {
+    const parts = binSearchDirs(env);
+    const seen = new Set();
+    const merged = [];
+    for (const p of parts) {
+        if (p && !seen.has(p)) {
+            seen.add(p);
+            merged.push(p);
+        }
+    }
+    return merged.join(flavour(env).delimiter);
+}
+/**
+ * Executable suffixes tried on Windows, where `pandoc` is `pandoc.exe` on disk.
+ * A practical subset of PATHEXT — `.cmd`/`.bat` cover shim-style installs
+ * (scoop, some npm-distributed tools).
+ */
+const WINDOWS_EXEC_SUFFIXES = ["", ".exe", ".cmd", ".bat"];
+/**
+ * Is this a path the user handed us, rather than a bare name to look up? Any
+ * separator settles it — including the forward-slash form Windows users type
+ * today as a workaround, which must keep working.
+ */
+function looksLikePath(name, isWindows) {
+    return name.includes("/") || (isWindows && name.includes("\\"));
+}
+/**
+ * Resolve a binary to an absolute path: honor an explicit path, else search the
+ * given dirs. `exists` is injected for testability. Returns null if not found.
+ *
+ * `isWindows` controls two things a Unix-only implementation gets wrong: the
+ * name on disk carries an extension, and an absolute path looks like
+ * `C:\…` rather than `/…`.
+ */
+function resolveBinary(name, exists, dirs, isWindows) {
+    if (!name)
+        return null;
+    const P = isWindows ? path__namespace.win32 : path__namespace.posix;
+    const suffixes = isWindows ? WINDOWS_EXEC_SUFFIXES : [""];
+    // A name that carries its own extension must not gain a second one.
+    const candidates = P.extname(name) ? [""] : suffixes;
+    if (looksLikePath(name, isWindows)) {
+        for (const suffix of candidates) {
+            if (exists(name + suffix))
+                return name + suffix;
+        }
+        return null;
+    }
+    for (const d of dirs) {
+        for (const suffix of candidates) {
+            const p = P.join(d, name + suffix);
+            if (exists(p))
+                return p;
+        }
+    }
+    return null;
+}
+function expandHome(p, home) {
+    if (!p)
+        return p;
+    if (p === "~")
+        return home;
+    if (p.startsWith("~/"))
+        return home + p.slice(1);
+    return p;
+}
+/**
+ * Resolve a user-supplied path: absolute / `~` as-is, otherwise relative to the
+ * vault base path. "Absolute" is platform-aware — `C:\Papers` is absolute on
+ * Windows, where a `startsWith("/")` test would call it relative and resolve it
+ * to `<vault>\C:\Papers`.
+ */
+function resolveUserPath(p, base, env) {
+    if (!p)
+        return p;
+    const P = flavour(env);
+    if (P.isAbsolute(p) || p.startsWith("~")) {
+        return P.resolve(expandHome(p, env.home));
+    }
+    return P.join(base, p);
+}
+/**
+ * Parse the leading `--- ... ---` YAML block for the flat scalar keys the export
+ * needs (acronym/date/csl/template/supplementary). Not a full YAML parser — only
+ * reads the keys buildPandocYaml emits.
+ */
+function parseExportFrontmatter(contents) {
+    const out = {};
+    const m = /^---\n([\s\S]*?)\n---/.exec(contents);
+    if (!m)
+        return out;
+    for (const line of m[1].split("\n")) {
+        const kv = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line);
+        if (!kv)
+            continue;
+        let val = kv[2].trim();
+        if (val === "")
+            continue;
+        if ((val.startsWith('"') && val.endsWith('"')) ||
+            (val.startsWith("'") && val.endsWith("'"))) {
+            val = val.slice(1, -1);
+        }
+        if (val === "true")
+            out[kv[1]] = true;
+        else if (val === "false")
+            out[kv[1]] = false;
+        else
+            out[kv[1]] = val;
+    }
+    return out;
+}
+/**
+ * Does the manuscript body contain real bibliography citations (`[@key]` or a
+ * bare `@key`)? Used to decide whether a bibliography is required — without one,
+ * citeproc emits `\citeproc` commands the LaTeX template can't typeset and the
+ * PDF fails. The leading YAML frontmatter is ignored, and pandoc-crossref
+ * references (`@fig:`, `@tbl:`, `@eq:`, `@sec:`, `@lst:`, `@thm:`) are excluded,
+ * as is `a@b.com`-style text (an `@` preceded by an alphanumeric).
+ */
+function hasCitations(contents) {
+    const body = contents.replace(/^---\n[\s\S]*?\n---/, "");
+    return /(?:^|[^A-Za-z0-9_@])@(?!(?:fig|tbl|eq|sec|lst|thm)s?:)[A-Za-z0-9_][\w:.#$-]*/u.test(body);
+}
+/**
+ * Substitute `{var}` tokens in an output file-name pattern from `vars` (e.g.
+ * `{acronym}_{date}` → `PBMIN_2026-07-01`). Unknown tokens are left literally so
+ * a typo stays visible in the resulting name rather than silently vanishing.
+ */
+function renderFilenamePattern(pattern, vars) {
+    return pattern.replace(/\{(\w+)\}/g, (m, key) => Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : m);
+}
+/**
+ * Make a string safe as a file name: drop path separators and characters
+ * illegal on common filesystems, collapse whitespace, and strip leading dots
+ * (no accidental hidden files). Falls back to "manuscript" if nothing is left.
+ */
+function sanitizeExportFilename(name) {
+    const cleaned = String(name)
+        .replace(/[/\\]+/g, "-")
+        // eslint-disable-next-line no-control-regex
+        .replace(/[:*?"<>|\u0000-\u001f]+/g, "-") // illegal / control chars (spaces kept)
+        .replace(/\s+/g, " ") // collapse whitespace runs
+        .replace(/^[.\-\s]+|[.\-\s]+$/g, "") // trim surrounding dots/dashes/space
+        .trim();
+    return cleaned || "manuscript";
+}
+/**
+ * Resolve the exported file's name: render the user's pattern (or fall back to
+ * `fallbackName` when the pattern is blank), sanitize it, and ensure exactly one
+ * `ext` extension. `ext` comes from the Pandoc preset — see
+ * {@link exportTargetForDefaults} — so a `to: docx` preset yields `.docx`.
+ */
+function buildExportFilename(pattern, vars, fallbackName, ext = ".pdf") {
+    const rendered = pattern.trim()
+        ? renderFilenamePattern(pattern.trim(), vars)
+        : fallbackName;
+    const base = sanitizeExportFilename(rendered);
+    return base.toLowerCase().endsWith(ext.toLowerCase()) ? base : base + ext;
+}
+/**
+ * Extensions we recognize as "this path names a file, not a folder". Used to
+ * decide whether the "Pandoc output folder" setting is really a full output
+ * path. Without a set like this, `~/Papers/out.docx` would be treated as a
+ * directory and `mkdirSync` would create a *folder* named `out.docx`.
+ */
+const EXPORT_EXTENSIONS = new Set([
+    ".pdf",
+    ".docx",
+    ".odt",
+    ".pptx",
+    ".html",
+    ".htm",
+    ".epub",
+    ".tex",
+    ".rtf",
+    ".md",
+    ".txt",
+]);
+/** Does this user-entered output path name a file rather than a folder? */
+function isFullOutputPath(p) {
+    return EXPORT_EXTENSIONS.has(path__namespace.extname((p !== null && p !== void 0 ? p : "").trim()).toLowerCase());
+}
+/**
+ * Pandoc writers that cannot emit a binary document directly — pandoc renders
+ * them through a PDF engine when the output file ends in `.pdf`. Everything
+ * else (docx, odt, pptx, …) produces its own format and *fails* if asked for
+ * `.pdf`: pandoc 3.x exits with "cannot produce pdf output from docx".
+ */
+const PDF_CAPABLE_WRITERS = new Set([
+    "latex",
+    "beamer",
+    "context",
+    "ms",
+    "typst",
+]);
+/** Writers whose conventional file extension differs from the format name. */
+const WRITER_EXTENSIONS = {
+    markdown: ".md",
+    markdown_strict: ".md",
+    gfm: ".md",
+    commonmark: ".md",
+    commonmark_x: ".md",
+    html5: ".html",
+    html4: ".html",
+    plain: ".txt",
+    revealjs: ".html",
+    slidy: ".html",
+    slideous: ".html",
+    dzslides: ".html",
+    s5: ".html",
+};
+/**
+ * A scalar value read out of a defaults preset, defensively cleaned.
+ *
+ * The shipped presets carry trailing `#!` comments on the very keys read here
+ * (`pdf-engine: xelatex    #! use xelatex to support CJK`). A conforming YAML
+ * parser strips those, but getting it wrong would turn a working preset's
+ * engine into an unresolvable binary name and make preflight reject an export
+ * that used to succeed — too costly to leave to trust. Mirrors YAML's rule that
+ * a `#` only opens a comment when preceded by whitespace, so paths keep their
+ * spaces. Also drops quoting and any stray `\r` from CRLF files.
+ */
+function scalar(value) {
+    if (typeof value !== "string")
+        return "";
+    return value
+        .replace(/\s+#.*$/, "")
+        .trim()
+        .replace(/^["']|["']$/g, "")
+        .trim();
+}
+/** The bare writer name: drop pandoc's `+ext`/`-ext` syntax and any quoting. */
+function baseWriterName(raw) {
+    return scalar(raw).split(/[+-]/)[0].trim().toLowerCase();
+}
+/**
+ * What a Pandoc defaults preset actually produces, read off its parsed YAML.
+ *
+ * Extension resolution, in order:
+ *  1. `to:` names a writer that emits its own binary/text format (docx, odt,
+ *     pptx, epub, …) — use that writer's extension and ignore `output-file`,
+ *     since asking pandoc for `.pdf` there is a hard error.
+ *  2. `to:` names a PDF-capable writer (latex, beamer, …) — honor an explicit
+ *     `output-file` extension (the author may really want `.tex`), else `.pdf`.
+ *  3. No `to:` — use `output-file`'s extension, else `.pdf`.
+ *
+ * Unknown writer names fall back to using the format name as the extension
+ * (`to: rst` → `.rst`), which ages better than an exhaustive table.
+ *
+ * `pdfEngine` and `needsCrossref` ride along because the caller needs them for
+ * the same preflight check and they come from the same parse.
+ */
+function exportTargetForDefaults(parsed) {
+    var _a;
+    const doc = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
+        ? parsed
+        : {};
+    const pdfEngine = scalar(doc["pdf-engine"]) || null;
+    const filters = Array.isArray(doc["filters"]) ? doc["filters"] : [];
+    const needsCrossref = filters.some((f) => scalar(f).toLowerCase().endsWith("pandoc-crossref"));
+    const outputExt = path__namespace.extname(scalar(doc["output-file"])).toLowerCase();
+    const to = baseWriterName(scalar(doc["to"]));
+    // A writer that emits its own format wins outright; asking pandoc for .pdf
+    // there is a hard error, so an `output-file: out.pdf` left over in the preset
+    // must not override it. Otherwise the author's `output-file` decides.
+    const ext = to && !PDF_CAPABLE_WRITERS.has(to)
+        ? (_a = WRITER_EXTENSIONS[to]) !== null && _a !== void 0 ? _a : `.${to}`
+        : outputExt || ".pdf";
+    return { ext, pdfEngine, needsCrossref };
+}
+/** Output formats the built-in, preset-free export can produce. */
+const BUILTIN_FORMATS = ["pdf", "docx", "html"];
+function isBuiltinFormat(value) {
+    return BUILTIN_FORMATS.indexOf(value) !== -1;
+}
+/**
+ * Which preset-free format to export in, if any — `null` means "use a preset".
+ *
+ * Only the step's own *Template / preset* dropdown outranks the *Format* option:
+ * both are explicit choices made in the same step, and naming a preset there is
+ * the more specific of the two. The `template:` key in the exported note's
+ * frontmatter deliberately does **not** appear here. It is inherited, not chosen
+ * — Add Zenodo Frontmatter copies it out of `metadata.json`, and every scaffolded
+ * PaperBell project has one — so letting it win made an explicit "Format: docx"
+ * silently produce a PDF.
+ *
+ * The PaperBell pipelines are unaffected: they leave Format blank, so a missing
+ * preset still fails loudly instead of dropping their submission layout.
+ */
+function resolveBuiltinFormat(optionTemplate, formatOption) {
+    if (optionTemplate.trim()) {
+        return null;
+    }
+    const format = formatOption.trim();
+    return isBuiltinFormat(format) ? format : null;
+}
+const BUILTIN_FROM_BASE = "markdown+tex_math_single_backslash+wikilinks_title_after_pipe" +
+    "+autolink_bare_uris+pipe_tables";
+/**
+ * The markdown dialect the built-in export reads: the same `from:` the
+ * downloaded presets declare, so a note exports much the same either way —
+ * `[[wikilinks]]` and `\(x\)` are Obsidian syntax that plain `markdown` passes
+ * through as literal text.
+ *
+ * PDF is the exception and omits `+mark`. Pandoc renders `==highlight==` into
+ * LaTeX via the `soul` package, whose `\hl` cannot break CJK: it aborts the
+ * whole run with "Package soul Error: Reconstruction failed" and writes no
+ * file. Dropping the extension costs a literal `==…==` in the PDF; keeping it
+ * costs every CJK note that highlights anything. docx and html mark up
+ * highlights natively, so they keep it.
+ */
+function builtinFrom(format) {
+    return format === "pdf" ? BUILTIN_FROM_BASE : BUILTIN_FROM_BASE + "+mark";
+}
+const BUILTIN_EXTENSIONS = {
+    pdf: ".pdf",
+    docx: ".docx",
+    html: ".html",
+};
+/**
+ * What the built-in export produces. Only PDF needs an engine, and nothing here
+ * needs pandoc-crossref — `@fig:` references are a preset feature.
+ */
+function builtinExportTarget(format) {
+    return {
+        ext: BUILTIN_EXTENSIONS[format],
+        // Resolved by the caller against what's actually installed; xelatex is the
+        // only common engine that can typeset CJK.
+        pdfEngine: format === "pdf" ? "xelatex" : null,
+        needsCrossref: false,
+    };
+}
+/** CJK ideographs, kana and hangul — the ranges pdflatex cannot typeset. */
+const CJK_RANGE = /[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]/;
+function hasCjk(text) {
+    return CJK_RANGE.test(text);
+}
+/**
+ * A CJK font to hand xelatex, chosen so it ships with the platform: naming a
+ * font that isn't installed makes xelatex fail outright and write nothing, so
+ * this must never be a guess. Callers only pass it when the document actually
+ * contains CJK and the note doesn't name its own `CJKmainfont`.
+ */
+function defaultCjkFont(platform) {
+    if (platform === "darwin")
+        return "Songti SC";
+    if (platform === "win32")
+        return "SimSun";
+    return "Noto Sans CJK SC";
+}
+/**
+ * Split a user-entered bibliography list into individual paths. Accepts commas
+ * and/or newlines as separators; blank entries are dropped. Used for the
+ * vault-wide "Global bibliography" setting, which may name more than one .bib.
+ */
+function splitBibList(raw) {
+    return (raw !== null && raw !== void 0 ? raw : "")
+        .split(/[\n,]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+}
+/**
+ * The BibTeX cite keys declared in a `.bib` file's text — the `key` in
+ * `@article{key, …}`. Skips `@string`/`@preamble`/`@comment`, which aren't
+ * reference entries. Used to warn about keys that collide across merged bibs.
+ */
+function extractCiteKeys(bib) {
+    const keys = [];
+    const re = /@(\w+)\s*\{\s*([^,\s}]+)/g;
+    let m;
+    while ((m = re.exec(bib))) {
+        const type = m[1].toLowerCase();
+        if (type === "string" || type === "preamble" || type === "comment") {
+            continue;
+        }
+        keys.push(m[2]);
+    }
+    return keys;
+}
+/**
+ * Cite keys defined in more than one of the given bib files. pandoc silently
+ * lets the LAST `--bibliography` win on a collision, so we surface these so the
+ * user knows an override happened. `paths` is in the order given; the winner is
+ * the last one (each file is counted once per key).
+ */
+function findDuplicateCiteKeys(bibs) {
+    var _a;
+    const byKey = new Map();
+    for (const { path: p, content } of bibs) {
+        const seen = new Set();
+        for (const key of extractCiteKeys(content)) {
+            if (seen.has(key))
+                continue;
+            seen.add(key);
+            byKey.set(key, [...((_a = byKey.get(key)) !== null && _a !== void 0 ? _a : []), p]);
+        }
+    }
+    const dups = [];
+    for (const [key, paths] of byKey) {
+        if (paths.length > 1)
+            dups.push({ key, paths });
+    }
+    return dups;
+}
+/**
+ * Determine a single common top-level directory shared by every entry (e.g. the
+ * `repo-main/` wrapper GitHub adds to source zipballs), so it can be stripped on
+ * extraction. Returns "" when entries live at the archive root (a clean release
+ * asset with `defaults/`, `csl/`, … at the top).
+ */
+function commonTopDir(paths) {
+    if (paths.length === 0)
+        return "";
+    const first = paths[0].split("/")[0] + "/";
+    return paths.every((p) => p.startsWith(first)) ? first : "";
+}
+/** Normalize a CSL style id: drop any `.csl` suffix and path separators. */
+function normalizeCslId(csl) {
+    return (csl || "")
+        .trim()
+        .replace(/\.csl$/i, "")
+        .replace(/[\\/]/g, "");
+}
+/**
+ * Zotero's default styles directory. Zotero stores every installed CSL style as
+ * `<dataDir>/styles/<id>.csl`, and its default data dir is `~/Zotero` on every
+ * platform. (A relocated data dir isn't auto-detected.)
+ */
+function zoteroStylesDir(home) {
+    return path__namespace.join(home, "Zotero", "styles");
+}
+/**
+ * Candidate raw URLs for a style in the official CSL styles repository
+ * (https://github.com/citation-style-language/styles). Independent styles live
+ * at the repo root; dependent styles under `dependent/`, so try both.
+ */
+function officialCslUrls(csl) {
+    const id = normalizeCslId(csl);
+    const raw = "https://raw.githubusercontent.com/citation-style-language/styles/master";
+    return [`${raw}/${id}.csl`, `${raw}/dependent/${id}.csl`];
+}
+/** Build the pandoc argument vector, mirroring PaperBell spec §11. */
+function buildPandocArgs(p) {
+    var _a, _b;
+    const args = [p.inputFile];
+    if (p.defaultsFile) {
+        args.push("--defaults=" + p.defaultsFile);
+    }
+    else if (p.builtin) {
+        // Everything a preset would have declared, spelled out. Nothing here reads
+        // a downloaded file, so this path works with pandoc alone.
+        args.push("--from=" + p.builtin.from, "--standalone");
+        if (p.builtin.format === "html") {
+            // Inline images and CSS so the .html is one shareable file. Pandoc
+            // rejects this flag for non-HTML writers.
+            args.push("--embed-resources");
+        }
+        if (p.builtin.pdfEngine) {
+            args.push("--pdf-engine=" + p.builtin.pdfEngine);
+        }
+        if (p.builtin.cjkFont) {
+            args.push("-V", "CJKmainfont=" + p.builtin.cjkFont);
+        }
+        if (p.builtin.citeproc) {
+            args.push("--citeproc");
+        }
+    }
+    if (p.cslFile) {
+        args.push("--csl=" + p.cslFile);
+    }
+    const resourcePaths = [
+        p.projectAbs,
+        path__namespace.join(p.projectAbs, "figs"),
+        path__namespace.join(p.projectAbs, "..", "figs"),
+    ].concat((_a = p.extraResourcePaths) !== null && _a !== void 0 ? _a : []);
+    const seen = new Set();
+    for (const dir of resourcePaths) {
+        if (dir && !seen.has(dir)) {
+            seen.add(dir);
+            args.push("--resource-path=" + dir);
+        }
+    }
+    for (const bib of (_b = p.bibliographies) !== null && _b !== void 0 ? _b : []) {
+        args.push("--bibliography=" + bib);
+    }
+    args.push("-o", p.outputPath);
+    return args;
+}
+
+/**
+ * Preset basenames that aren't user-selectable manuscript templates: `crossref`
+ * is an include fragment, `undefined` is the no-template fallback.
+ */
+const EXCLUDED = new Set(["crossref", "undefined"]);
+/**
+ * List the downloaded Pandoc presets — the basenames (without `.yaml`) of the
+ * files in `<assets>/defaults/`. Desktop only (needs Node fs to read outside the
+ * vault); returns `[]` on mobile or if the folder can't be read.
+ */
+function listPandocTemplates(app) {
+    var _a;
+    const adapter = app.vault.adapter;
+    if (!(adapter instanceof obsidian.FileSystemAdapter))
+        return [];
+    const settings = get_store_value(pluginSettings);
+    const assetsSetting = ((_a = settings === null || settings === void 0 ? void 0 : settings.pandocAssetsFolder) !== null && _a !== void 0 ? _a : "").trim() || DEFAULT_ASSETS_DIR;
+    const defaultsDir = path__namespace.join(resolveUserPath(assetsSetting, adapter.getBasePath(), currentPlatformEnv()), "defaults");
+    try {
+        return fs__namespace
+            .readdirSync(defaultsDir)
+            .filter((f) => f.endsWith(".yaml"))
+            .map((f) => f.slice(0, -".yaml".length))
+            .filter((name) => !EXCLUDED.has(name))
+            .sort();
+    }
+    catch (_b) {
+        return [];
+    }
+}
+/** Refresh the `pandocTemplates` store from the current assets folder. */
+function refreshPandocTemplates(app) {
+    pandocTemplates.set(listPandocTemplates(app));
+}
+
+function line(ok, label, detail) {
+    return `[${ok ? "✓" : "✗"}] ${label}` + (detail ? `\n       ${detail}` : "");
+}
+/**
+ * Resolve a CSL style into the assets `csl/` folder and return its absolute path,
+ * or null if it can't be found anywhere. Resolution order:
+ *   1. Already in the assets `csl/<id>.csl` (installed / synced) — used as-is.
+ *   2. Zotero's local styles dir (most users have Zotero, which ships hundreds of
+ *      styles) — copied into the assets folder so later runs are self-contained.
+ *   3. The official CSL styles repo — fetched and cached into the assets folder.
+ * Steps 2 and 3 mean the plugin's own marketplace no longer has to carry CSL.
+ */
+function ensureCsl(csl, cslDir, home) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const target = path__namespace.join(cslDir, csl + ".csl");
+        if (fs__namespace.existsSync(target))
+            return target;
+        // 2. Zotero's local styles directory.
+        const zoteroFile = path__namespace.join(zoteroStylesDir(home), csl + ".csl");
+        try {
+            if (fs__namespace.existsSync(zoteroFile)) {
+                fs__namespace.mkdirSync(cslDir, { recursive: true });
+                fs__namespace.copyFileSync(zoteroFile, target);
+                return target;
+            }
+        }
+        catch (e) {
+            console.warn(`[PaperOut] Could not copy CSL from Zotero (${zoteroFile}):`, e);
+        }
+        // 3. The official CSL styles repository.
+        for (const url of officialCslUrls(csl)) {
+            try {
+                const res = yield obsidian.requestUrl({ url, method: "GET" });
+                if (res.status >= 200 && res.status < 300 && res.text.includes("<style")) {
+                    fs__namespace.mkdirSync(cslDir, { recursive: true });
+                    fs__namespace.writeFileSync(target, res.text, "utf8");
+                    return target;
+                }
+            }
+            catch (e) {
+                // 404 / offline — try the next URL, then fall through to a clear error.
+            }
+        }
+        return null;
+    });
+}
+/**
+ * Help text for a preset that isn't installed. Lists what *is* installed, so the
+ * user can pick one instead of guessing — and names where the missing preset was
+ * requested from, since for a loose note it is usually the note's own
+ * `template:` frontmatter key rather than any project metadata.
+ */
+function missingPresetHelp(app, template, templateSource) {
+    const installed = listPandocTemplates(app);
+    const where = `The preset "${template}" comes from ${templateSource}.`;
+    if (installed.length === 0) {
+        return (`${where} No presets are installed yet. Run 'Set up Pandoc export' → Download assets, ` +
+            `or 'Browse Pandoc asset marketplace' to install one.`);
+    }
+    return (`${where} Installed presets: ${installed.join(", ")}. ` +
+        `Set \`template:\` in the note's frontmatter to one of them, choose one in this step's ` +
+        `Template / preset option, or install more from the Pandoc asset marketplace.`);
+}
+/**
+ * Extra `--resource-path` entries so images resolve for a note that isn't laid
+ * out like a project: the vault root (Obsidian's default attachment location)
+ * and the configured attachment folder. `getConfig` is undocumented, hence the
+ * loose typing and the guard.
+ */
+function attachmentResourcePaths(app, base) {
+    const paths = [base];
+    try {
+        const getConfig = app.vault.getConfig;
+        const configured = typeof getConfig === "function"
+            ? getConfig.call(app.vault, "attachmentFolderPath")
+            : null;
+        // "/" means the vault root; "./" means "next to the note", already covered.
+        if (typeof configured === "string" &&
+            configured &&
+            !configured.startsWith(".")) {
+            paths.push(path__namespace.join(base, configured.replace(/^\/+/, "")));
+        }
+    }
+    catch (e) {
+        console.warn("[Pandoc Export] Could not read the attachment folder:", e);
+    }
+    return paths;
+}
+const RunPandocExportStep = makeBuiltinStep({
+    id: "run-pandoc-export",
+    description: {
+        name: "Run Pandoc Export",
+        description: "Exports the compiled manuscript via Pandoc. With a preset, the output format follows it — most produce a PDF, a `to: docx` preset produces a Word file — and the downloaded Pandoc assets are required; run after Add Zenodo Frontmatter. Set Format instead to export with pandoc alone, needing nothing downloaded; leave both blank to fall back to the note's `template:` frontmatter. Desktop only. Run the 'Set up Pandoc export' command to check prerequisites.",
+        availableKinds: [CompileStepKind.Manuscript],
+        options: [
+            {
+                id: "template",
+                name: "Template / preset",
+                description: "Which downloaded Pandoc preset (defaults/*.yaml) to export with — e.g. a Manuscript vs. an SI layout. Wins over the Format option below. Leave blank to use the Format option, or, when that is blank too, the template from your project metadata (_longform.template).",
+                type: CompileStepOptionType.Dropdown,
+                dynamicChoices: "pandoc-templates",
+                emptyLabel: "(use metadata template)",
+                default: "",
+            },
+            {
+                id: "format",
+                name: "Format (no preset)",
+                description: "Export without any preset, using pandoc on its own — no downloaded assets needed. Word needs nothing but pandoc; PDF also needs a TeX engine (xelatex, for CJK). Setting this overrides the note's `template:` frontmatter; only the Template / preset option above wins over it. Leave blank to require a preset, as the PaperBell pipelines do.",
+                type: CompileStepOptionType.Dropdown,
+                choices: [...BUILTIN_FORMATS],
+                emptyLabel: "(require a preset)",
+                default: "",
+            },
+            {
+                id: "filename",
+                name: "File name",
+                description: "Name for the exported file. Variables: {title}, {acronym}, {date}, {csl}, {template}, {draft}. E.g. {acronym}_{date} → PBMIN_2026-07-01.pdf. The extension is added automatically and follows the preset or Format (.pdf, .docx, …). Leave blank to use the compiled manuscript's name.",
+                type: CompileStepOptionType.Text,
+                default: "",
+            },
+            {
+                id: "dry-run",
+                name: "Dry run",
+                description: "If checked, log the preflight checklist and the pandoc command instead of running it.",
+                type: CompileStepOptionType.Boolean,
+                default: false,
+            },
+            {
+                id: "open-after",
+                name: "Open after export",
+                description: "If checked, open the exported file with the system viewer.",
+                type: CompileStepOptionType.Boolean,
+                default: true,
+            },
+        ],
+    },
+    compile(input, context) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j;
+        return __awaiter(this, void 0, void 0, function* () {
+            if (context.kind !== CompileStepKind.Manuscript) {
+                throw new Error("Cannot run Pandoc export on non-manuscript.");
+            }
+            const adapter = context.app.vault.adapter;
+            if (!(adapter instanceof obsidian.FileSystemAdapter)) {
+                throw new Error("Pandoc export only works on Obsidian desktop (cannot resolve an absolute path).");
+            }
+            const base = adapter.getBasePath();
+            const settings = get_store_value(pluginSettings);
+            const platform = currentPlatformEnv(settings.pandocExtraBinFolders);
+            const home = platform.home;
+            // Assets folder: setting, else the default download location. Downloaded
+            // from a separate assets repo via "Set up Pandoc export"; not bundled.
+            const assetsSetting = ((_a = settings.pandocAssetsFolder) !== null && _a !== void 0 ? _a : "").trim() || DEFAULT_ASSETS_DIR;
+            const assetsAbs = resolveUserPath(assetsSetting, base, platform);
+            const defaultsDir = path__namespace.join(assetsAbs, "defaults");
+            const cslDir = path__namespace.join(assetsAbs, "csl");
+            const projectAbs = path__namespace.join(base, context.projectPath);
+            const fm = parseExportFrontmatter(input.contents);
+            const acronym = String(fm.acronym || context.draft.title || "manuscript");
+            const date = String(fm.date || new Date().toISOString().slice(0, 10));
+            // Both of this step's own options outrank the template named in the document
+            // being exported. That name comes from the document's own frontmatter, which
+            // is either what Add Zenodo Frontmatter wrote from metadata.json or — for a
+            // loose note — whatever the note itself declares. `templateSource` keeps
+            // that distinction so the preflight message can point at the right place.
+            const optionTemplate = String((_b = context.optionValues["template"]) !== null && _b !== void 0 ? _b : "").trim();
+            const fmTemplate = String((_c = fm.template) !== null && _c !== void 0 ? _c : "").trim();
+            // Preset-free mode, for Quick Export: pandoc on its own, no downloaded
+            // assets. See `resolveBuiltinFormat` for the precedence.
+            const formatOption = String((_d = context.optionValues["format"]) !== null && _d !== void 0 ? _d : "").trim();
+            const builtinFormat = resolveBuiltinFormat(optionTemplate, formatOption);
+            if (!builtinFormat && optionTemplate && formatOption) {
+                console.warn(`[Pandoc Export] Both a preset ("${optionTemplate}") and a Format ` +
+                    `("${formatOption}") are set on this step; the preset wins. Clear the ` +
+                    `Template / preset option to export with Format instead.`);
+            }
+            // Unused in built-in mode: no preset is read, and `{template}` must not
+            // expand to a name that had no effect on the output.
+            const template = builtinFormat
+                ? ""
+                : optionTemplate || fmTemplate || "undefined";
+            const templateSource = optionTemplate
+                ? "this step’s Template / preset option"
+                : fmTemplate
+                    ? "the `template:` key in the exported note’s frontmatter"
+                    : "the built-in default (no template was specified)";
+            const csl = String(fm.csl || "nature");
+            // Presets use ${.}/.. and relative paths that resolve inside the assets
+            // folder; a built-in export reads nothing from there and it may not exist.
+            const cwd = builtinFormat ? projectAbs : assetsAbs;
+            const dirs = binSearchDirs(platform);
+            const pandocBin = resolveBinary(((_e = settings.pandocBinary) !== null && _e !== void 0 ? _e : "pandoc").trim() || "pandoc", fs__namespace.existsSync, dirs, platform.isWindows);
+            const defaultsFile = builtinFormat
+                ? null
+                : path__namespace.join(defaultsDir, template + ".yaml");
+            // The assets folder is only a requirement when a preset is read out of it.
+            const assetsOk = !!builtinFormat || fs__namespace.existsSync(assetsAbs);
+            const defaultsOk = !defaultsFile || fs__namespace.existsSync(defaultsFile);
+            // What the preset actually produces, and what it needs to produce it. A
+            // `to: docx` preset must be written to a .docx path — pandoc 3.x exits with
+            // "cannot produce pdf output from docx" otherwise. Parsing is best-effort:
+            // a preset we can't read must not break an export that would have worked.
+            let target = {
+                ext: ".pdf",
+                pdfEngine: null,
+                needsCrossref: false,
+            };
+            if (builtinFormat) {
+                target = builtinExportTarget(builtinFormat);
+            }
+            else if (defaultsFile && defaultsOk) {
+                try {
+                    target = exportTargetForDefaults(obsidian.parseYaml(fs__namespace.readFileSync(defaultsFile, "utf8")));
+                }
+                catch (e) {
+                    console.warn(`[Pandoc Export] Could not read preset ${defaultsFile}; assuming PDF output.`, e);
+                }
+            }
+            // Only require the tools this preset actually asks for. A docx preset needs
+            // neither a TeX engine nor pandoc-crossref.
+            // A preset that produces a PDF without naming an engine leaves pandoc to
+            // default to pdflatex — still a hard requirement, so check for it too.
+            // Otherwise a missing engine escapes this checklist as a raw pandoc error.
+            const engineName = (_f = target.pdfEngine) !== null && _f !== void 0 ? _f : (target.ext === ".pdf" ? "pdflatex" : null);
+            // Built-in PDF asks for xelatex (the only common engine that typesets CJK)
+            // but settles for pdflatex, which is enough for a Latin-only note.
+            const engineBin = engineName
+                ? (_g = resolveBinary(engineName, fs__namespace.existsSync, dirs, platform.isWindows)) !== null && _g !== void 0 ? _g : (builtinFormat
+                    ? resolveBinary("pdflatex", fs__namespace.existsSync, dirs, platform.isWindows)
+                    : null)
+                : null;
+            const crossrefBin = target.needsCrossref
+                ? resolveBinary("pandoc-crossref", fs__namespace.existsSync, dirs, platform.isWindows)
+                : null;
+            const bibliographies = resolveBibliography(settings, context, base, platform);
+            const needsBib = hasCitations(input.contents);
+            const bibOk = !needsBib || bibliographies.length > 0;
+            // Resolve the CSL style: assets folder → Zotero's local styles → the official
+            // CSL repo (cached into the assets folder). So exports work even when the CSL
+            // isn't in the plugin's marketplace. Skipped entirely when the document has
+            // no citations — a plain note should not need a style, let alone a network
+            // round-trip, and `--csl` is omitted so pandoc never looks for one.
+            const resolvedCsl = needsBib ? yield ensureCsl(csl, cslDir, home) : null;
+            // Built-in mode never fails over a style: with `--citeproc` and no `--csl`,
+            // pandoc formats citations with its own default. Only pass a style we
+            // actually resolved, and treat the note's explicit `csl:` as a preference.
+            const cslFile = builtinFormat
+                ? resolvedCsl
+                : resolvedCsl !== null && resolvedCsl !== void 0 ? resolvedCsl : (needsBib ? path__namespace.join(cslDir, csl + ".csl") : null);
+            const cslOk = !!builtinFormat || !needsBib || !!resolvedCsl;
+            // pandoc silently lets the LAST --bibliography win on a duplicate cite key.
+            // Detect collisions across the merged bibs and warn — the project bib is
+            // listed last, so it is the winner (that is the intended override).
+            let bibDupWarning = "";
+            if (needsBib && bibliographies.length > 1) {
+                const loaded = bibliographies
+                    .map((p) => {
+                    try {
+                        return { path: p, content: fs__namespace.readFileSync(p, "utf8") };
+                    }
+                    catch (_a) {
+                        return null;
+                    }
+                })
+                    .filter((x) => x !== null);
+                const dups = findDuplicateCiteKeys(loaded);
+                if (dups.length > 0) {
+                    const detail = dups
+                        .map((d) => `  @${d.key}: in ${d.paths.join(" , ")} → using ${d.paths[d.paths.length - 1]}`)
+                        .join("\n");
+                    bibDupWarning =
+                        `${dups.length} cite key(s) defined in more than one .bib; ` +
+                            `pandoc uses the last (your project bib overrides the global):\n${detail}`;
+                    console.warn("[Pandoc Export] " + bibDupWarning);
+                    new obsidian.Notice(`PaperOut: ${dups.length} duplicate cite key(s) across bibliographies — ` +
+                        `the project bib wins. See console for the list.`, 8000);
+                }
+            }
+            const checklist = [
+                line(!!pandocBin, "pandoc — " + (pandocBin || "not found"), pandocBin
+                    ? ""
+                    : "Install pandoc, or set the Pandoc binary in PaperOut To-Authors settings. Run 'Set up Pandoc export' for help."),
+                line(assetsOk, "Pandoc assets folder — " +
+                    (builtinFormat ? "not needed (no preset)" : assetsAbs), assetsOk
+                    ? ""
+                    : "Assets not found. Run 'Set up Pandoc export' → Download assets, or set 'Pandoc assets folder' in settings."),
+                line(defaultsOk, "preset — " +
+                    (defaultsFile !== null && defaultsFile !== void 0 ? defaultsFile : `not used (built-in ${builtinFormat} export)`), defaultsOk ? "" : missingPresetHelp(context.app, template, templateSource)),
+                line(cslOk, "CSL style — " +
+                    (cslFile !== null && cslFile !== void 0 ? cslFile : (needsBib
+                        ? "not found — using pandoc's default style"
+                        : "not needed (no citations)")), cslOk
+                    ? ""
+                    : `csl is "${csl}" (from the exported note's frontmatter, or metadata _longform.csl). Not in the assets folder, in Zotero's styles (~/Zotero/styles/${csl}.csl), or the official CSL repo. Install Zotero's "${csl}" style, add csl/${csl}.csl, or set the csl to a valid style id (see github.com/citation-style-language/styles).`),
+                line(bibOk, "bibliography — " +
+                    (bibliographies.length
+                        ? bibliographies.join(", ")
+                        : needsBib
+                            ? "not found"
+                            : "not needed"), bibOk
+                    ? ""
+                    : "Your manuscript has [@citations] but no .bib was found. Add references.bib to the project, set a Bibliography path, or add a Global bibliography in settings."),
+                line(!engineName || !!engineBin, `PDF engine — ${engineName
+                    ? `${engineName}: ${engineBin || "not found"}`
+                    : builtinFormat
+                        ? `not needed (${builtinFormat} output)`
+                        : "not needed (this preset doesn’t build a PDF)"}`, !engineName || engineBin
+                    ? ""
+                    : builtinFormat
+                        ? "A PDF needs a TeX engine. Install MacTeX / TeX Live (macOS) or MiKTeX / TeX Live (Windows, Linux) — or set this step's Format to “docx”, which needs nothing but pandoc."
+                        : `The "${template}" preset declares pdf-engine: ${engineName}, which isn’t installed. Install MacTeX / TeX Live (macOS) or MiKTeX / TeX Live (Windows, Linux).`),
+                line(!target.needsCrossref || !!crossrefBin, "pandoc-crossref — " +
+                    (target.needsCrossref
+                        ? crossrefBin || "not found"
+                        : "not needed (not in this preset’s filters)"), !target.needsCrossref || crossrefBin
+                    ? ""
+                    : `The "${template}" preset runs pandoc-crossref for @fig / @tbl references, but it isn’t installed. Install it (macOS: brew install pandoc-crossref).`),
+            ];
+            // xelatex and pandoc-crossref are hard requirements only when the preset
+            // asks for them; without this, a missing engine surfaced as a raw pandoc
+            // error instead of this checklist.
+            const engineOk = !engineName || !!engineBin;
+            const crossrefOk = !target.needsCrossref || !!crossrefBin;
+            const hardOk = !!pandocBin &&
+                assetsOk &&
+                defaultsOk &&
+                cslOk &&
+                bibOk &&
+                engineOk &&
+                crossrefOk;
+            if (!hardOk) {
+                throw pandocSetupError("Pandoc export can't run yet — here's what it needs:\n\n" +
+                    checklist.join("\n") +
+                    "\n\nTip: run the 'Set up Pandoc export' command from the command palette for guided setup.");
+            }
+            // Output path. The directory comes from the "Pandoc output folder" setting
+            // (default = the project folder); the file name comes from the step's
+            // "File name" pattern ({title}/{acronym}/{date}/…), or the compiled
+            // manuscript's name when blank. A setting that names a file (any known
+            // export extension, not just .pdf) is honored as a full output path, but
+            // only when no File name pattern is given — and its extension is replaced
+            // with the one the preset actually produces, since pandoc fails outright on
+            // a mismatch.
+            let outputFolder = ((_h = settings.pandocOutputFolder) !== null && _h !== void 0 ? _h : "").trim();
+            if (outputFolder.indexOf("<") !== -1)
+                outputFolder = "";
+            const settingIsFullPath = !!outputFolder && isFullOutputPath(outputFolder);
+            const filenamePattern = String((_j = context.optionValues["filename"]) !== null && _j !== void 0 ? _j : "");
+            const draftName = context.draft.draftTitle || context.draft.title || "manuscript";
+            let outputPath;
+            if (settingIsFullPath && !filenamePattern.trim()) {
+                const asGiven = resolveUserPath(outputFolder, base, platform);
+                outputPath = path__namespace.join(path__namespace.dirname(asGiven), path__namespace.basename(asGiven, path__namespace.extname(asGiven)) + target.ext);
+            }
+            else {
+                const outDirAbs = settingIsFullPath
+                    ? path__namespace.dirname(resolveUserPath(outputFolder, base, platform))
+                    : outputFolder
+                        ? resolveUserPath(outputFolder, base, platform)
+                        : projectAbs;
+                const filename = buildExportFilename(filenamePattern, { title: String(fm.title || draftName), acronym, date, csl, template, draft: draftName }, draftName, target.ext);
+                outputPath = path__namespace.join(outDirAbs, filename);
+            }
+            const inputFile = path__namespace.join(projectAbs, ".longform-pandoc-export.md");
+            const args = buildPandocArgs({
+                inputFile,
+                defaultsFile,
+                cslFile,
+                projectAbs,
+                outputPath,
+                bibliographies,
+                // Obsidian files pasted attachments outside the note's own folder (vault
+                // root by default), so a loose note's images resolve only if we look there.
+                extraResourcePaths: attachmentResourcePaths(context.app, base),
+                builtin: builtinFormat
+                    ? {
+                        format: builtinFormat,
+                        from: builtinFrom(builtinFormat),
+                        pdfEngine: engineBin,
+                        // Naming a font that isn't installed makes xelatex fail outright,
+                        // so only when the note actually has CJK — and never over the
+                        // note's own `CJKmainfont:`, which pandoc already picks up as
+                        // document metadata.
+                        cjkFont: builtinFormat === "pdf" &&
+                            hasCjk(input.contents) &&
+                            !fm.CJKmainfont
+                            ? defaultCjkFont(process.platform)
+                            : null,
+                        citeproc: needsBib,
+                    }
+                    : null,
+            });
+            const env = Object.assign(Object.assign({}, process.env), { PATH: buildExecPath(platform) });
+            const dryRun = context.optionValues["dry-run"] === true;
+            if (dryRun) {
+                console.log("[Pandoc Export] DRY RUN — checklist:\n" +
+                    checklist.join("\n") +
+                    (bibDupWarning ? "\n\n⚠ " + bibDupWarning : "") +
+                    "\n\nWould run (cwd=" +
+                    cwd +
+                    "):\n" +
+                    [pandocBin].concat(args).join(" "));
+                return input;
+            }
+            // Ensure the output directory exists. Matters when exporting to a root
+            // folder outside the vault (settings' "Pandoc output folder") that may not
+            // have been created yet — otherwise pandoc's -o fails with a cryptic error.
+            const outputDir = path__namespace.dirname(outputPath);
+            try {
+                fs__namespace.mkdirSync(outputDir, { recursive: true });
+            }
+            catch (e) {
+                throw new Error("Could not create the Pandoc output folder:\n  " +
+                    outputDir +
+                    "\n\n" +
+                    e.message +
+                    "\n\nCheck the 'Pandoc output folder' setting in PaperOut To-Authors → Compile → Pandoc export.");
+            }
+            fs__namespace.writeFileSync(inputFile, input.contents, "utf8");
+            try {
+                yield new Promise((resolve, reject) => {
+                    child_process.execFile(pandocBin, args, { cwd, env }, (err, _stdout, stderr) => {
+                        if (err) {
+                            reject(new Error("pandoc failed:\n\n" +
+                                (stderr || err.message) +
+                                "\n\nCommand:\n" +
+                                [pandocBin].concat(args).join(" ")));
+                        }
+                        else {
+                            resolve();
+                        }
+                    });
+                });
+            }
+            finally {
+                try {
+                    fs__namespace.unlinkSync(inputFile);
+                }
+                catch (e) {
+                    // ignore cleanup errors
+                }
+            }
+            console.log("[Pandoc Export] Wrote", outputPath);
+            const openAfter = context.optionValues["open-after"] !== false && !context.suppressOpenAfter;
+            if (openAfter) {
+                try {
+                    // Electron shell; resolved at runtime, desktop only.
+                    window
+                        .require("electron")
+                        .shell.openPath(outputPath);
+                }
+                catch (e) {
+                    console.warn("[Pandoc Export] Could not open PDF:", e);
+                }
+            }
+            return input;
+        });
+    },
+});
+/**
+ * Resolve the bibliographies for `--bibliography`, merged so pandoc can draw
+ * citations from several `.bib` files at once. Ordered:
+ *
+ *   1. every existing vault-wide bib listed in `pandocGlobalBibliography`;
+ *   2. the project-specific bib — the configured `pandocBibliography` path if
+ *      set and present, else the nearest `references.bib`/`mybib.bib` searched
+ *      from the draft folder up to the project root.
+ *
+ * The project bib comes LAST on purpose: pandoc lets the last `--bibliography`
+ * win on duplicate cite keys, so a project's own entries override the global
+ * one(s). Returns `[]` when nothing is found.
+ */
+function resolveBibliography(settings, context, base, platform) {
+    var _a, _b;
+    const result = [];
+    // 1) vault-wide global bibliographies, in listed order
+    for (const entry of splitBibList(settings.pandocGlobalBibliography)) {
+        const abs = resolveUserPath(entry, base, platform);
+        if (fs__namespace.existsSync(abs) && !result.includes(abs)) {
+            result.push(abs);
+        }
+    }
+    // 2) project-specific bibliography, appended last so it wins on dupes
+    let projectBib = null;
+    const configured = ((_a = settings.pandocBibliography) !== null && _a !== void 0 ? _a : "").trim();
+    if (configured) {
+        const abs = resolveUserPath(configured, base, platform);
+        if (fs__namespace.existsSync(abs))
+            projectBib = abs;
+    }
+    else {
+        const root = (_b = context.projectRoot) !== null && _b !== void 0 ? _b : context.projectPath;
+        const names = ["references.bib", "mybib.bib"];
+        findProjectBib: for (const name of names) {
+            for (const rel of projectResourceCandidatePaths(context.projectPath, root, name)) {
+                const abs = path__namespace.join(base, rel);
+                if (fs__namespace.existsSync(abs)) {
+                    projectBib = abs;
+                    break findProjectBib;
+                }
+            }
+        }
+    }
+    if (projectBib && !result.includes(projectBib)) {
+        result.push(projectBib);
+    }
+    return result;
+}
+
+/** Keep only alphanumerics ("S1" stays, "\relax 1" → "1"). */
+function alnum(s) {
+    return s.replace(/[^A-Za-z0-9]/g, "");
+}
+/**
+ * Parse a xelatex `.aux` for the labels our pipeline emits:
+ *  - `\newlabel{msl-<id>}{{<line>}{<page>}…}` from lineno `\linelabel`s
+ *    (injected by manuscript_linelabel.lua / block_ids.lua under `-M mslabels`);
+ *    ids ending `-end` carry the end line, others the start line.
+ *  - `\newlabel{fig:<label>}{{<num>}…}` / `\newlabel{tbl:<label>}{{<num>}…}`.
+ */
+function parseAuxLabels(aux, onWarn) {
+    var _a, _b, _c;
+    const partial = {};
+    const mslRe = /\\newlabel\{msl-([\w-]+?)\}\{\{(\d+)\}\{(\d+)\}/g;
+    let m;
+    while ((m = mslRe.exec(aux)) !== null) {
+        const rawId = m[1];
+        const lineNo = parseInt(m[2], 10);
+        const page = parseInt(m[3], 10);
+        const isEnd = rawId.endsWith("-end");
+        const id = isEnd ? rawId.slice(0, -"-end".length) : rawId;
+        const entry = (_a = partial[id]) !== null && _a !== void 0 ? _a : { page };
+        if (isEnd)
+            entry.eline = lineNo;
+        else
+            entry.sline = lineNo;
+        entry.page = page;
+        partial[id] = entry;
+    }
+    const lines = {};
+    for (const id of Object.keys(partial)) {
+        const e = partial[id];
+        // A lone start/end means one `\linelabel` never reached the .aux — usually a
+        // filter regression (e.g. a paragraph-start `<!--ms:id-->` parsed as a block
+        // RawBlock and dropped, which manuscript_linelabel.lua's relocate() now
+        // handles). We still fill the missing side so the span yields a range, but we
+        // warn — a silent fill produces `sline == eline`, matching the vault
+        // `manuscript-lines.sh` one-sided guard. See docs: 回复信手稿引用规范 §4.
+        if ((e.sline == null) !== (e.eline == null)) {
+            onWarn === null || onWarn === void 0 ? void 0 : onWarn(`manuscript ref "${id}": only a ${e.sline != null ? "start" : "end"} ` +
+                `line label reached the .aux; start and end will be identical.`);
+        }
+        const sline = (_b = e.sline) !== null && _b !== void 0 ? _b : e.eline;
+        const eline = (_c = e.eline) !== null && _c !== void 0 ? _c : e.sline;
+        if (sline != null && eline != null) {
+            lines[id] = { sline, eline, page: e.page };
+        }
+    }
+    const figures = parseNumberLabels(aux, "fig");
+    const tables = parseNumberLabels(aux, "tbl");
+    return { lines, figures, tables };
+}
+function parseNumberLabels(aux, kind) {
+    const out = {};
+    const re = new RegExp("\\\\newlabel\\{(" + kind + ":[\\w:.-]+)\\}\\{\\{([^{}]+)\\}", "g");
+    let m;
+    while ((m = re.exec(aux)) !== null) {
+        const num = alnum(m[2]);
+        if (num)
+            out[m[1]] = num;
+    }
+    return out;
+}
+/**
+ * A `<!--ms:id-->` marker inside a figure caption produces no lineno label
+ * (`\linelabel` in `\caption` is dropped), so record the figure's number for
+ * that id instead. Scans the compiled markdown for
+ * `![caption …<!--ms:id-->… ](img){#fig:label}` and maps id → figure number.
+ */
+function captionSpanFigs(markdown, figures) {
+    const out = {};
+    // Image line: ![CAP](PATH){#fig:LABEL} — CAP is non-greedy up to the closing
+    // ] that precedes the (path){#fig:...}. Tolerant of parentheses in the path.
+    const imgRe = /!\[([^\]]*(?:<!--ms:[\w-]+-->)[^\]]*)\]\([^\n]*?\)\{#(fig:[\w:.-]+)\}/g;
+    let m;
+    while ((m = imgRe.exec(markdown)) !== null) {
+        const caption = m[1];
+        const label = m[2];
+        const num = figures[label];
+        if (!num)
+            continue;
+        const idRe = /<!--ms:([\w-]+)-->/g;
+        let idMatch;
+        while ((idMatch = idRe.exec(caption)) !== null) {
+            out[idMatch[1]] = { fig: num };
+        }
+    }
+    return out;
+}
+/**
+ * Merge freshly-harvested entries into an existing sidecar object. Incoming keys
+ * win; existing keys not present in `incoming` are kept — so a Manuscript run and
+ * an SI run accumulate their disjoint labels rather than clobbering each other.
+ */
+function mergeSidecar(existing, incoming) {
+    return Object.assign(Object.assign({}, existing), incoming);
+}
+/** Which line sidecar this pass writes to. Supplementary drafts get their own. */
+function lineSidecarName(isSupplementary) {
+    return isSupplementary ? "si-lines.json" : "manuscript-lines.json";
+}
+/**
+ * Is this compiled manuscript the Supplementary Information? The authoritative
+ * signal is the `supplementary: true` frontmatter key that the Supplementary
+ * Information step injects — replacing the vault's three divergent heuristics.
+ */
+function isSupplementaryFrontmatter(frontmatter) {
+    return frontmatter["supplementary"] === true;
+}
+/**
+ * pandoc args for the capture pass: same defaults/csl/resource-paths as the real
+ * export, but `-M mslabels=true` (turns `<!--ms:-->` into `\linelabel`s) and a
+ * standalone LaTeX output (`-t latex -s`) whose .aux we harvest — no PDF here.
+ */
+function buildCaptureArgs(p) {
+    var _a;
+    const args = [
+        p.inputFile,
+        "--defaults=" + p.defaultsFile,
+        "-M",
+        "mslabels=true",
+        "--csl=" + p.cslFile,
+        "--resource-path=" + p.projectAbs,
+        "--resource-path=" + path__namespace.join(p.projectAbs, "figs"),
+        "--resource-path=" + path__namespace.join(p.projectAbs, "..", "figs"),
+    ];
+    for (const bib of (_a = p.bibliographies) !== null && _a !== void 0 ? _a : []) {
+        args.push("--bibliography=" + bib);
+    }
+    args.push("-t", "latex", "-s", "-o", p.texOutput);
+    return args;
+}
+/**
+ * TEXINPUTS value so xelatex finds figures/templates when building the capture
+ * .tex outside the project folder. Trailing empty entry keeps the default paths.
+ */
+function buildTexInputs(projectAbs, assetsAbs) {
+    return [
+        projectAbs,
+        path__namespace.join(projectAbs, "figs"),
+        path__namespace.join(projectAbs, "..", "figs"),
+        path__namespace.join(assetsAbs, "templates"),
+        "", // keep default TEXINPUTS search
+    ].join(path__namespace.delimiter);
+}
+
+/** Read a JSON sidecar, tolerating a missing/invalid file (→ {}). */
+function readJsonSafe(p) {
+    try {
+        return JSON.parse(fs__namespace.readFileSync(p, "utf8"));
+    }
+    catch (_a) {
+        return {};
+    }
+}
+/** Write a sidecar with sorted keys + trailing newline (stable diffs). */
+function writeJsonSorted(p, obj) {
+    const sorted = {};
+    for (const k of Object.keys(obj).sort())
+        sorted[k] = obj[k];
+    fs__namespace.writeFileSync(p, JSON.stringify(sorted, null, 2) + "\n", "utf8");
+}
+function run(bin, args, cwd, env) {
+    return new Promise((resolve) => {
+        child_process.execFile(bin, args, { cwd, env }, (err, _stdout, stderr) => {
+            resolve({ ok: !err, stderr: stderr || (err ? err.message : "") });
+        });
+    });
+}
+const HarvestManuscriptLinesStep = makeBuiltinStep({
+    id: "harvest-manuscript-lines",
+    description: {
+        name: "Harvest Manuscript Line Numbers",
+        description: "After the manuscript PDF is built, runs a second Pandoc→XeLaTeX pass with mslabels to capture line/figure/table numbers for <!--ms:id--> spans into sidecar JSON, so a response letter can cite the manuscript with correct Page/Line. Desktop only; leaves the manuscript unchanged. Requires the manuscript's remove-comments step to keep HTML comments (so ms: markers survive).",
+        availableKinds: [CompileStepKind.Manuscript],
+        options: [
+            {
+                id: "enabled",
+                name: "Enabled",
+                description: "Uncheck to skip line-number harvesting (e.g. while drafting, to save the extra XeLaTeX pass).",
+                type: CompileStepOptionType.Boolean,
+                default: true,
+            },
+        ],
+    },
+    compile(input, context) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (context.kind !== CompileStepKind.Manuscript) {
+                throw new Error("Cannot harvest line numbers on non-manuscript.");
+            }
+            if (context.optionValues["enabled"] === false)
+                return input;
+            const adapter = context.app.vault.adapter;
+            if (!(adapter instanceof obsidian.FileSystemAdapter)) {
+                // Desktop-only; silently pass through on mobile (harvesting is optional).
+                return input;
+            }
+            // Harvesting is auxiliary to the PDF export: never fail the whole compile —
+            // surface problems as a Notice and pass the manuscript through unchanged.
+            try {
+                yield harvest(input, context, adapter.getBasePath());
+            }
+            catch (e) {
+                new obsidian.Notice("Harvest line numbers failed (response-letter refs may be stale): " +
+                    e.message, 10000);
+                console.error("[Harvest Lines]", e);
+            }
+            return input;
+        });
+    },
+});
+function harvest(input, context, base) {
+    var _a, _b;
+    return __awaiter(this, void 0, void 0, function* () {
+        const settings = get_store_value(pluginSettings);
+        const platform = currentPlatformEnv(settings.pandocExtraBinFolders);
+        const assetsSetting = ((_a = settings.pandocAssetsFolder) !== null && _a !== void 0 ? _a : "").trim() || DEFAULT_ASSETS_DIR;
+        const assetsAbs = resolveUserPath(assetsSetting, base, platform);
+        const defaultsDir = path__namespace.join(assetsAbs, "defaults");
+        const cslDir = path__namespace.join(assetsAbs, "csl");
+        const projectAbs = path__namespace.join(base, context.projectPath);
+        const fm = parseExportFrontmatter(input.contents);
+        const template = String(fm.template || "undefined");
+        const csl = String(fm.csl || "nature");
+        const isSI = isSupplementaryFrontmatter(fm);
+        const dirs = binSearchDirs(platform);
+        const pandocBin = resolveBinary(((_b = settings.pandocBinary) !== null && _b !== void 0 ? _b : "pandoc").trim() || "pandoc", fs__namespace.existsSync, dirs, platform.isWindows);
+        const xelatexBin = resolveBinary("xelatex", fs__namespace.existsSync, dirs, platform.isWindows);
+        if (!pandocBin || !xelatexBin) {
+            throw new Error("pandoc or xelatex not found on PATH.");
+        }
+        const defaultsFile = path__namespace.join(defaultsDir, template + ".yaml");
+        const cslFile = path__namespace.join(cslDir, csl + ".csl");
+        if (!fs__namespace.existsSync(defaultsFile) || !fs__namespace.existsSync(cslFile)) {
+            throw new Error(`missing preset/csl (${template}.yaml / ${csl}.csl).`);
+        }
+        const bibliographies = resolveBibliography(settings, context, base, platform);
+        const env = Object.assign(Object.assign({}, process.env), { PATH: buildExecPath(platform) });
+        const tmpDir = fs__namespace.mkdtempSync(path__namespace.join(os__namespace.tmpdir(), "longform-mslines-"));
+        const inputFile = path__namespace.join(projectAbs, ".longform-mslines-harvest.md");
+        const texOutput = path__namespace.join(tmpDir, "mslines.tex");
+        try {
+            fs__namespace.writeFileSync(inputFile, input.contents, "utf8");
+            // Pass 1: pandoc → standalone .tex with mslabels turned on.
+            const pandocArgs = buildCaptureArgs({
+                inputFile,
+                defaultsFile,
+                cslFile,
+                projectAbs,
+                texOutput,
+                bibliographies,
+            });
+            const p = yield run(pandocBin, pandocArgs, assetsAbs, env);
+            if (!p.ok || !fs__namespace.existsSync(texOutput)) {
+                throw new Error("pandoc capture pass failed: " + p.stderr.slice(0, 300));
+            }
+            // Pass 2+3: xelatex twice for a stable .aux (labels resolve on the 2nd run).
+            const xelatexEnv = Object.assign(Object.assign({}, env), { TEXINPUTS: buildTexInputs(projectAbs, assetsAbs) });
+            const xArgs = [
+                "-interaction=nonstopmode",
+                "-halt-on-error=false",
+                "-file-line-error",
+                "mslines.tex",
+            ];
+            yield run(xelatexBin, xArgs, tmpDir, xelatexEnv);
+            yield run(xelatexBin, xArgs, tmpDir, xelatexEnv);
+            const auxPath = path__namespace.join(tmpDir, "mslines.aux");
+            if (!fs__namespace.existsSync(auxPath)) {
+                throw new Error("XeLaTeX produced no .aux (see the manuscript for errors).");
+            }
+            const aux = fs__namespace.readFileSync(auxPath, "utf8");
+            const { lines, figures, tables } = parseAuxLabels(aux, (msg) => console.warn(`[PaperOut] harvest-manuscript-lines: ${msg}`));
+            // Caption-embedded spans get their figure number (no lineno label in captions).
+            const captionFigs = captionSpanFigs(input.contents, figures);
+            const allLines = Object.assign(Object.assign({}, lines), captionFigs);
+            // Merge into the project's sidecars (main & SI accumulate disjoint labels).
+            const linesFile = path__namespace.join(projectAbs, lineSidecarName(isSI));
+            writeJsonSorted(linesFile, mergeSidecar(readJsonSafe(linesFile), allLines));
+            const figFile = path__namespace.join(projectAbs, "figure-numbers.json");
+            writeJsonSorted(figFile, mergeSidecar(readJsonSafe(figFile), figures));
+            const tblFile = path__namespace.join(projectAbs, "table-numbers.json");
+            writeJsonSorted(tblFile, mergeSidecar(readJsonSafe(tblFile), tables));
+            new obsidian.Notice(`Harvested ${Object.keys(allLines).length} span(s), ${Object.keys(figures).length} figure(s)${isSI ? " (SI)" : ""}.`);
+        }
+        finally {
+            try {
+                fs__namespace.unlinkSync(inputFile);
+            }
+            catch (_c) {
+                /* ignore */
+            }
+            try {
+                fs__namespace.rmSync(tmpDir, { recursive: true, force: true });
+            }
+            catch (_d) {
+                /* ignore */
+            }
+        }
+    });
+}
+
+/**
+ * Helpers for the "Supplementary Information" compile step, which turns a
+ * compiled manuscript into an SI document. Kept pure (no Obsidian/Node imports)
+ * so they can be unit-tested directly.
+ */
+/**
+ * Raw-LaTeX block prepended to an SI document's body so figures and tables are
+ * numbered with an "S" prefix (S1, S2, …). Because each SI is compiled to its
+ * own PDF the counters start at zero, so no counter reset is needed — only the
+ * display format is redefined. This is the only mechanism that produces S-
+ * numbering; neither the template nor the Lua filters do it on their own.
+ */
+const SUPPLEMENTARY_PREAMBLE = [
+    "```{=latex}",
+    '%% Supplementary numbering: prefix figures/tables with "S" (S1, S2, …). SI-only',
+    "\\renewcommand{\\thefigure}{S\\arabic{figure}}",
+    "\\renewcommand{\\thetable}{S\\arabic{table}}",
+    "```",
+].join("\n");
+/** Quote a value as a YAML double-quoted string, escaping `\` and `"`. */
+function yamlDouble(s) {
+    return `"${String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+/** Split leading `--- … ---` frontmatter from the body. `yaml` is null if none. */
+function splitFrontmatter(contents) {
+    // Consume the closing `---`, its newline, and the single blank-line separator
+    // that add-zenodo-frontmatter writes (`---\n<yaml>---\n\n<body>`), so the body
+    // starts at real content.
+    const m = /^---\n([\s\S]*?)\n---\n?\n?/.exec(contents);
+    if (!m)
+        return { yaml: null, body: contents };
+    return { yaml: m[1], body: contents.slice(m[0].length) };
+}
+/** Read a flat scalar key's value from a YAML block, unquoting if needed. */
+function getYamlScalar(yaml, key) {
+    const m = new RegExp(`^${key}:\\s*(.*)$`, "m").exec(yaml);
+    if (!m)
+        return null;
+    let v = m[1].trim();
+    if ((v.startsWith('"') && v.endsWith('"')) ||
+        (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1).replace(/\\(["\\])/g, "$1");
+    }
+    return v;
+}
+/**
+ * Replace a flat scalar key's line with `key: "value"`, appending the key if it
+ * is not already present. Newlines in the value are collapsed to spaces so the
+ * result stays a valid single-line double-quoted scalar.
+ */
+function setYamlScalar(yaml, key, value) {
+    const flat = String(value).replace(/\s*\n\s*/g, " ").trim();
+    const re = new RegExp(`^${key}:\\s`);
+    const lines = yaml.split("\n");
+    let found = false;
+    const out = lines.map((l) => {
+        if (!found && re.test(l)) {
+            found = true;
+            return `${key}: ${yamlDouble(flat)}`;
+        }
+        return l;
+    });
+    if (!found)
+        out.push(`${key}: ${yamlDouble(flat)}`);
+    return out.join("\n");
+}
+/**
+ * Remove a top-level YAML key and any indented child lines that belong to it
+ * (e.g. a `keywords:` list). No-op if the key is absent.
+ */
+function removeYamlBlock(yaml, key) {
+    const keyRe = new RegExp(`^${key}:(\\s|$)`);
+    const out = [];
+    let skipping = false;
+    for (const l of yaml.split("\n")) {
+        if (skipping) {
+            if (/^\s/.test(l))
+                continue; // indented child → still part of the block
+            skipping = false; // dedented → block ended; fall through to keep this line
+        }
+        if (keyRe.test(l)) {
+            skipping = true;
+            continue;
+        }
+        out.push(l);
+    }
+    return out.join("\n");
+}
+/**
+ * Extract the titles of a document's top-level sections: the headings at the
+ * shallowest heading level present (so `#` when the doc uses `#`, else `##`, …).
+ * Headings inside fenced code blocks are ignored.
+ */
+function extractSectionTitles(body) {
+    const headings = [];
+    let inFence = false;
+    let fenceChar = "";
+    for (const line of body.split("\n")) {
+        const fence = /^\s*(`{3,}|~{3,})/.exec(line);
+        if (fence) {
+            const ch = fence[1][0];
+            if (!inFence) {
+                inFence = true;
+                fenceChar = ch;
+            }
+            else if (ch === fenceChar) {
+                inFence = false;
+            }
+            continue;
+        }
+        if (inFence)
+            continue;
+        const h = /^(#{1,6})\s+(.*\S)\s*$/.exec(line);
+        if (h) {
+            const text = h[2].replace(/\s+#+\s*$/, "").trim(); // drop trailing ### markers
+            if (text)
+                headings.push({ level: h[1].length, text });
+        }
+    }
+    if (headings.length === 0)
+        return [];
+    const min = Math.min(...headings.map((h) => h.level));
+    return headings.filter((h) => h.level === min).map((h) => h.text);
+}
+/** One-line abstract listing the SI's section titles (no AI, no metadata). */
+function summarizeSections(titles) {
+    const base = "This document provides supplementary information for the main manuscript";
+    return titles.length === 0
+        ? `${base}.`
+        : `${base}, comprising: ${titles.join("; ")}.`;
+}
+/**
+ * Transform a compiled manuscript into a Supplementary Information document:
+ *
+ * 1. Prepend the S-numbering raw-LaTeX block (figures/tables → S1, S2, …).
+ * 2. Retitle it `Supplementary Information for "<original title>"`.
+ * 3. Drop the `keywords:` block.
+ * 4. Replace the abstract with the manual one, else an auto-summary of the
+ *    section titles, else empty.
+ *
+ * When the input has no frontmatter, only step 1 is applied (there is nothing to
+ * retitle) so the step still produces valid S-numbered output.
+ */
+function transformToSupplementary(contents, opts = {}) {
+    var _a;
+    const { yaml, body } = splitFrontmatter(contents);
+    const manual = ((_a = opts.abstract) !== null && _a !== void 0 ? _a : "").trim();
+    const summarize = opts.summarizeSections !== false;
+    const abstract = manual
+        ? manual
+        : summarize
+            ? summarizeSections(extractSectionTitles(body))
+            : "";
+    if (yaml === null) {
+        return `${SUPPLEMENTARY_PREAMBLE}\n\n${body}`;
+    }
+    let y = yaml;
+    const title = getYamlScalar(y, "title");
+    if (title !== null) {
+        y = setYamlScalar(y, "title", `Supplementary Information for "${title}"`);
+    }
+    y = removeYamlBlock(y, "keywords");
+    y = setYamlScalar(y, "abstract", abstract);
+    return `---\n${y}\n---\n\n${SUPPLEMENTARY_PREAMBLE}\n\n${body}`;
+}
+
+const SupplementaryInfoStep = makeBuiltinStep({
+    id: "supplementary-info",
+    description: {
+        name: "Supplementary Information",
+        description: 'Turns the compiled manuscript into a Supplementary Information (SI) document: prefixes figures/tables with "S" (S1, S2, …), retitles it \'Supplementary Information for "<title>"\', drops keywords, and replaces the abstract. Add it after Add Zenodo Frontmatter (and before Save as Note / Run Pandoc Export) in an SI-only workflow.',
+        availableKinds: [CompileStepKind.Manuscript],
+        options: [
+            {
+                id: "abstract",
+                name: "Abstract",
+                description: "Custom abstract for the SI. Leave blank to auto-generate a one-line summary listing the document's top-level section headings (no AI, no metadata.json).",
+                type: CompileStepOptionType.MultilineText,
+                default: "",
+            },
+            {
+                id: "summarize-sections",
+                name: "Auto-summarize sections",
+                description: "When the Abstract above is blank, build the abstract from the top-level section headings. Uncheck to leave the abstract empty instead (e.g. to fill it in later).",
+                type: CompileStepOptionType.Boolean,
+                default: true,
+            },
+        ],
+    },
+    compile(input, context) {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            if (context.kind !== CompileStepKind.Manuscript) {
+                throw new Error("Cannot run Supplementary Information on a non-manuscript.");
+            }
+            return {
+                contents: transformToSupplementary(input.contents, {
+                    abstract: String((_a = context.optionValues["abstract"]) !== null && _a !== void 0 ? _a : ""),
+                    summarizeSections: context.optionValues["summarize-sections"] !== false,
+                }),
+            };
         });
     },
 });
@@ -22195,42 +24500,45 @@ const BUILTIN_STEPS = [
     RemoveLinksStep,
     RemoveStrikethroughsStep,
     ReplaceJsonPlaceholdersStep,
+    RunPandocExportStep,
+    HarvestManuscriptLinesStep,
     StripFrontmatterStep,
+    SupplementaryInfoStep,
     WriteToNoteStep,
 ];
 
 /* src/view/compile/add-step-modal/AddStepModal.svelte generated by Svelte v3.49.0 */
 
-function add_css$f(target) {
+function add_css$g(target) {
 	append_styles(target, "svelte-muo6j5", ".longform-steps-grid.svelte-muo6j5.svelte-muo6j5{display:grid;grid-template-columns:1fr 1fr;gap:var(--size-4-4);grid-auto-rows:auto}.longform-compile-step.svelte-muo6j5.svelte-muo6j5{cursor:pointer;grid-column:auto;grid-row:auto;background-color:var(--background-secondary);border:var(--size-2-1) solid var(--background-modifier-border);border-radius:var(--size-4-4);padding:var(--size-4-2)}.longform-compile-step.svelte-muo6j5.svelte-muo6j5:hover{border:var(--size-2-1) solid var(--text-accent);background-color:var(--background-modifier-form-field)}.longform-compile-step.svelte-muo6j5 h3.svelte-muo6j5{padding:var(--size-4-2) 0;margin:0}.longform-compile-step.svelte-muo6j5 .longform-step-kind-pill.svelte-muo6j5{background-color:var(--text-accent);color:var(--text-on-accent);border-radius:var(--radius-l);font-size:var(--font-smallest);font-weight:bold;padding:var(--size-4-1);margin-right:var(--size-4-1);height:var(--size-4-5)}");
 }
 
-function get_each_context$7(ctx, list, i) {
+function get_each_context$9(ctx, list, i) {
 	const child_ctx = ctx.slice();
 	child_ctx[8] = list[i];
 	return child_ctx;
 }
 
-function get_each_context_1$1(ctx, list, i) {
+function get_each_context_1$4(ctx, list, i) {
 	const child_ctx = ctx.slice();
 	child_ctx[11] = list[i];
 	return child_ctx;
 }
 
-function get_each_context_2(ctx, list, i) {
+function get_each_context_2$1(ctx, list, i) {
 	const child_ctx = ctx.slice();
 	child_ctx[8] = list[i];
 	return child_ctx;
 }
 
-function get_each_context_3(ctx, list, i) {
+function get_each_context_3$1(ctx, list, i) {
 	const child_ctx = ctx.slice();
 	child_ctx[11] = list[i];
 	return child_ctx;
 }
 
 // (31:10) {#each step.description.availableKinds as kind}
-function create_each_block_3(ctx) {
+function create_each_block_3$1(ctx) {
 	let span;
 	let t_value = formatStepKind(/*kind*/ ctx[11]) + "";
 	let t;
@@ -22255,7 +24563,7 @@ function create_each_block_3(ctx) {
 }
 
 // (27:4) {#each BUILTIN_STEPS as step}
-function create_each_block_2(ctx) {
+function create_each_block_2$1(ctx) {
 	let div1;
 	let h3;
 	let t0_value = /*step*/ ctx[8].description.name + "";
@@ -22273,7 +24581,7 @@ function create_each_block_2(ctx) {
 	let each_blocks = [];
 
 	for (let i = 0; i < each_value_3.length; i += 1) {
-		each_blocks[i] = create_each_block_3(get_each_context_3(ctx, each_value_3, i));
+		each_blocks[i] = create_each_block_3$1(get_each_context_3$1(ctx, each_value_3, i));
 	}
 
 	function click_handler() {
@@ -22329,12 +24637,12 @@ function create_each_block_2(ctx) {
 				let i;
 
 				for (i = 0; i < each_value_3.length; i += 1) {
-					const child_ctx = get_each_context_3(ctx, each_value_3, i);
+					const child_ctx = get_each_context_3$1(ctx, each_value_3, i);
 
 					if (each_blocks[i]) {
 						each_blocks[i].p(child_ctx, dirty);
 					} else {
-						each_blocks[i] = create_each_block_3(child_ctx);
+						each_blocks[i] = create_each_block_3$1(child_ctx);
 						each_blocks[i].c();
 						each_blocks[i].m(div0, t2);
 					}
@@ -22357,7 +24665,7 @@ function create_each_block_2(ctx) {
 }
 
 // (41:2) {#if $userScriptSteps}
-function create_if_block$d(ctx) {
+function create_if_block$e(ctx) {
 	let h2;
 	let t1;
 	let div;
@@ -22365,7 +24673,7 @@ function create_if_block$d(ctx) {
 	let each_blocks = [];
 
 	for (let i = 0; i < each_value.length; i += 1) {
-		each_blocks[i] = create_each_block$7(get_each_context$7(ctx, each_value, i));
+		each_blocks[i] = create_each_block$9(get_each_context$9(ctx, each_value, i));
 	}
 
 	return {
@@ -22396,12 +24704,12 @@ function create_if_block$d(ctx) {
 				let i;
 
 				for (i = 0; i < each_value.length; i += 1) {
-					const child_ctx = get_each_context$7(ctx, each_value, i);
+					const child_ctx = get_each_context$9(ctx, each_value, i);
 
 					if (each_blocks[i]) {
 						each_blocks[i].p(child_ctx, dirty);
 					} else {
-						each_blocks[i] = create_each_block$7(child_ctx);
+						each_blocks[i] = create_each_block$9(child_ctx);
 						each_blocks[i].c();
 						each_blocks[i].m(div, null);
 					}
@@ -22424,7 +24732,7 @@ function create_if_block$d(ctx) {
 }
 
 // (48:12) {#each step.description.availableKinds as kind}
-function create_each_block_1$1(ctx) {
+function create_each_block_1$4(ctx) {
 	let span;
 	let t_value = formatStepKind(/*kind*/ ctx[11]) + "";
 	let t;
@@ -22455,7 +24763,7 @@ function create_each_block_1$1(ctx) {
 }
 
 // (44:6) {#each $userScriptSteps as step}
-function create_each_block$7(ctx) {
+function create_each_block$9(ctx) {
 	let div1;
 	let h3;
 	let t0_value = /*step*/ ctx[8].description.name + "";
@@ -22473,7 +24781,7 @@ function create_each_block$7(ctx) {
 	let each_blocks = [];
 
 	for (let i = 0; i < each_value_1.length; i += 1) {
-		each_blocks[i] = create_each_block_1$1(get_each_context_1$1(ctx, each_value_1, i));
+		each_blocks[i] = create_each_block_1$4(get_each_context_1$4(ctx, each_value_1, i));
 	}
 
 	function click_handler_1() {
@@ -22530,12 +24838,12 @@ function create_each_block$7(ctx) {
 				let i;
 
 				for (i = 0; i < each_value_1.length; i += 1) {
-					const child_ctx = get_each_context_1$1(ctx, each_value_1, i);
+					const child_ctx = get_each_context_1$4(ctx, each_value_1, i);
 
 					if (each_blocks[i]) {
 						each_blocks[i].p(child_ctx, dirty);
 					} else {
-						each_blocks[i] = create_each_block_1$1(child_ctx);
+						each_blocks[i] = create_each_block_1$4(child_ctx);
 						each_blocks[i].c();
 						each_blocks[i].m(div0, t2);
 					}
@@ -22559,7 +24867,7 @@ function create_each_block$7(ctx) {
 	};
 }
 
-function create_fragment$g(ctx) {
+function create_fragment$h(ctx) {
 	let div1;
 	let p;
 	let t1;
@@ -22571,10 +24879,10 @@ function create_fragment$g(ctx) {
 	let each_blocks = [];
 
 	for (let i = 0; i < each_value_2.length; i += 1) {
-		each_blocks[i] = create_each_block_2(get_each_context_2(ctx, each_value_2, i));
+		each_blocks[i] = create_each_block_2$1(get_each_context_2$1(ctx, each_value_2, i));
 	}
 
-	let if_block = /*$userScriptSteps*/ ctx[0] && create_if_block$d(ctx);
+	let if_block = /*$userScriptSteps*/ ctx[0] && create_if_block$e(ctx);
 
 	return {
 		c() {
@@ -22617,12 +24925,12 @@ function create_fragment$g(ctx) {
 				let i;
 
 				for (i = 0; i < each_value_2.length; i += 1) {
-					const child_ctx = get_each_context_2(ctx, each_value_2, i);
+					const child_ctx = get_each_context_2$1(ctx, each_value_2, i);
 
 					if (each_blocks[i]) {
 						each_blocks[i].p(child_ctx, dirty);
 					} else {
-						each_blocks[i] = create_each_block_2(child_ctx);
+						each_blocks[i] = create_each_block_2$1(child_ctx);
 						each_blocks[i].c();
 						each_blocks[i].m(div0, null);
 					}
@@ -22639,7 +24947,7 @@ function create_fragment$g(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$d(ctx);
+					if_block = create_if_block$e(ctx);
 					if_block.c();
 					if_block.m(div1, null);
 				}
@@ -22658,7 +24966,7 @@ function create_fragment$g(ctx) {
 	};
 }
 
-function instance$g($$self, $$props, $$invalidate) {
+function instance$h($$self, $$props, $$invalidate) {
 	let $workflows;
 	let $selectedDraft;
 	let $currentWorkflow;
@@ -22692,7 +25000,7 @@ function instance$g($$self, $$props, $$invalidate) {
 class AddStepModal extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$g, create_fragment$g, safe_not_equal, {}, add_css$f);
+		init(this, options, instance$h, create_fragment$h, safe_not_equal, {}, add_css$g);
 	}
 }
 
@@ -22775,25 +25083,573 @@ class ConfirmActionModal extends obsidian.Modal {
     }
 }
 
-const ICON_NAME = "longform";
+// Unique to this fork so addIcon doesn't overwrite (or get overwritten by) the
+// original `longform` plugin's icon when both are enabled.
+const ICON_NAME = "paperout";
 const ICON_SVG = '<svg width="100" height="100" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg"><g clip-path="url(#clip0)"><path d="M56.8466 47.4236C57.1415 48.0004 57.7282 48.3336 58.3349 48.3336C58.5882 48.3336 58.8481 48.2752 59.0899 48.152C59.1882 48.102 68.9983 43.1186 73.8365 41.5903C74.7133 41.312 75.1998 40.3753 74.9215 39.4987C74.6447 38.622 73.7148 38.1337 72.8299 38.4104C67.7332 40.0221 57.99 44.9721 57.5767 45.1821C56.7566 45.5987 56.43 46.6022 56.8466 47.4236Z" fill="currentColor"/><path d="M58.3351 28.334C58.5884 28.334 58.8484 28.2756 59.0902 28.1523C59.1884 28.1023 68.9985 23.119 73.8367 21.5907C74.7135 21.3123 75.2 20.3756 74.9217 19.4991C74.6449 18.6223 73.715 18.134 72.8301 18.4108C67.7334 20.0225 57.9902 24.9725 57.5769 25.1824C56.757 25.599 56.4302 26.6023 56.8468 27.424C57.1417 28.0006 57.7284 28.334 58.3351 28.334Z" fill="currentColor"/><path d="M98.3326 25.0006C97.4109 25.0006 96.666 25.7473 96.666 26.6672V91.6667C96.666 94.4233 94.4227 96.6666 91.6661 96.6666H51.6664V92.8317C54.0964 91.9817 60.4263 90.0001 66.6663 90.0001C81.1845 90.0001 91.0428 93.2151 91.1411 93.2483C91.6426 93.4149 92.2028 93.3317 92.6411 93.0182C93.076 92.7049 93.3327 92.2016 93.3327 91.6665V18.334C93.3327 17.5524 92.7911 16.8757 92.0276 16.7073C92.0276 16.7073 90.721 16.4157 88.4876 16.0055C87.5858 15.8389 86.7144 16.4389 86.5476 17.3423C86.381 18.2489 86.9792 19.1172 87.8843 19.2838C88.736 19.4405 89.4493 19.5788 89.9993 19.6889V89.4517C86.2226 88.4616 77.8361 86.6667 66.6661 86.6667C59.4044 86.6667 52.2713 89.0517 50.0645 89.86C48.1027 88.9935 42.1729 86.6667 34.9995 86.6667C23.5195 86.6667 14.063 88.5601 9.99973 89.5218V19.6239C13.328 18.8055 23.158 16.6673 34.9995 16.6673C41.0762 16.6673 46.2877 18.5589 48.3328 19.4139V85.0001C48.3328 85.6001 48.6561 86.1552 49.1777 86.4501C49.6994 86.7468 50.3428 86.7384 50.8578 86.4284C51.0228 86.3302 67.536 76.4668 82.1925 71.5819C82.8741 71.3536 83.3325 70.7186 83.3325 70.0002V1.66738C83.3325 1.12071 83.0642 0.608992 82.6142 0.297471C82.1675 -0.0142452 81.5943 -0.0859243 81.0792 0.105871C67.7444 5.10739 54.2513 13.504 54.1162 13.5874C53.3361 14.0757 53.0978 15.104 53.5861 15.8841C54.0728 16.6641 55.1011 16.9024 55.8828 16.4141C56.006 16.3358 67.7444 9.03256 79.9992 4.10428V68.8071C68.6225 72.7604 56.7443 79.2154 51.666 82.1052V18.334C51.666 17.7024 51.3094 17.1257 50.7443 16.8425C50.4576 16.7009 43.6278 13.3341 34.9995 13.3341C19.9397 13.3341 8.36146 16.5925 7.87474 16.7323C7.15971 16.9356 6.66635 17.5907 6.66635 18.334V91.6669C6.66635 92.1885 6.91303 92.6819 7.32807 92.9969C7.62142 93.2186 7.97474 93.3337 8.33314 93.3337C8.48646 93.3337 8.63978 93.312 8.78977 93.2686C8.90481 93.237 20.4297 90.0003 34.9995 90.0003C41.0928 90.0003 46.2994 91.8969 48.3328 92.7485V96.6668H8.33314C5.57652 96.6668 3.33318 94.4235 3.33318 91.6669V26.6674C3.33318 25.7475 2.5865 25.0008 1.66659 25.0008C0.746674 25.0008 0 25.7475 0 26.6674V91.6669C0 96.2618 3.73825 100 8.33333 100H91.6661C96.261 100 99.9994 96.262 99.9994 91.6669V26.6674C99.9992 25.7473 99.2543 25.0006 98.3326 25.0006Z" fill="currentColor"/><path d="M56.8466 37.4237C57.1415 38.0005 57.7282 38.3337 58.3349 38.3337C58.5882 38.3337 58.8481 38.2753 59.0899 38.152C59.1882 38.102 68.9983 33.1187 73.8365 31.5904C74.7133 31.3121 75.1998 30.3753 74.9215 29.4988C74.6447 28.622 73.7148 28.1338 72.8299 28.4105C67.7332 30.0222 57.99 34.9722 57.5767 35.1821C56.7566 35.5987 56.43 36.6023 56.8466 37.4237Z" fill="currentColor"/><path d="M56.8466 57.4236C57.1415 58.0003 57.7282 58.3335 58.3349 58.3335C58.5882 58.3335 58.8481 58.2751 59.0899 58.1519C59.1882 58.1019 68.9983 53.1185 73.8365 51.5902C74.7133 51.3119 75.1998 50.3752 74.9215 49.4986C74.6447 48.6219 73.7148 48.1336 72.8299 48.4104C67.7332 50.0221 57.99 54.972 57.5767 55.182C56.7566 55.5986 56.43 56.6021 56.8466 57.4236Z" fill="currentColor"/><path d="M40.3801 30.9306C30.0886 28.5156 18.3936 31.5923 17.902 31.724C17.0137 31.9623 16.4854 32.8755 16.7237 33.7656C16.9237 34.5105 17.5969 35.0005 18.3321 35.0005C18.4754 35.0005 18.6203 34.9822 18.7655 34.9439C18.8772 34.9122 30.1371 31.9505 39.6204 34.1755C40.512 34.3839 41.4137 33.8288 41.6237 32.9322C41.8334 32.0373 41.2768 31.1406 40.3801 30.9306Z" fill="currentColor"/><path d="M40.3801 40.9305C30.0886 38.5173 18.3936 41.5923 17.902 41.7239C17.0137 41.9622 16.4854 42.8756 16.7237 43.7655C16.9237 44.5104 17.5969 45.0004 18.3321 45.0004C18.4754 45.0004 18.6203 44.9821 18.7655 44.9438C18.8772 44.9121 30.1371 41.9504 39.6204 44.1754C40.512 44.3838 41.4137 43.8288 41.6237 42.9321C41.8334 42.0372 41.2768 41.1405 40.3801 40.9305Z" fill="currentColor"/><path d="M56.8466 67.4235C57.1415 68.0003 57.7282 68.3335 58.3349 68.3335C58.5882 68.3335 58.8481 68.2751 59.0899 68.1518C59.1882 68.1018 68.9983 63.1185 73.8365 61.5902C74.7133 61.3118 75.1998 60.3751 74.9215 59.4986C74.6447 58.622 73.7148 58.1335 72.8299 58.4103C67.7332 60.022 57.99 64.972 57.5767 65.1819C56.7566 65.5985 56.43 66.602 56.8466 67.4235Z" fill="currentColor"/><path d="M40.3801 50.9305C30.0886 48.5172 18.3936 51.5904 17.902 51.7238C17.0137 51.9621 16.4854 52.8756 16.7237 53.7654C16.9237 54.5103 17.5969 55.0021 18.3321 55.0021C18.4754 55.0021 18.6203 54.9822 18.7655 54.9437C18.8772 54.9121 30.1371 51.9504 39.6204 54.1753C40.512 54.3837 41.4137 53.8287 41.6237 52.932C41.8334 52.0371 41.2768 51.1404 40.3801 50.9305Z" fill="currentColor"/><path d="M40.3801 70.9303C30.0886 68.5153 18.3936 71.592 17.902 71.7237C17.0137 71.9619 16.4854 72.8754 16.7237 73.7653C16.9237 74.5102 17.5969 75.002 18.3321 75.002C18.4754 75.002 18.6203 74.982 18.7655 74.9436C18.8772 74.9119 30.1371 71.9502 39.6204 74.1752C40.512 74.3818 41.4137 73.8285 41.6237 72.9319C41.8334 72.0369 41.2768 71.1403 40.3801 70.9303Z" fill="currentColor"/><path d="M40.3801 60.9304C30.0886 58.5154 18.3936 61.5903 17.902 61.7237C17.0137 61.962 16.4854 62.8755 16.7237 63.7653C16.9237 64.5102 17.5969 65.002 18.3321 65.002C18.4754 65.002 18.6203 64.9821 18.7655 64.9436C18.8772 64.912 30.1371 61.9503 39.6204 64.1753C40.512 64.3837 41.4137 63.8286 41.6237 62.9319C41.8334 62.037 41.2768 61.1403 40.3801 60.9304Z" fill="currentColor"/></g><defs><clipPath id="clip0"><rect width="100" height="100" fill="white"/></clipPath></defs></svg>';
+
+/**
+ * English message catalog — the source of truth for message keys. `zh.ts` must
+ * provide the same keys (enforced by `Messages` typing in `index.ts`).
+ *
+ * `{name}`-style placeholders are filled by the translator's `vars` argument.
+ */
+const en = {
+    // ── Commands (command palette) ──────────────────────────────────────────
+    "cmd.compileCurrent": "Compile current project with current workflow",
+    "cmd.compileProject": "Compile project…",
+    "cmd.setupPandoc": "Set up Pandoc export",
+    "cmd.openCurrentProject": "Open current note’s project",
+    "cmd.previousScene": "Previous scene",
+    "cmd.previousSceneAtIndent": "Previous scene at indent level",
+    "cmd.nextScene": "Next scene",
+    "cmd.nextSceneAtIndent": "Next scene at indent level",
+    "cmd.indentScene": "Indent scene",
+    "cmd.unindentScene": "Unindent scene",
+    "cmd.jumpToProject": "Jump to project",
+    "cmd.jumpToScene": "Jump to scene in current project",
+    "cmd.openPane": "Open PaperOut pane",
+    "cmd.revealProject": "Reveal current project in navigation",
+    "cmd.focusNewScene": "Focus new scene field",
+    "cmd.insertMultiScene": "Insert multi-scene frontmatter",
+    "cmd.insertSingleScene": "Insert single-scene frontmatter",
+    "cmd.startSession": "Start new writing session",
+    "cmd.markManuscriptSpan": "Mark manuscript reference span",
+    "cmd.insertManuscriptRef": "Insert manuscript reference",
+    "cmd.newPaperProject": "New PaperBell paper project…",
+    "cmd.convertToProject": "Convert project to single index…",
+    "cmd.openMarket": "Browse Pandoc asset marketplace",
+    // Prefix for the per-workflow commands, e.g. “Run workflow: PaperBell Manuscript”.
+    "cmd.runWorkflow": "Run workflow",
+    "cmd.addComponents": "Add paper components…",
+    // ── Notices & menus ─────────────────────────────────────────────────────
+    "notice.pdfExport": "PaperOut To-Authors: PDF export is available. Run “Set up Pandoc export” from the command palette to check prerequisites.",
+    "notice.goalMet": "Writing goal met!",
+    "notice.noActiveNote": "Open the markdown note you want to compile, then run this command again.",
+    "notice.workflowMissing": "No workflow named “{name}”.",
+    "notice.exportedOpenNoteOnly": "This workflow starts with a manuscript step, so only the open note was exported — not the whole draft.",
+    "menu.newPaperProject": "New PaperBell paper project…",
+    "menu.addComponents": "Add paper components…",
+    // ── Paper parts (new-project toggles + add-components modal) ─────────────
+    "parts.mainLabel": "Main Manuscript",
+    "parts.mainDesc": "The paper itself, as a multi-scene draft. Always created — it anchors the project folder that shared metadata is resolved against.",
+    "parts.supplementaryLabel": "Supplementary Information",
+    "parts.supplementaryDesc": "A separate draft whose figures and tables are numbered S1, S2, … via its own metadata.json.",
+    "parts.coverLabel": "Cover Letter",
+    "parts.coverDesc": "A single-file letter to the editor, exported through the moderncv letterhead.",
+    "parts.responseLabel": "Response Letter",
+    "parts.responseDesc": "A reply to reviewers that can quote the manuscript's live text and figure numbers.",
+    "scaffold.partsHeading": "Include",
+    "scaffold.examplesLabel": "Include example content",
+    "scaffold.examplesDesc": "An example figure and spreadsheet, referenced by the starter scenes, plus a README describing the layout. Turn off for a clean project.",
+    "components.title": "Add paper components",
+    "components.desc": "Add parts to “{title}”. Only the ones it doesn’t have yet are listed.",
+    "components.add": "Add",
+    "components.added": "Added: {names}.",
+    "components.noProject": "No PaperOut project found here.",
+    "components.allPresent": "“{title}” already has every paper component.",
+    "components.mixedForm": "This project mixes a single project index with standalone draft notes, so components can’t be added safely. Run “Convert project to single index…” first.",
+    "components.conflictTitle": "Nothing was created",
+    "components.conflictBody": "These files already exist, so no component was created. Remove or rename them and try again:",
+    "components.failed": "Could not add components",
+    "components.siProjectFormWarning": "Heads up: in a single-index project, the compile steps look for metadata.json next to the index, so the Supplementary’s own metadata.json (and its S-numbering) is not picked up yet.",
+    // ── New paper scaffold ──────────────────────────────────────────────────
+    "scaffold.title": "New PaperBell paper project",
+    "scaffold.desc": "Creates a paper project in a new folder named after the title: shared metadata, references, and the parts you select below. You can add the rest later.",
+    "scaffold.nameLabel": "Project title",
+    "scaffold.nameDesc": "Names the project folder and Longform project. Avoid : \\ and /.",
+    "scaffold.acronymLabel": "Acronym",
+    "scaffold.acronymDesc": "Short code used for the PDF name and labels. Defaults to the title’s initials; editable later in metadata.json.",
+    "scaffold.projectLabel": "PaperBell project",
+    "scaffold.projectDesc": "The research project this paper is a deliverable of — not the paper’s own acronym above. Written as a project: key in each draft’s frontmatter, which is how Project Manager counts a project’s outputs. Leave empty for none.",
+    "scaffold.projectPlaceholder": "e.g. ColMemo",
+    "scaffold.projectNone": "— No project —",
+    "scaffold.projectManual": "Enter manually…",
+    "scaffold.projectBackToList": "Choose from the project list instead",
+    "scaffold.create": "Create project",
+    "scaffold.invalidName": "Enter a project title without : \\ or / characters.",
+    "scaffold.created": "Created PaperBell project “{title}”.",
+    "scaffold.failed": "Could not create project: {error}",
+    // ── Compile matrix ──────────────────────────────────────────────────────
+    "matrix.title": "Compile All Drafts",
+    "matrix.drafts": "drafts",
+    "matrix.dryRun": "Dry run",
+    "matrix.openPdf": "Open PDFs",
+    "matrix.harvest": "Harvest lines",
+    "matrix.run": "Run",
+    "matrix.running": "Running…",
+    "matrix.skipped": "skipped",
+    "matrix.viewError": "View error",
+    "matrix.errorTitle": "Error",
+    "matrix.copyError": "Copy",
+    "matrix.errorCopied": "Error copied to clipboard.",
+    "matrix.finished": "Finished",
+    "matrix.workflow": "Compile workflow",
+    "matrix.clickStepHint": "Click a step to view or edit it.",
+    "matrix.noOptions": "This step has no options.",
+    "matrix.reorderHint": "Drag rows to set the compile order (top → bottom).",
+    // ── Pandoc asset marketplace ────────────────────────────────────────────
+    "market.title": "Pandoc asset marketplace",
+    "market.items": "items",
+    "market.search": "Search assets…",
+    "market.reload": "Reload",
+    "market.desktopNote": "You can browse and download on mobile, but the template list and PDF export need the desktop app.",
+    "market.loadError": "Couldn’t load the marketplace index.",
+    "market.empty": "No assets match your search.",
+    "market.bundles": "Bundles",
+    "market.assets": "Individual assets",
+    "market.assetsIncluded": "assets included",
+    "market.requires": "Requires",
+    "market.systemDeps": "System tools",
+    "market.unverified": "Unverified — its Lua runs on your machine.",
+    "market.back": "Back",
+    "market.clickForDetails": "Click for details & usage",
+    "market.readmeError": "Couldn’t load this asset’s docs.",
+    "market.noReadme": "This asset has no usage docs yet.",
+    // ── Set up Pandoc export ────────────────────────────────────────────────
+    "setup.title": "Set up Pandoc export",
+    "setup.intro": "PDF export needs three system tools plus the PaperBell Pandoc toolchain (filters, templates, CSL). Get the toolchain from the asset marketplace below, or paste a toolchain .zip URL.",
+    "setup.notFound": "not found",
+    "setup.optionalPdfEngine": "Optional — only needed by presets that build a PDF; a Word (`to: docx`) preset does not use it.",
+    "setup.optionalCrossref": "Optional — only needed by presets whose filters run pandoc-crossref for @fig / @tbl references.",
+    "setup.pdfEngine": "PDF engine",
+    "setup.assets": "Pandoc assets",
+    "setup.assetsOk": "defaults/ and csl/ found.",
+    "setup.assetsMissing": "Not downloaded yet. Install from the marketplace, or set the assets URL below.",
+    "setup.market.name": "Asset marketplace",
+    "setup.market.desc": "Browse and install recipes, filters, templates, and CSL styles — the easy way.",
+    "setup.market.button": "Browse marketplace…",
+    "setup.url.name": "Assets URL (advanced)",
+    "setup.url.desc": "Link to a toolchain .zip (a release asset). The marketplace above is the easier way.",
+    "setup.download.name": "Download / update assets",
+    "setup.download.desc": "Downloads and extracts the toolchain into {folder}. Your edits there survive plugin updates.",
+    "setup.download.button": "Download assets",
+    "setup.recheck": "Recheck",
+    "setup.copyReport": "Copy report",
+    "setup.copied": "Copied!",
+    "setup.done": "Done",
+    "setup.downloading": "Downloading Pandoc assets…",
+    "setup.downloaded": "Downloaded {count} asset files to {dest}.",
+    "setup.downloadFailed": "Assets download failed: {error}",
+    "market.install": "Install",
+    "market.update": "Update",
+    "market.installed": "Installed",
+    "market.reinstall": "Reinstall",
+    "market.uninstall": "Uninstall",
+    "market.uninstalling": "Uninstalling",
+    "market.uninstalled": "Uninstalled",
+    "market.confirmUninstall": "Remove “{name}”? Its files will be deleted from the assets folder (you can reinstall it later).",
+    "market.installing": "Installing…",
+    "market.installedNotice": "Installed",
+    "market.failed": "Failed:",
+    // ── Explorer pane ───────────────────────────────────────────────────────
+    "explorer.paneTitle": "PaperOut To-Authors",
+    "explorer.tab.scenes": "Scenes",
+    "explorer.tab.project": "Project",
+    "explorer.tab.compile": "Compile",
+    "explorer.migration.body1": "PaperOut To-Authors has been upgraded and requires a migration to a new format. Deprecated index files will be deleted, and some scene files may move. It’s recommended to back up your vault before migrating.",
+    "explorer.migration.body2Prefix": "You can view the docs and an explanation of what this migration does ",
+    "explorer.migration.body2Link": "here",
+    "explorer.migration.button": "Migrate",
+    "explorer.syncWaiting": "Waiting for Obsidian Sync to complete...",
+    "settings.renderError": "Something went wrong rendering these settings. Close and reopen this tab to try again — the details are in the developer console.",
+    // ── Settings: Language ──────────────────────────────────────────────────
+    "settings.language.heading": "Language",
+    "settings.language.name": "Display language",
+    "settings.language.desc": "Language for the PaperOut To-Authors interface. “Auto” follows PaperBell (when connected) or Obsidian’s language.",
+    "settings.language.auto": "Auto (follow PaperBell / Obsidian)",
+    "settings.language.en": "English",
+    "settings.language.zh": "中文",
+    // ── Settings: Composition ───────────────────────────────────────────────
+    "settings.composition.heading": "Composition",
+    "settings.sceneTemplate.name": "New scene template",
+    "settings.sceneTemplate.desc": "This file will be used as a template when creating new scenes via the New Scene… field. If you use a templating plugin (Templater or the core plugin) it will be used to process this template. This setting applies to all projects and can be overridden per-project in the Project > Project Metadata settings in the PaperOut pane.",
+    "settings.numberScenes.name": "Show scene numbers in Scenes tab",
+    "settings.numberScenes.desc": "If on, shows numbers for scenes with subscenes separated by periods, e.g. 1.1.2. Create subscenes by dragging a scene to an indent under an existing scene, or use an indent command.",
+    "settings.writeProperty.name": "Write scene index to frontmatter",
+    "settings.writeProperty.desc": "If enabled, will add a scene index, and scene number, to the frontmatter of scene files.",
+    // ── Settings: Compile ───────────────────────────────────────────────────
+    "settings.compile.heading": "Compile",
+    "settings.pandocExport.name": "Pandoc export",
+    "settings.pandocExport.desc": "Settings for the ‘Run Pandoc Export’ compile step. The Pandoc toolchain (filters, templates, CSL) is downloaded on demand, so most fields can stay empty.",
+    "settings.pandocExport.button": "Set up Pandoc export…",
+    "settings.market.name": "Pandoc asset marketplace",
+    "settings.market.desc": "Browse, download, and install Pandoc recipes, filters, templates, and CSL styles from the assets repository.",
+    "settings.market.button": "Browse marketplace…",
+    "settings.market.url.name": "Marketplace index URL",
+    "settings.market.url.desc": "Link to the assets repository’s index.json. Leave empty for the built-in default.",
+    "settings.pandocUrl.name": "Pandoc assets URL",
+    "settings.pandocUrl.desc": "Link to the Pandoc toolchain .zip (filters/templates/CSL). Used by ‘Set up Pandoc export → Download assets’.",
+    "settings.pandocFolder.name": "Pandoc assets folder",
+    "settings.pandocFolder.desc": "Folder containing defaults/ and csl/. Leave empty for the default download location (PaperBell/pandoc). Absolute or vault-relative.",
+    "settings.pandocOutput.name": "Pandoc output folder",
+    "settings.pandocOutput.desc": "Folder to write <acronym>_<date>.pdf into. Vault-relative, or an absolute path to export outside your vault (e.g. ~/Papers — ~ expands to your home folder; it’s created if missing). Leave empty to write next to the compiled manuscript.",
+    "settings.bibliography.name": "Bibliography",
+    "settings.bibliography.desc": "Path to a .bib for citations. Leave empty to auto-detect references.bib / mybib.bib in the project.",
+    "settings.globalBibliography.name": "Global bibliography",
+    "settings.globalBibliography.desc": "Extra .bib file(s) merged into every export, on top of each project's own. One path per line (or comma-separated); vault-relative or absolute. The project's bibliography wins on duplicate cite keys.",
+    "settings.extraBinFolders.name": "Extra binary folders",
+    "settings.extraBinFolders.desc": "Folders to search for pandoc, the PDF engine and pandoc-crossref, one per line. Searched before PATH and the built-in locations — use this when a tool is installed somewhere PATH doesn't know about.",
+    "settings.pandocBinary.name": "Pandoc binary",
+    "settings.pandocBinary.desc": "Path to the pandoc executable, or just ‘pandoc’ to search for it. PATH and the usual install locations are searched automatically; on Windows either slash style works and the .exe may be omitted.",
+    "settings.userScriptFolder.name": "User script step folder",
+    "settings.userScriptFolder.desc": ".js files in this folder will be available as User Script Steps in the Compile panel.",
+    "settings.userSteps.loaded": "Loaded {count} step{plural}:",
+    "settings.userSteps.none": "No steps loaded.",
+    "settings.userSteps.desc": "User Script Steps are automatically loaded from this folder. Changes to .js files in this folder are synced with PaperOut To-Authors after a slight delay. If your script does not appear here or in the Compile tab, you may have an error in your script — check the dev console for it.",
+    // ── Settings: Word Counts & Sessions ────────────────────────────────────
+    "settings.wordCounts.heading": "Word Counts & Sessions",
+    "settings.showWordCount.name": "Show word counts in status bar",
+    "settings.showWordCount.desc": "Click the status item to show the focused note’s project.",
+    "settings.newSessionDaily.name": "Start new writing sessions each day",
+    "settings.newSessionDaily.desc": "You can always manually start a new session by running the Start New Writing Session command. Turning this off will cause writing sessions to carry over across multiple days until you manually start a new one.",
+    "settings.sessionGoal.name": "Session word count goal",
+    "settings.sessionGoal.desc": "A number of words to target for a given writing session.",
+    "settings.goalAppliesTo.name": "Goal applies to",
+    "settings.goalAppliesTo.desc": "You can set your word count goal to target all your writing, or you can make each project or scene have its own discrete goal.",
+    "settings.goalAppliesTo.all": "words written across all projects",
+    "settings.goalAppliesTo.project": "each project individually",
+    "settings.goalAppliesTo.note": "each scene or single-scene project",
+    "settings.notifyOnGoal.name": "Notify on goal reached",
+    "settings.countDeletions.name": "Count deletions against goal",
+    "settings.countDeletions.desc": "If on, deleting words will count as negative words written. You cannot go below zero for a session.",
+    "settings.sessionsToKeep.name": "Sessions to keep",
+    "settings.sessionsToKeep.desc": "Number of sessions to store locally.",
+    "settings.storeSession.name": "Store session data",
+    "settings.storeSession.desc": "Where your writing session data is stored. By default, data is stored alongside other settings in the plugin’s data.json file. You may instead store it in a separate .json file in the plugin folder, or in a file in your vault. You may want to do this for selective sync or git reasons.",
+    "settings.storeSession.data": "with plugin settings",
+    "settings.storeSession.pluginFolder": "as a .json file in the plugin folder",
+    "settings.storeSession.file": "as a file in your vault",
+    "settings.sessionFile.name": "Session storage file",
+    "settings.sessionFile.desc": "Location in your vault to store session JSON. Created if it does not exist, overwritten if it does.",
+    // ── Settings: Troubleshooting ───────────────────────────────────────────
+    "settings.troubleshooting.heading": "Troubleshooting",
+    "settings.waitForSync.name": "Wait for Obsidian Sync",
+    "settings.waitForSync.desc": "Prevent PaperOut To-Authors from running until Obsidian Sync completes its first sync. If you are using Sync, you may want to enable this if you experience issues with scenes disappearing or falsely being shown as new.",
+    "settings.fallbackWait.name": "Enable fallback wait",
+    "settings.fallbackWait.desc": "If sync status cannot be detected, wait for the time specified below before looking for scenes.",
+    "settings.fallbackWaitTime.name": "Fallback wait time",
+    "settings.fallbackWaitTime.desc": "Time to wait in seconds if sync status cannot be detected.",
+    // ── Settings: PaperBell ─────────────────────────────────────────────────
+    "settings.paperbell.heading": "PaperBell",
+    "settings.paperbell.connectedWithName": "Connected to PaperBell — {name}{plan}.",
+    "settings.paperbell.connected": "Connected to PaperBell.",
+    "settings.paperbell.account.name": "Account & shared settings",
+    "settings.paperbell.account.desc": "Fetch your PaperBell account and shared config (language, AI). PaperBell asks for your consent the first time.",
+    "settings.paperbell.button.connect": "Connect",
+    "settings.paperbell.button.refresh": "Refresh",
+    "settings.paperbell.refreshFailed": "Could not read PaperBell's shared settings: {error}",
+    "settings.paperbell.aiAvailable": "AI features are available through PaperBell — no API key is stored in this plugin.",
+    "settings.paperbell.notConnected": "PaperBell is not connected. Install and enable the PaperBell plugin to follow its language and enable AI features. This plugin works fully without it.",
+    // ── Settings: Credits ───────────────────────────────────────────────────
+    "settings.credits.heading": "Credits",
+    "settings.credits.body": 'PaperOut To-Authors — part of the PaperBell suite, a fork of <a href="https://github.com/kevboh/longform">Longform</a>, originally written by <a href="https://kevinbarrett.org">Kevin Barrett</a>. Maintained by <a href="https://github.com/PaperBell-Org">PaperBell-Org</a>.',
+    "settings.credits.source": 'Read the source code and report issues at <a href="https://github.com/PaperBell-Org">https://github.com/PaperBell-Org</a>.',
+    "settings.credits.icon": 'Icon made by <a href="https://www.flaticon.com/authors/zlatko-najdenovski" title="Zlatko Najdenovski">Zlatko Najdenovski</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a>.',
+};
+
+/** Simplified Chinese catalog. Must cover every key in `en` (enforced by `Messages`). */
+const zh$1 = {
+    // ── 命令(命令面板) ──────────────────────────────────────────────────
+    "cmd.compileCurrent": "用当前工作流编译当前项目",
+    "cmd.compileProject": "编译项目…",
+    "cmd.setupPandoc": "设置 Pandoc 导出",
+    "cmd.openCurrentProject": "打开当前笔记所属项目",
+    "cmd.previousScene": "上一个场景",
+    "cmd.previousSceneAtIndent": "同缩进层级的上一个场景",
+    "cmd.nextScene": "下一个场景",
+    "cmd.nextSceneAtIndent": "同缩进层级的下一个场景",
+    "cmd.indentScene": "增加场景缩进",
+    "cmd.unindentScene": "减少场景缩进",
+    "cmd.jumpToProject": "跳转到项目",
+    "cmd.jumpToScene": "在当前项目中跳转到场景",
+    "cmd.openPane": "打开 PaperOut 面板",
+    "cmd.revealProject": "在文件树中定位当前项目",
+    "cmd.focusNewScene": "聚焦新建场景输入框",
+    "cmd.insertMultiScene": "插入多场景 frontmatter",
+    "cmd.insertSingleScene": "插入单场景 frontmatter",
+    "cmd.startSession": "开始新的写作会话",
+    "cmd.markManuscriptSpan": "标记手稿引用片段",
+    "cmd.insertManuscriptRef": "插入手稿引用",
+    "cmd.newPaperProject": "新建 PaperBell 论文项目…",
+    "cmd.convertToProject": "转换为单一 Index 项目…",
+    "cmd.openMarket": "浏览 Pandoc 资产市场",
+    "cmd.runWorkflow": "运行工作流",
+    "cmd.addComponents": "添加论文组件…",
+    // ── 通知与菜单 ────────────────────────────────────────────────────────
+    "notice.pdfExport": "PaperOut To-Authors:已支持 PDF 导出。在命令面板运行“设置 Pandoc 导出”以检查前置条件。",
+    "notice.goalMet": "已达成写作目标!",
+    "notice.noActiveNote": "请先打开要编纂的 Markdown 笔记，再运行此命令。",
+    "notice.workflowMissing": "找不到名为“{name}”的工作流。",
+    "notice.exportedOpenNoteOnly": "该工作流以“手稿”步骤开头，因此只导出了当前打开的这篇笔记，而非整份草稿。",
+    "menu.newPaperProject": "新建 PaperBell 论文项目…",
+    "menu.addComponents": "添加论文组件…",
+    // ── 论文组件（新建勾选 + 添加组件弹窗） ──────────────────────────────
+    "parts.mainLabel": "主手稿",
+    "parts.mainDesc": "论文正文，多场景草稿。始终创建——它决定了项目根目录，共享元数据按此向上查找。",
+    "parts.supplementaryLabel": "补充材料",
+    "parts.supplementaryDesc": "独立草稿，通过自带的 metadata.json 把图表编号为 S1、S2……",
+    "parts.coverLabel": "投稿信",
+    "parts.coverDesc": "给编辑的单文件信件，用 moderncv 信头导出。",
+    "parts.responseLabel": "回复信",
+    "parts.responseDesc": "回复审稿意见，可引用手稿的实时正文与图号。",
+    "scaffold.partsHeading": "包含组件",
+    "scaffold.examplesLabel": "包含示例内容",
+    "scaffold.examplesDesc": "起始场景引用的示例图片与表格文件，以及说明目录结构的 README。想要干净的项目可关闭。",
+    "components.title": "添加论文组件",
+    "components.desc": "向“{title}”添加组件。仅列出尚未创建的部分。",
+    "components.add": "添加",
+    "components.added": "已添加：{names}。",
+    "components.noProject": "这里没有找到 PaperOut 项目。",
+    "components.allPresent": "“{title}”已包含全部论文组件。",
+    "components.mixedForm": "该项目同时存在单一 Index 与独立草稿笔记，无法安全添加组件。请先运行“转换为单一 Index 项目…”。",
+    "components.conflictTitle": "未创建任何文件",
+    "components.conflictBody": "以下文件已存在，因此没有创建任何组件。请删除或重命名后重试：",
+    "components.failed": "添加组件失败",
+    "components.siProjectFormWarning": "提示：单一 Index 项目中，编译步骤只在 Index 同级目录查找 metadata.json，因此补充材料自带的 metadata.json（及其 S 编号）暂时不会生效。",
+    // ── 新建论文脚手架 ────────────────────────────────────────────────────
+    "scaffold.title": "新建 PaperBell 论文项目",
+    "scaffold.desc": "在以标题命名的新文件夹里创建论文项目:共享元数据、参考文献,以及你在下面勾选的组件。其余部分之后可以再补。",
+    "scaffold.nameLabel": "项目标题",
+    "scaffold.nameDesc": "作为项目文件夹名与 Longform 项目名。请勿包含 : \\ 和 / 。",
+    "scaffold.acronymLabel": "缩写",
+    "scaffold.acronymDesc": "用于 PDF 文件名和标签的短代码。默认取标题首字母,之后可在 metadata.json 中修改。",
+    "scaffold.projectLabel": "所属 PaperBell 项目",
+    "scaffold.projectDesc": "这篇论文作为交付物所属的研究项目 —— 不是上面那个论文自身的缩写。它会写进每个 draft 笔记的 project: 字段,供 Project Manager 统计项目产出。留空表示不关联。",
+    "scaffold.projectPlaceholder": "例如 ColMemo",
+    "scaffold.projectNone": "— 不关联项目 —",
+    "scaffold.projectManual": "手动输入…",
+    "scaffold.projectBackToList": "改为从项目列表中选择",
+    "scaffold.create": "创建项目",
+    "scaffold.invalidName": "请输入不含 : \\ 或 / 的项目标题。",
+    "scaffold.created": "已创建 PaperBell 项目“{title}”。",
+    "scaffold.failed": "创建项目失败:{error}",
+    // ── 批量编译看板 ──────────────────────────────────────────────────────
+    "matrix.title": "批量编译",
+    "matrix.drafts": "个草稿",
+    "matrix.dryRun": "干跑",
+    "matrix.openPdf": "打开 PDF",
+    "matrix.harvest": "抓行号",
+    "matrix.run": "运行",
+    "matrix.running": "运行中…",
+    "matrix.skipped": "已跳过",
+    "matrix.viewError": "查看错误",
+    "matrix.errorTitle": "错误详情",
+    "matrix.copyError": "复制",
+    "matrix.errorCopied": "错误已复制到剪贴板。",
+    "matrix.finished": "已完成",
+    "matrix.workflow": "编译工作流",
+    "matrix.clickStepHint": "点击步骤圆点可查看或编辑该步骤。",
+    "matrix.noOptions": "该步骤没有可配置项。",
+    "matrix.reorderHint": "拖动行来设定编译顺序(从上到下)。",
+    // ── Pandoc 资产市场 ──────────────────────────────────────────────────
+    "market.title": "Pandoc 资产市场",
+    "market.items": "项",
+    "market.search": "搜索资产…",
+    "market.reload": "重新加载",
+    "market.desktopNote": "移动端可浏览与下载,但模板列表和 PDF 导出需要桌面端。",
+    "market.loadError": "无法加载市场目录。",
+    "market.empty": "没有匹配搜索的资产。",
+    "market.bundles": "套件",
+    "market.assets": "单个资产",
+    "market.assetsIncluded": "个资产",
+    "market.requires": "依赖",
+    "market.systemDeps": "系统工具",
+    "market.unverified": "未经审核 —— 其 Lua 会在你本机运行。",
+    "market.back": "返回",
+    "market.clickForDetails": "点击查看说明与用法",
+    "market.readmeError": "无法加载该资产的说明文档。",
+    "market.noReadme": "该资产暂无使用说明。",
+    // ── 设置 Pandoc 导出 ──────────────────────────────────────────────────
+    "setup.title": "设置 Pandoc 导出",
+    "setup.intro": "PDF 导出需要三个系统工具,外加 PaperBell 的 Pandoc 工具链(过滤器、模板、CSL)。可在下方的资产市场安装工具链,或粘贴一个工具链 .zip 链接。",
+    "setup.notFound": "未找到",
+    "setup.optionalPdfEngine": "可选 —— 仅生成 PDF 的 preset 需要；导出 Word（`to: docx`）的 preset 用不到。",
+    "setup.optionalCrossref": "可选 —— 仅当 preset 的 filters 里用 pandoc-crossref 处理 @fig / @tbl 交叉引用时才需要。",
+    "setup.pdfEngine": "PDF 引擎",
+    "setup.assets": "Pandoc 资产",
+    "setup.assetsOk": "已找到 defaults/ 与 csl/。",
+    "setup.assetsMissing": "尚未下载。可从资产市场安装,或在下方填写资产 URL。",
+    "setup.market.name": "资产市场",
+    "setup.market.desc": "浏览并安装配方、过滤器、模板与 CSL 样式 —— 更省心的方式。",
+    "setup.market.button": "浏览资产市场…",
+    "setup.url.name": "资产 URL(高级)",
+    "setup.url.desc": "指向工具链 .zip(release 资产)的链接。上面的资产市场更方便。",
+    "setup.download.name": "下载 / 更新资产",
+    "setup.download.desc": "把工具链下载并解压到 {folder}。你在那里的修改不会被插件更新覆盖。",
+    "setup.download.button": "下载资产",
+    "setup.recheck": "重新检查",
+    "setup.copyReport": "复制报告",
+    "setup.copied": "已复制!",
+    "setup.done": "完成",
+    "setup.downloading": "正在下载 Pandoc 资产…",
+    "setup.downloaded": "已下载 {count} 个资产文件到 {dest}。",
+    "setup.downloadFailed": "资产下载失败:{error}",
+    "market.install": "安装",
+    "market.update": "更新",
+    "market.installed": "已安装",
+    "market.reinstall": "重装",
+    "market.uninstall": "卸载",
+    "market.uninstalling": "正在卸载",
+    "market.uninstalled": "已卸载",
+    "market.confirmUninstall": "删除「{name}」?其文件会从资产目录中移除(之后可重新安装)。",
+    "market.installing": "安装中…",
+    "market.installedNotice": "已安装",
+    "market.failed": "失败:",
+    // ── 资源管理器面板 ────────────────────────────────────────────────────
+    "explorer.paneTitle": "PaperOut To-Authors",
+    "explorer.tab.scenes": "场景",
+    "explorer.tab.project": "项目",
+    "explorer.tab.compile": "编译",
+    "explorer.migration.body1": "PaperOut To-Authors 已升级,需要迁移到新的数据格式。过期的索引文件会被删除,部分场景文件可能会移动位置。建议在迁移前先备份你的库。",
+    "explorer.migration.body2Prefix": "你可以查看文档,了解此次迁移做了什么:",
+    "explorer.migration.body2Link": "点此查看",
+    "explorer.migration.button": "开始迁移",
+    "explorer.syncWaiting": "正在等待 Obsidian Sync 完成同步…",
+    "settings.renderError": "渲染设置时出错了。关闭并重新打开本标签页即可重试——详细信息见开发者控制台。",
+    // ── 设置:语言 ────────────────────────────────────────────────────────
+    "settings.language.heading": "语言",
+    "settings.language.name": "显示语言",
+    "settings.language.desc": "PaperOut To-Authors 界面使用的语言。“自动”会跟随 PaperBell(已连接时)或 Obsidian 的语言。",
+    "settings.language.auto": "自动(跟随 PaperBell / Obsidian)",
+    "settings.language.en": "English",
+    "settings.language.zh": "中文",
+    // ── 设置:写作 ────────────────────────────────────────────────────────
+    "settings.composition.heading": "写作",
+    "settings.sceneTemplate.name": "新场景模板",
+    "settings.sceneTemplate.desc": "通过“新建场景…”输入框创建新场景时,会使用此文件作为模板。如果你使用模板插件(Templater 或核心模板插件),它会用于处理该模板。此设置对所有项目生效,可在 PaperOut 面板的“项目 > 项目元数据”里按项目单独覆盖。",
+    "settings.numberScenes.name": "在“场景”标签页显示场景编号",
+    "settings.numberScenes.desc": "开启后,带子场景的场景会用点号分隔显示编号,如 1.1.2。把场景拖到已有场景下方的缩进层级,或使用缩进命令,即可创建子场景。",
+    "settings.writeProperty.name": "将场景索引写入 frontmatter",
+    "settings.writeProperty.desc": "开启后,会把场景索引和场景编号写入场景文件的 frontmatter。",
+    // ── 设置:编译 ────────────────────────────────────────────────────────
+    "settings.compile.heading": "编译",
+    "settings.pandocExport.name": "Pandoc 导出",
+    "settings.pandocExport.desc": "“运行 Pandoc 导出”编译步骤的设置。Pandoc 工具链(过滤器、模板、CSL)按需下载,因此大多数字段可以留空。",
+    "settings.pandocExport.button": "设置 Pandoc 导出…",
+    "settings.market.name": "Pandoc 资产市场",
+    "settings.market.desc": "从资产仓库浏览、下载并安装 Pandoc 配方、过滤器、模板与 CSL 样式。",
+    "settings.market.button": "浏览资产市场…",
+    "settings.market.url.name": "市场目录 URL",
+    "settings.market.url.desc": "指向资产仓库 index.json 的链接。留空则使用内置默认。",
+    "settings.pandocUrl.name": "Pandoc 资源包 URL",
+    "settings.pandocUrl.desc": "指向 Pandoc 工具链 .zip(过滤器/模板/CSL)的链接。“设置 Pandoc 导出 → 下载资源”会用到它。",
+    "settings.pandocFolder.name": "Pandoc 资源文件夹",
+    "settings.pandocFolder.desc": "包含 defaults/ 和 csl/ 的文件夹。留空则使用默认下载位置(PaperBell/pandoc)。可填绝对路径或库内相对路径。",
+    "settings.pandocOutput.name": "Pandoc 输出文件夹",
+    "settings.pandocOutput.desc": "写入 <缩写>_<日期>.pdf 的文件夹。可填库内相对路径,或填绝对路径以导出到库外(如 ~/Papers —— ~ 展开为你的用户主目录;若不存在会自动创建)。留空则写在编译产物旁边。",
+    "settings.bibliography.name": "参考文献库",
+    "settings.bibliography.desc": "用于引用的 .bib 文件路径。留空则在项目中自动探测 references.bib / mybib.bib。",
+    "settings.globalBibliography.name": "全局参考文献库",
+    "settings.globalBibliography.desc": "在每个项目自带 .bib 之外,额外合并进每次导出的 .bib 文件(可多个)。每行一个路径(或用逗号分隔);可填库内相对路径或绝对路径。遇到重复 cite key 时,项目自带的优先。",
+    "settings.extraBinFolders.name": "额外的二进制目录",
+    "settings.extraBinFolders.desc": "查找 pandoc、PDF 引擎和 pandoc-crossref 的额外目录，每行一个。优先级高于 PATH 和内置位置 —— 当工具装在 PATH 不知道的地方时填这里。",
+    "settings.pandocBinary.name": "Pandoc 可执行文件",
+    "settings.pandocBinary.desc": "pandoc 可执行文件的路径,或直接填 “pandoc” 让插件去找。会自动搜索 PATH 和常见安装位置;Windows 下正反斜杠都可以,.exe 可以省略。",
+    "settings.userScriptFolder.name": "用户脚本步骤文件夹",
+    "settings.userScriptFolder.desc": "此文件夹中的 .js 文件会作为“用户脚本步骤”出现在编译面板中。",
+    "settings.userSteps.loaded": "已加载 {count} 个步骤:",
+    "settings.userSteps.none": "未加载任何步骤。",
+    "settings.userSteps.desc": "用户脚本步骤会从此文件夹自动加载。此文件夹中 .js 文件的改动会在稍有延迟后与 PaperOut To-Authors 同步。如果你的脚本没有出现在这里或编译标签页中,可能是脚本有错误 —— 请查看开发者控制台。",
+    // ── 设置:字数与写作会话 ──────────────────────────────────────────────
+    "settings.wordCounts.heading": "字数与写作会话",
+    "settings.showWordCount.name": "在状态栏显示字数",
+    "settings.showWordCount.desc": "点击状态栏项目可显示当前聚焦笔记所属的项目。",
+    "settings.newSessionDaily.name": "每天开始新的写作会话",
+    "settings.newSessionDaily.desc": "你随时可以通过运行“开始新的写作会话”命令来手动开启新会话。关闭此项后,写作会话会跨多天延续,直到你手动开启新的会话。",
+    "settings.sessionGoal.name": "会话字数目标",
+    "settings.sessionGoal.desc": "单次写作会话要达成的字数目标。",
+    "settings.goalAppliesTo.name": "目标作用范围",
+    "settings.goalAppliesTo.desc": "你可以让字数目标针对你的全部写作,也可以让每个项目或每个场景各自拥有独立的目标。",
+    "settings.goalAppliesTo.all": "所有项目的总字数",
+    "settings.goalAppliesTo.project": "每个项目单独计算",
+    "settings.goalAppliesTo.note": "每个场景或单场景项目",
+    "settings.notifyOnGoal.name": "达成目标时通知",
+    "settings.countDeletions.name": "删除的字数计入目标",
+    "settings.countDeletions.desc": "开启后,删除字数会计为负的写作字数。单次会话不会低于零。",
+    "settings.sessionsToKeep.name": "保留的会话数",
+    "settings.sessionsToKeep.desc": "本地存储的会话数量。",
+    "settings.storeSession.name": "存储会话数据",
+    "settings.storeSession.desc": "写作会话数据的存储位置。默认与其它设置一起存放在插件的 data.json 文件中。你也可以改为存放在插件文件夹内单独的 .json 文件里,或库内的某个文件中 —— 出于选择性同步或 git 的考虑,你可能会这么做。",
+    "settings.storeSession.data": "随插件设置一起存储",
+    "settings.storeSession.pluginFolder": "作为插件文件夹内的 .json 文件",
+    "settings.storeSession.file": "作为库内的一个文件",
+    "settings.sessionFile.name": "会话存储文件",
+    "settings.sessionFile.desc": "库内存储会话 JSON 的位置。不存在则创建,存在则覆盖。",
+    // ── 设置:故障排查 ────────────────────────────────────────────────────
+    "settings.troubleshooting.heading": "故障排查",
+    "settings.waitForSync.name": "等待 Obsidian Sync",
+    "settings.waitForSync.desc": "在 Obsidian Sync 完成首次同步前,阻止 PaperOut To-Authors 运行。如果你使用 Sync,并遇到场景消失或被误判为新场景的问题,可以开启此项。",
+    "settings.fallbackWait.name": "启用兜底等待",
+    "settings.fallbackWait.desc": "若无法检测到同步状态,则在查找场景前先等待下方指定的时间。",
+    "settings.fallbackWaitTime.name": "兜底等待时间",
+    "settings.fallbackWaitTime.desc": "无法检测到同步状态时的等待秒数。",
+    // ── 设置:PaperBell ───────────────────────────────────────────────────
+    "settings.paperbell.heading": "PaperBell",
+    "settings.paperbell.connectedWithName": "已连接到 PaperBell —— {name}{plan}。",
+    "settings.paperbell.connected": "已连接到 PaperBell。",
+    "settings.paperbell.account.name": "账户与共享设置",
+    "settings.paperbell.account.desc": "获取你的 PaperBell 账户与共享配置(语言、AI)。首次获取时 PaperBell 会请求你的授权。",
+    "settings.paperbell.button.connect": "连接",
+    "settings.paperbell.button.refresh": "刷新",
+    "settings.paperbell.refreshFailed": "无法读取 PaperBell 的共享设置：{error}",
+    "settings.paperbell.aiAvailable": "AI 功能通过 PaperBell 提供 —— 本插件不存储任何 API 密钥。",
+    "settings.paperbell.notConnected": "尚未连接 PaperBell。安装并启用 PaperBell 插件即可跟随其语言并启用 AI 功能。不装它,本插件也能完整使用。",
+    // ── 设置:致谢 ────────────────────────────────────────────────────────
+    "settings.credits.heading": "致谢",
+    "settings.credits.body": 'PaperOut To-Authors —— PaperBell 套件的一部分,基于 <a href="https://github.com/kevboh/longform">Longform</a> 分支开发,原作者为 <a href="https://kevinbarrett.org">Kevin Barrett</a>。由 <a href="https://github.com/PaperBell-Org">PaperBell-Org</a> 维护。',
+    "settings.credits.source": '源代码与问题反馈请见 <a href="https://github.com/PaperBell-Org">https://github.com/PaperBell-Org</a>。',
+    "settings.credits.icon": '图标来自 <a href="https://www.flaticon.com/authors/zlatko-najdenovski" title="Zlatko Najdenovski">Zlatko Najdenovski</a>,取自 <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a>。',
+};
+
+const catalogs = { en, zh: zh$1 };
+/** The active UI locale. Driven by `controller.ts`; defaults to English. */
+const locale = writable("en");
+function format$1(template, vars) {
+    if (!vars)
+        return template;
+    return template.replace(/\{(\w+)\}/g, (whole, key) => key in vars ? String(vars[key]) : whole);
+}
+function lookup(loc, key, vars) {
+    var _a, _b, _c;
+    const message = (_c = (_b = (_a = catalogs[loc]) === null || _a === void 0 ? void 0 : _a[key]) !== null && _b !== void 0 ? _b : en[key]) !== null && _c !== void 0 ? _c : key;
+    return format$1(message, vars);
+}
+/**
+ * Imperative translator for non-reactive contexts (.ts: command names, notices).
+ * Reads the current locale at call time.
+ */
+function translate(key, vars) {
+    return lookup(get_store_value(locale), key, vars);
+}
+/**
+ * Reactive translator store for Svelte components: `{$t("key")}` re-renders when
+ * the locale changes.
+ */
+const t = derived(locale, ($locale) => (key, vars) => lookup($locale, key, vars));
 
 /* src/view/compile/CompileStepView.svelte generated by Svelte v3.49.0 */
 
-function add_css$e(target) {
-	append_styles(target, "svelte-yprjpc", ".longform-compile-step.svelte-yprjpc.svelte-yprjpc{background-color:var(--background-modifier-border);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:0;margin:var(--size-4-4) 0}.longform-compile-step-title-outer.svelte-yprjpc.svelte-yprjpc{display:flex;flex-direction:row;justify-content:space-between;align-items:flex-start}.longform-compile-step-title-container.svelte-yprjpc.svelte-yprjpc{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;font-size:var(--font-ui-smaller)}.longform-compile-step-title-container.svelte-yprjpc h4.svelte-yprjpc{display:inline-block;margin:var(--size-4-1) var(--size-4-2) var(--size-4-1) 0;padding:0}.longform-compile-step-title-container.svelte-yprjpc .longform-step-kind-pill.svelte-yprjpc{display:flex;justify-content:center;align-items:center;background-color:color-mix(in srgb, var(--text-accent) 50%, var(--background-modifier-border) 50%);color:var(--text-on-accent);border-radius:var(--radius-l);font-size:var(--font-smallest);font-weight:bold;padding:var(--size-4-1) var(--size-4-2);margin-right:var(--size-4-1);height:var(--h1-line-height)}.longform-compile-step-number.svelte-yprjpc.svelte-yprjpc{color:var(--text-faint);display:inline-block;width:var(--size-4-6);padding-left:var(--size-4-1)}.longform-remove-step-button.svelte-yprjpc.svelte-yprjpc{display:flex;width:var(--size-4-5);height:100%;margin:1px;align-items:center;justify-content:center;font-weight:bold;background:var(--background-modifier-error)}.longform-compile-step.svelte-yprjpc p.svelte-yprjpc{margin:0;background:var(--background-primary)}.longform-compile-step-description.svelte-yprjpc.svelte-yprjpc{font-size:var(--font-smallest);color:var(--text-muted);padding:var(--size-4-2) var(--size-4-1) var(--size-4-2) var(--size-4-6)}.longform-compile-step-options.svelte-yprjpc.svelte-yprjpc{padding:var(--size-4-2) 0;background:var(--background-primary)}.longform-compile-step-options.svelte-yprjpc>div.svelte-yprjpc{margin:0 var(--size-4-2) 0 var(--size-4-6)\n  }.longform-compile-step-option.svelte-yprjpc.svelte-yprjpc{margin:0 var(--size-4-4) var(--size-4-4) 0}.longform-compile-step-option.svelte-yprjpc label.svelte-yprjpc{display:block;font-weight:600;font-size:var(--font-smallest)}.longform-compile-step-checkbox-container.svelte-yprjpc.svelte-yprjpc{display:flex;flex-direction:row;align-items:center;justify-content:flex-start}.longform-compile-step-option.svelte-yprjpc input[type=\"text\"].svelte-yprjpc{margin:0 0 var(--size-4-1) 0;width:100%}.longform-compile-step-option.svelte-yprjpc textarea.svelte-yprjpc{color:var(--text-accent);margin:0 0 var(--size-4-1) 0;width:100%;resize:vertical}.longform-compile-step-option.svelte-yprjpc input[type=\"checkbox\"].svelte-yprjpc{margin:0 var(--size-4-2) var(--size-2-1) 0}.longform-compile-step-option.svelte-yprjpc input.svelte-yprjpc:focus{color:var(--text-accent-hover)}.longform-compile-step-option-description.svelte-yprjpc.svelte-yprjpc{font-size:var(--font-smallest);line-height:1em;color:var(--text-faint)}.longform-compile-step-error-container.svelte-yprjpc.svelte-yprjpc{margin-top:var(--size-4-2)}.longform-compile-step-error.svelte-yprjpc.svelte-yprjpc{color:var(--text-error);font-size:var(--font-smallest);line-height:1em}");
+function add_css$f(target) {
+	append_styles(target, "svelte-1cn3ejz", ".longform-compile-step.svelte-1cn3ejz.svelte-1cn3ejz{background-color:var(--background-modifier-border);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:0;margin:var(--size-4-4) 0}.longform-compile-step-title-outer.svelte-1cn3ejz.svelte-1cn3ejz{display:flex;flex-direction:row;justify-content:space-between;align-items:flex-start}.longform-compile-step-title-container.svelte-1cn3ejz.svelte-1cn3ejz{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;font-size:var(--font-ui-smaller)}.longform-compile-step-title-container.svelte-1cn3ejz h4.svelte-1cn3ejz{display:inline-block;margin:var(--size-4-1) var(--size-4-2) var(--size-4-1) 0;padding:0}.longform-compile-step-title-container.svelte-1cn3ejz .longform-step-kind-pill.svelte-1cn3ejz{display:flex;justify-content:center;align-items:center;background-color:color-mix(in srgb, var(--text-accent) 50%, var(--background-modifier-border) 50%);color:var(--text-on-accent);border-radius:var(--radius-l);font-size:var(--font-smallest);font-weight:bold;padding:var(--size-4-1) var(--size-4-2);margin-right:var(--size-4-1);height:var(--h1-line-height)}.longform-compile-step-number.svelte-1cn3ejz.svelte-1cn3ejz{color:var(--text-faint);display:inline-block;width:var(--size-4-6);padding-left:var(--size-4-1)}.longform-remove-step-button.svelte-1cn3ejz.svelte-1cn3ejz{display:flex;width:var(--size-4-5);height:100%;margin:1px;align-items:center;justify-content:center;font-weight:bold;background:var(--background-modifier-error)}.longform-compile-step.svelte-1cn3ejz p.svelte-1cn3ejz{margin:0;background:var(--background-primary)}.longform-compile-step-description.svelte-1cn3ejz.svelte-1cn3ejz{font-size:var(--font-smallest);color:var(--text-muted);padding:var(--size-4-2) var(--size-4-1) var(--size-4-2) var(--size-4-6)}.longform-compile-step-options.svelte-1cn3ejz.svelte-1cn3ejz{padding:var(--size-4-2) 0;background:var(--background-primary)}.longform-compile-step-options.svelte-1cn3ejz>div.svelte-1cn3ejz{margin:0 var(--size-4-2) 0 var(--size-4-6)\n  }.longform-compile-step-option.svelte-1cn3ejz.svelte-1cn3ejz{margin:0 var(--size-4-4) var(--size-4-4) 0}.longform-compile-step-option.svelte-1cn3ejz label.svelte-1cn3ejz{display:block;font-weight:600;font-size:var(--font-smallest)}.longform-compile-step-checkbox-container.svelte-1cn3ejz.svelte-1cn3ejz{display:flex;flex-direction:row;align-items:center;justify-content:flex-start}.longform-compile-step-option.svelte-1cn3ejz input[type=\"text\"].svelte-1cn3ejz{margin:0 0 var(--size-4-1) 0;width:100%}.longform-compile-step-option.svelte-1cn3ejz select.svelte-1cn3ejz{margin:0 0 var(--size-4-1) 0;width:100%}.longform-compile-step-option.svelte-1cn3ejz textarea.svelte-1cn3ejz{color:var(--text-accent);margin:0 0 var(--size-4-1) 0;width:100%;resize:vertical}.longform-compile-step-option.svelte-1cn3ejz input[type=\"checkbox\"].svelte-1cn3ejz{margin:0 var(--size-4-2) var(--size-2-1) 0}.longform-compile-step-option.svelte-1cn3ejz input.svelte-1cn3ejz:focus{color:var(--text-accent-hover)}.longform-compile-step-option-description.svelte-1cn3ejz.svelte-1cn3ejz{font-size:var(--font-smallest);line-height:1em;color:var(--text-faint)}.longform-compile-step-error-container.svelte-1cn3ejz.svelte-1cn3ejz{margin-top:var(--size-4-2)}.longform-compile-step-error.svelte-1cn3ejz.svelte-1cn3ejz{color:var(--text-error);font-size:var(--font-smallest);line-height:1em}");
 }
 
-function get_each_context$6(ctx, list, i) {
+function get_each_context$8(ctx, list, i) {
 	const child_ctx = ctx.slice();
-	child_ctx[9] = list[i];
-	child_ctx[10] = list;
-	child_ctx[11] = i;
+	child_ctx[12] = list[i];
+	child_ctx[13] = list;
+	child_ctx[14] = i;
 	return child_ctx;
 }
 
-// (31:2) {:else}
-function create_else_block$5(ctx) {
+function get_each_context_1$3(ctx, list, i) {
+	const child_ctx = ctx.slice();
+	child_ctx[15] = list[i];
+	return child_ctx;
+}
+
+// (44:2) {:else}
+function create_else_block$6(ctx) {
 	let div1;
 	let div0;
 	let h4;
@@ -22813,9 +25669,9 @@ function create_else_block$5(ctx) {
 	let if_block2_anchor;
 	let mounted;
 	let dispose;
-	let if_block0 = /*calculatedKind*/ ctx[2] !== null && create_if_block_5$3(ctx);
-	let if_block1 = /*step*/ ctx[0].description.options.length > 0 && create_if_block_2$7(ctx);
-	let if_block2 = /*error*/ ctx[3] && create_if_block_1$9(ctx);
+	let if_block0 = /*calculatedKind*/ ctx[2] !== null && create_if_block_6$4(ctx);
+	let if_block1 = /*step*/ ctx[0].description.options.length > 0 && create_if_block_2$9(ctx);
+	let if_block2 = /*error*/ ctx[3] && create_if_block_1$a(ctx);
 
 	return {
 		c() {
@@ -22838,12 +25694,12 @@ function create_else_block$5(ctx) {
 			t8 = space();
 			if (if_block2) if_block2.c();
 			if_block2_anchor = empty();
-			attr(span, "class", "longform-compile-step-number svelte-yprjpc");
-			attr(h4, "class", "svelte-yprjpc");
-			attr(div0, "class", "longform-compile-step-title-container svelte-yprjpc");
-			attr(button, "class", "longform-remove-step-button svelte-yprjpc");
-			attr(div1, "class", "longform-compile-step-title-outer svelte-yprjpc");
-			attr(p, "class", "longform-compile-step-description svelte-yprjpc");
+			attr(span, "class", "longform-compile-step-number svelte-1cn3ejz");
+			attr(h4, "class", "svelte-1cn3ejz");
+			attr(div0, "class", "longform-compile-step-title-container svelte-1cn3ejz");
+			attr(button, "class", "longform-remove-step-button svelte-1cn3ejz");
+			attr(div1, "class", "longform-compile-step-title-outer svelte-1cn3ejz");
+			attr(p, "class", "longform-compile-step-description svelte-1cn3ejz");
 		},
 		m(target, anchor) {
 			insert(target, div1, anchor);
@@ -22866,7 +25722,7 @@ function create_else_block$5(ctx) {
 			insert(target, if_block2_anchor, anchor);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*removeStep*/ ctx[4]);
+				dispose = listen(button, "click", /*removeStep*/ ctx[5]);
 				mounted = true;
 			}
 		},
@@ -22878,7 +25734,7 @@ function create_else_block$5(ctx) {
 				if (if_block0) {
 					if_block0.p(ctx, dirty);
 				} else {
-					if_block0 = create_if_block_5$3(ctx);
+					if_block0 = create_if_block_6$4(ctx);
 					if_block0.c();
 					if_block0.m(div0, null);
 				}
@@ -22893,7 +25749,7 @@ function create_else_block$5(ctx) {
 				if (if_block1) {
 					if_block1.p(ctx, dirty);
 				} else {
-					if_block1 = create_if_block_2$7(ctx);
+					if_block1 = create_if_block_2$9(ctx);
 					if_block1.c();
 					if_block1.m(t8.parentNode, t8);
 				}
@@ -22906,7 +25762,7 @@ function create_else_block$5(ctx) {
 				if (if_block2) {
 					if_block2.p(ctx, dirty);
 				} else {
-					if_block2 = create_if_block_1$9(ctx);
+					if_block2 = create_if_block_1$a(ctx);
 					if_block2.c();
 					if_block2.m(if_block2_anchor.parentNode, if_block2_anchor);
 				}
@@ -22931,8 +25787,8 @@ function create_else_block$5(ctx) {
 	};
 }
 
-// (15:2) {#if step.description.canonicalID === PLACEHOLDER_MISSING_STEP.description.canonicalID}
-function create_if_block$c(ctx) {
+// (28:2) {#if step.description.canonicalID === PLACEHOLDER_MISSING_STEP.description.canonicalID}
+function create_if_block$d(ctx) {
 	let div1;
 	let div0;
 	let t1;
@@ -22946,21 +25802,21 @@ function create_if_block$c(ctx) {
 		c() {
 			div1 = element("div");
 			div0 = element("div");
-			div0.innerHTML = `<h4 class="svelte-yprjpc">Invalid Step</h4>`;
+			div0.innerHTML = `<h4 class="svelte-1cn3ejz">Invalid Step</h4>`;
 			t1 = space();
 			button = element("button");
 			button.textContent = "X";
 			t3 = space();
 			div2 = element("div");
 
-			div2.innerHTML = `<p class="longform-compile-step-error svelte-yprjpc">This workflow contains a step that could not be loaded. Please delete
+			div2.innerHTML = `<p class="longform-compile-step-error svelte-1cn3ejz">This workflow contains a step that could not be loaded. Please delete
         the step to be able to run this workflow. If you’re on mobile, this may
         be a user script step that did not load.</p>`;
 
-			attr(div0, "class", "longform-compile-step-title-container svelte-yprjpc");
-			attr(button, "class", "longform-remove-step-button svelte-yprjpc");
-			attr(div1, "class", "longform-compile-step-title-outer svelte-yprjpc");
-			attr(div2, "class", "longform-compile-step-error-container svelte-yprjpc");
+			attr(div0, "class", "longform-compile-step-title-container svelte-1cn3ejz");
+			attr(button, "class", "longform-remove-step-button svelte-1cn3ejz");
+			attr(div1, "class", "longform-compile-step-title-outer svelte-1cn3ejz");
+			attr(div2, "class", "longform-compile-step-error-container svelte-1cn3ejz");
 		},
 		m(target, anchor) {
 			insert(target, div1, anchor);
@@ -22971,7 +25827,7 @@ function create_if_block$c(ctx) {
 			insert(target, div2, anchor);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*removeStep*/ ctx[4]);
+				dispose = listen(button, "click", /*removeStep*/ ctx[5]);
 				mounted = true;
 			}
 		},
@@ -22986,8 +25842,8 @@ function create_if_block$c(ctx) {
 	};
 }
 
-// (35:8) {#if calculatedKind !== null}
-function create_if_block_5$3(ctx) {
+// (48:8) {#if calculatedKind !== null}
+function create_if_block_6$4(ctx) {
 	let div;
 	let t_value = formatStepKind(/*calculatedKind*/ ctx[2]) + "";
 	let t;
@@ -22997,7 +25853,7 @@ function create_if_block_5$3(ctx) {
 		c() {
 			div = element("div");
 			t = text(t_value);
-			attr(div, "class", "longform-step-kind-pill svelte-yprjpc");
+			attr(div, "class", "longform-step-kind-pill svelte-1cn3ejz");
 			attr(div, "title", div_title_value = explainStepKind(/*calculatedKind*/ ctx[2]));
 		},
 		m(target, anchor) {
@@ -23017,15 +25873,17 @@ function create_if_block_5$3(ctx) {
 	};
 }
 
-// (51:4) {#if step.description.options.length > 0}
-function create_if_block_2$7(ctx) {
+// (64:4) {#if step.description.options.length > 0}
+function create_if_block_2$9(ctx) {
 	let div1;
 	let div0;
+	let mounted;
+	let dispose;
 	let each_value = /*step*/ ctx[0].description.options;
 	let each_blocks = [];
 
 	for (let i = 0; i < each_value.length; i += 1) {
-		each_blocks[i] = create_each_block$6(get_each_context$6(ctx, each_value, i));
+		each_blocks[i] = create_each_block$8(get_each_context$8(ctx, each_value, i));
 	}
 
 	return {
@@ -23037,8 +25895,8 @@ function create_if_block_2$7(ctx) {
 				each_blocks[i].c();
 			}
 
-			attr(div0, "class", "svelte-yprjpc");
-			attr(div1, "class", "longform-compile-step-options svelte-yprjpc");
+			attr(div0, "class", "svelte-1cn3ejz");
+			attr(div1, "class", "longform-compile-step-options svelte-1cn3ejz");
 		},
 		m(target, anchor) {
 			insert(target, div1, anchor);
@@ -23047,19 +25905,24 @@ function create_if_block_2$7(ctx) {
 			for (let i = 0; i < each_blocks.length; i += 1) {
 				each_blocks[i].m(div0, null);
 			}
+
+			if (!mounted) {
+				dispose = listen(div1, "change", /*optionChanged*/ ctx[6]);
+				mounted = true;
+			}
 		},
 		p(ctx, dirty) {
-			if (dirty & /*step, CompileStepOptionType*/ 1) {
+			if (dirty & /*step, CompileStepOptionType, $pandocTemplates*/ 17) {
 				each_value = /*step*/ ctx[0].description.options;
 				let i;
 
 				for (i = 0; i < each_value.length; i += 1) {
-					const child_ctx = get_each_context$6(ctx, each_value, i);
+					const child_ctx = get_each_context$8(ctx, each_value, i);
 
 					if (each_blocks[i]) {
 						each_blocks[i].p(child_ctx, dirty);
 					} else {
-						each_blocks[i] = create_each_block$6(child_ctx);
+						each_blocks[i] = create_each_block$8(child_ctx);
 						each_blocks[i].c();
 						each_blocks[i].m(div0, null);
 					}
@@ -23075,25 +25938,27 @@ function create_if_block_2$7(ctx) {
 		d(detaching) {
 			if (detaching) detach(div1);
 			destroy_each(each_blocks, detaching);
+			mounted = false;
+			dispose();
 		}
 	};
 }
 
-// (71:14) {:else}
-function create_else_block_1$2(ctx) {
+// (98:14) {:else}
+function create_else_block_1$3(ctx) {
 	let div;
 	let input;
 	let input_id_value;
 	let t0;
 	let label;
-	let t1_value = /*option*/ ctx[9].name + "";
+	let t1_value = /*option*/ ctx[12].name + "";
 	let t1;
 	let label_for_value;
 	let mounted;
 	let dispose;
 
 	function input_change_handler() {
-		/*input_change_handler*/ ctx[7].call(input, /*option*/ ctx[9]);
+		/*input_change_handler*/ ctx[10].call(input, /*option*/ ctx[12]);
 	}
 
 	return {
@@ -23103,17 +25968,17 @@ function create_else_block_1$2(ctx) {
 			t0 = space();
 			label = element("label");
 			t1 = text(t1_value);
-			attr(input, "id", input_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id);
+			attr(input, "id", input_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id);
 			attr(input, "type", "checkbox");
-			attr(input, "class", "svelte-yprjpc");
-			attr(label, "for", label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id);
-			attr(label, "class", "svelte-yprjpc");
-			attr(div, "class", "longform-compile-step-checkbox-container svelte-yprjpc");
+			attr(input, "class", "svelte-1cn3ejz");
+			attr(label, "for", label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id);
+			attr(label, "class", "svelte-1cn3ejz");
+			attr(div, "class", "longform-compile-step-checkbox-container svelte-1cn3ejz");
 		},
 		m(target, anchor) {
 			insert(target, div, anchor);
 			append(div, input);
-			input.checked = /*step*/ ctx[0].optionValues[/*option*/ ctx[9].id];
+			input.checked = /*step*/ ctx[0].optionValues[/*option*/ ctx[12].id];
 			append(div, t0);
 			append(div, label);
 			append(label, t1);
@@ -23126,17 +25991,17 @@ function create_else_block_1$2(ctx) {
 		p(new_ctx, dirty) {
 			ctx = new_ctx;
 
-			if (dirty & /*step*/ 1 && input_id_value !== (input_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id)) {
+			if (dirty & /*step, $pandocTemplates*/ 17 && input_id_value !== (input_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id)) {
 				attr(input, "id", input_id_value);
 			}
 
-			if (dirty & /*step*/ 1) {
-				input.checked = /*step*/ ctx[0].optionValues[/*option*/ ctx[9].id];
+			if (dirty & /*step, $pandocTemplates*/ 17) {
+				input.checked = /*step*/ ctx[0].optionValues[/*option*/ ctx[12].id];
 			}
 
-			if (dirty & /*step*/ 1 && t1_value !== (t1_value = /*option*/ ctx[9].name + "")) set_data(t1, t1_value);
+			if (dirty & /*step*/ 1 && t1_value !== (t1_value = /*option*/ ctx[12].name + "")) set_data(t1, t1_value);
 
-			if (dirty & /*step*/ 1 && label_for_value !== (label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id)) {
+			if (dirty & /*step, $pandocTemplates*/ 17 && label_for_value !== (label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id)) {
 				attr(label, "for", label_for_value);
 			}
 		},
@@ -23148,10 +26013,134 @@ function create_else_block_1$2(ctx) {
 	};
 }
 
-// (64:76) 
-function create_if_block_4$3(ctx) {
+// (87:71) 
+function create_if_block_5$5(ctx) {
 	let label;
-	let t0_value = /*option*/ ctx[9].name + "";
+	let t0_value = /*option*/ ctx[12].name + "";
+	let t0;
+	let label_for_value;
+	let t1;
+	let select;
+	let option;
+	let t2_value = (/*option*/ ctx[12].emptyLabel ?? "(default)") + "";
+	let t2;
+	let select_id_value;
+	let mounted;
+	let dispose;
+
+	let each_value_1 = /*option*/ ctx[12].dynamicChoices === "pandoc-templates"
+	? /*$pandocTemplates*/ ctx[4]
+	: /*option*/ ctx[12].choices ?? [];
+
+	let each_blocks = [];
+
+	for (let i = 0; i < each_value_1.length; i += 1) {
+		each_blocks[i] = create_each_block_1$3(get_each_context_1$3(ctx, each_value_1, i));
+	}
+
+	function select_change_handler() {
+		/*select_change_handler*/ ctx[9].call(select, /*option*/ ctx[12]);
+	}
+
+	return {
+		c() {
+			label = element("label");
+			t0 = text(t0_value);
+			t1 = space();
+			select = element("select");
+			option = element("option");
+			t2 = text(t2_value);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].c();
+			}
+
+			attr(label, "for", label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id);
+			attr(label, "class", "svelte-1cn3ejz");
+			option.__value = "";
+			option.value = option.__value;
+			attr(select, "id", select_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id);
+			attr(select, "class", "svelte-1cn3ejz");
+			if (/*step*/ ctx[0].optionValues[/*option*/ ctx[12].id] === void 0) add_render_callback(select_change_handler);
+		},
+		m(target, anchor) {
+			insert(target, label, anchor);
+			append(label, t0);
+			insert(target, t1, anchor);
+			insert(target, select, anchor);
+			append(select, option);
+			append(option, t2);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].m(select, null);
+			}
+
+			select_option(select, /*step*/ ctx[0].optionValues[/*option*/ ctx[12].id]);
+
+			if (!mounted) {
+				dispose = listen(select, "change", select_change_handler);
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+			if (dirty & /*step*/ 1 && t0_value !== (t0_value = /*option*/ ctx[12].name + "")) set_data(t0, t0_value);
+
+			if (dirty & /*step, $pandocTemplates*/ 17 && label_for_value !== (label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id)) {
+				attr(label, "for", label_for_value);
+			}
+
+			if (dirty & /*step*/ 1 && t2_value !== (t2_value = (/*option*/ ctx[12].emptyLabel ?? "(default)") + "")) set_data(t2, t2_value);
+
+			if (dirty & /*step, $pandocTemplates*/ 17) {
+				each_value_1 = /*option*/ ctx[12].dynamicChoices === "pandoc-templates"
+				? /*$pandocTemplates*/ ctx[4]
+				: /*option*/ ctx[12].choices ?? [];
+
+				let i;
+
+				for (i = 0; i < each_value_1.length; i += 1) {
+					const child_ctx = get_each_context_1$3(ctx, each_value_1, i);
+
+					if (each_blocks[i]) {
+						each_blocks[i].p(child_ctx, dirty);
+					} else {
+						each_blocks[i] = create_each_block_1$3(child_ctx);
+						each_blocks[i].c();
+						each_blocks[i].m(select, null);
+					}
+				}
+
+				for (; i < each_blocks.length; i += 1) {
+					each_blocks[i].d(1);
+				}
+
+				each_blocks.length = each_value_1.length;
+			}
+
+			if (dirty & /*step, $pandocTemplates*/ 17 && select_id_value !== (select_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id)) {
+				attr(select, "id", select_id_value);
+			}
+
+			if (dirty & /*step, $pandocTemplates*/ 17) {
+				select_option(select, /*step*/ ctx[0].optionValues[/*option*/ ctx[12].id]);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(label);
+			if (detaching) detach(t1);
+			if (detaching) detach(select);
+			destroy_each(each_blocks, detaching);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (80:76) 
+function create_if_block_4$5(ctx) {
+	let label;
+	let t0_value = /*option*/ ctx[12].name + "";
 	let t0;
 	let label_for_value;
 	let t1;
@@ -23161,7 +26150,7 @@ function create_if_block_4$3(ctx) {
 	let dispose;
 
 	function textarea_input_handler() {
-		/*textarea_input_handler*/ ctx[6].call(textarea, /*option*/ ctx[9]);
+		/*textarea_input_handler*/ ctx[8].call(textarea, /*option*/ ctx[12]);
 	}
 
 	return {
@@ -23170,18 +26159,18 @@ function create_if_block_4$3(ctx) {
 			t0 = text(t0_value);
 			t1 = space();
 			textarea = element("textarea");
-			attr(label, "for", label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id);
-			attr(label, "class", "svelte-yprjpc");
-			attr(textarea, "id", textarea_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id);
+			attr(label, "for", label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id);
+			attr(label, "class", "svelte-1cn3ejz");
+			attr(textarea, "id", textarea_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id);
 			attr(textarea, "placeholder", "key: value");
-			attr(textarea, "class", "svelte-yprjpc");
+			attr(textarea, "class", "svelte-1cn3ejz");
 		},
 		m(target, anchor) {
 			insert(target, label, anchor);
 			append(label, t0);
 			insert(target, t1, anchor);
 			insert(target, textarea, anchor);
-			set_input_value(textarea, /*step*/ ctx[0].optionValues[/*option*/ ctx[9].id]);
+			set_input_value(textarea, /*step*/ ctx[0].optionValues[/*option*/ ctx[12].id]);
 
 			if (!mounted) {
 				dispose = listen(textarea, "input", textarea_input_handler);
@@ -23190,18 +26179,18 @@ function create_if_block_4$3(ctx) {
 		},
 		p(new_ctx, dirty) {
 			ctx = new_ctx;
-			if (dirty & /*step*/ 1 && t0_value !== (t0_value = /*option*/ ctx[9].name + "")) set_data(t0, t0_value);
+			if (dirty & /*step*/ 1 && t0_value !== (t0_value = /*option*/ ctx[12].name + "")) set_data(t0, t0_value);
 
-			if (dirty & /*step*/ 1 && label_for_value !== (label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id)) {
+			if (dirty & /*step, $pandocTemplates*/ 17 && label_for_value !== (label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id)) {
 				attr(label, "for", label_for_value);
 			}
 
-			if (dirty & /*step*/ 1 && textarea_id_value !== (textarea_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id)) {
+			if (dirty & /*step, $pandocTemplates*/ 17 && textarea_id_value !== (textarea_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id)) {
 				attr(textarea, "id", textarea_id_value);
 			}
 
-			if (dirty & /*step*/ 1) {
-				set_input_value(textarea, /*step*/ ctx[0].optionValues[/*option*/ ctx[9].id]);
+			if (dirty & /*step, $pandocTemplates*/ 17) {
+				set_input_value(textarea, /*step*/ ctx[0].optionValues[/*option*/ ctx[12].id]);
 			}
 		},
 		d(detaching) {
@@ -23214,10 +26203,10 @@ function create_if_block_4$3(ctx) {
 	};
 }
 
-// (56:14) {#if option.type === CompileStepOptionType.Text}
-function create_if_block_3$3(ctx) {
+// (72:14) {#if option.type === CompileStepOptionType.Text}
+function create_if_block_3$5(ctx) {
 	let label;
-	let t0_value = /*option*/ ctx[9].name + "";
+	let t0_value = /*option*/ ctx[12].name + "";
 	let t0;
 	let label_for_value;
 	let t1;
@@ -23228,7 +26217,7 @@ function create_if_block_3$3(ctx) {
 	let dispose;
 
 	function input_input_handler() {
-		/*input_input_handler*/ ctx[5].call(input, /*option*/ ctx[9]);
+		/*input_input_handler*/ ctx[7].call(input, /*option*/ ctx[12]);
 	}
 
 	return {
@@ -23237,19 +26226,19 @@ function create_if_block_3$3(ctx) {
 			t0 = text(t0_value);
 			t1 = space();
 			input = element("input");
-			attr(label, "for", label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id);
-			attr(label, "class", "svelte-yprjpc");
-			attr(input, "id", input_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id);
+			attr(label, "for", label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id);
+			attr(label, "class", "svelte-1cn3ejz");
+			attr(input, "id", input_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id);
 			attr(input, "type", "text");
-			attr(input, "placeholder", input_placeholder_value = /*option*/ ctx[9].default.replace(/\n/g, "\\n"));
-			attr(input, "class", "svelte-yprjpc");
+			attr(input, "placeholder", input_placeholder_value = /*option*/ ctx[12].default.replace(/\n/g, "\\n"));
+			attr(input, "class", "svelte-1cn3ejz");
 		},
 		m(target, anchor) {
 			insert(target, label, anchor);
 			append(label, t0);
 			insert(target, t1, anchor);
 			insert(target, input, anchor);
-			set_input_value(input, /*step*/ ctx[0].optionValues[/*option*/ ctx[9].id]);
+			set_input_value(input, /*step*/ ctx[0].optionValues[/*option*/ ctx[12].id]);
 
 			if (!mounted) {
 				dispose = listen(input, "input", input_input_handler);
@@ -23258,22 +26247,22 @@ function create_if_block_3$3(ctx) {
 		},
 		p(new_ctx, dirty) {
 			ctx = new_ctx;
-			if (dirty & /*step*/ 1 && t0_value !== (t0_value = /*option*/ ctx[9].name + "")) set_data(t0, t0_value);
+			if (dirty & /*step*/ 1 && t0_value !== (t0_value = /*option*/ ctx[12].name + "")) set_data(t0, t0_value);
 
-			if (dirty & /*step*/ 1 && label_for_value !== (label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id)) {
+			if (dirty & /*step, $pandocTemplates*/ 17 && label_for_value !== (label_for_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id)) {
 				attr(label, "for", label_for_value);
 			}
 
-			if (dirty & /*step*/ 1 && input_id_value !== (input_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[9].id)) {
+			if (dirty & /*step, $pandocTemplates*/ 17 && input_id_value !== (input_id_value = /*step*/ ctx[0].id + "-" + /*option*/ ctx[12].id)) {
 				attr(input, "id", input_id_value);
 			}
 
-			if (dirty & /*step*/ 1 && input_placeholder_value !== (input_placeholder_value = /*option*/ ctx[9].default.replace(/\n/g, "\\n"))) {
+			if (dirty & /*step, $pandocTemplates*/ 17 && input_placeholder_value !== (input_placeholder_value = /*option*/ ctx[12].default.replace(/\n/g, "\\n"))) {
 				attr(input, "placeholder", input_placeholder_value);
 			}
 
-			if (dirty & /*step*/ 1 && input.value !== /*step*/ ctx[0].optionValues[/*option*/ ctx[9].id]) {
-				set_input_value(input, /*step*/ ctx[0].optionValues[/*option*/ ctx[9].id]);
+			if (dirty & /*step, $pandocTemplates*/ 17 && input.value !== /*step*/ ctx[0].optionValues[/*option*/ ctx[12].id]) {
+				set_input_value(input, /*step*/ ctx[0].optionValues[/*option*/ ctx[12].id]);
 			}
 		},
 		d(detaching) {
@@ -23286,19 +26275,52 @@ function create_if_block_3$3(ctx) {
 	};
 }
 
-// (54:10) {#each step.description.options as option}
-function create_each_block$6(ctx) {
+// (94:18) {#each option.dynamicChoices === "pandoc-templates" ? $pandocTemplates : option.choices ?? [] as choice}
+function create_each_block_1$3(ctx) {
+	let option;
+	let t_value = /*choice*/ ctx[15] + "";
+	let t;
+	let option_value_value;
+
+	return {
+		c() {
+			option = element("option");
+			t = text(t_value);
+			option.__value = option_value_value = /*choice*/ ctx[15];
+			option.value = option.__value;
+		},
+		m(target, anchor) {
+			insert(target, option, anchor);
+			append(option, t);
+		},
+		p(ctx, dirty) {
+			if (dirty & /*step, $pandocTemplates*/ 17 && t_value !== (t_value = /*choice*/ ctx[15] + "")) set_data(t, t_value);
+
+			if (dirty & /*step, $pandocTemplates*/ 17 && option_value_value !== (option_value_value = /*choice*/ ctx[15])) {
+				option.__value = option_value_value;
+				option.value = option.__value;
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(option);
+		}
+	};
+}
+
+// (70:10) {#each step.description.options as option}
+function create_each_block$8(ctx) {
 	let div;
 	let t0;
 	let p;
-	let t1_value = /*option*/ ctx[9].description + "";
+	let t1_value = /*option*/ ctx[12].description + "";
 	let t1;
 	let t2;
 
 	function select_block_type_1(ctx, dirty) {
-		if (/*option*/ ctx[9].type === CompileStepOptionType.Text) return create_if_block_3$3;
-		if (/*option*/ ctx[9].type === CompileStepOptionType.MultilineText) return create_if_block_4$3;
-		return create_else_block_1$2;
+		if (/*option*/ ctx[12].type === CompileStepOptionType.Text) return create_if_block_3$5;
+		if (/*option*/ ctx[12].type === CompileStepOptionType.MultilineText) return create_if_block_4$5;
+		if (/*option*/ ctx[12].type === CompileStepOptionType.Dropdown) return create_if_block_5$5;
+		return create_else_block_1$3;
 	}
 
 	let current_block_type = select_block_type_1(ctx);
@@ -23312,8 +26334,8 @@ function create_each_block$6(ctx) {
 			p = element("p");
 			t1 = text(t1_value);
 			t2 = space();
-			attr(p, "class", "longform-compile-step-option-description svelte-yprjpc");
-			attr(div, "class", "longform-compile-step-option svelte-yprjpc");
+			attr(p, "class", "longform-compile-step-option-description svelte-1cn3ejz");
+			attr(div, "class", "longform-compile-step-option svelte-1cn3ejz");
 		},
 		m(target, anchor) {
 			insert(target, div, anchor);
@@ -23336,7 +26358,7 @@ function create_each_block$6(ctx) {
 				}
 			}
 
-			if (dirty & /*step*/ 1 && t1_value !== (t1_value = /*option*/ ctx[9].description + "")) set_data(t1, t1_value);
+			if (dirty & /*step*/ 1 && t1_value !== (t1_value = /*option*/ ctx[12].description + "")) set_data(t1, t1_value);
 		},
 		d(detaching) {
 			if (detaching) detach(div);
@@ -23345,8 +26367,8 @@ function create_each_block$6(ctx) {
 	};
 }
 
-// (89:4) {#if error}
-function create_if_block_1$9(ctx) {
+// (116:4) {#if error}
+function create_if_block_1$a(ctx) {
 	let div;
 	let p;
 	let t;
@@ -23356,8 +26378,8 @@ function create_if_block_1$9(ctx) {
 			div = element("div");
 			p = element("p");
 			t = text(/*error*/ ctx[3]);
-			attr(p, "class", "longform-compile-step-error svelte-yprjpc");
-			attr(div, "class", "longform-compile-step-error-container svelte-yprjpc");
+			attr(p, "class", "longform-compile-step-error svelte-1cn3ejz");
+			attr(div, "class", "longform-compile-step-error-container svelte-1cn3ejz");
 		},
 		m(target, anchor) {
 			insert(target, div, anchor);
@@ -23373,12 +26395,12 @@ function create_if_block_1$9(ctx) {
 	};
 }
 
-function create_fragment$f(ctx) {
+function create_fragment$g(ctx) {
 	let div;
 
 	function select_block_type(ctx, dirty) {
-		if (/*step*/ ctx[0].description.canonicalID === PLACEHOLDER_MISSING_STEP.description.canonicalID) return create_if_block$c;
-		return create_else_block$5;
+		if (/*step*/ ctx[0].description.canonicalID === PLACEHOLDER_MISSING_STEP.description.canonicalID) return create_if_block$d;
+		return create_else_block$6;
 	}
 
 	let current_block_type = select_block_type(ctx);
@@ -23388,7 +26410,7 @@ function create_fragment$f(ctx) {
 		c() {
 			div = element("div");
 			if_block.c();
-			attr(div, "class", "longform-compile-step svelte-yprjpc");
+			attr(div, "class", "longform-compile-step svelte-1cn3ejz");
 		},
 		m(target, anchor) {
 			insert(target, div, anchor);
@@ -23416,7 +26438,9 @@ function create_fragment$f(ctx) {
 	};
 }
 
-function instance$f($$self, $$props, $$invalidate) {
+function instance$g($$self, $$props, $$invalidate) {
+	let $pandocTemplates;
+	component_subscribe($$self, pandocTemplates, $$value => $$invalidate(4, $pandocTemplates = $$value));
 	let { step } = $$props;
 	let { ordinal } = $$props;
 	let { calculatedKind } = $$props;
@@ -23427,6 +26451,19 @@ function instance$f($$self, $$props, $$invalidate) {
 		dispatch("removeStep");
 	}
 
+	// `bind:` writes straight into `step.optionValues`, which the parent hands us
+	// by reference — so the new value is live, but the `workflows` store never
+	// sees a write and the debounced save in main.ts never fires. Tell the parent
+	// to reassign the workflow so the edit reaches data.json.
+	//
+	// Fired on `change`, not `input`: republishing the store re-runs the pane's
+	// whole validation pass and re-renders every step card, which is not worth
+	// doing per keystroke when the value is already live and the save is debounced
+	// by three seconds anyway.
+	function optionChanged() {
+		dispatch("optionChanged");
+	}
+
 	function input_input_handler(option) {
 		step.optionValues[option.id] = this.value;
 		$$invalidate(0, step);
@@ -23434,6 +26471,11 @@ function instance$f($$self, $$props, $$invalidate) {
 
 	function textarea_input_handler(option) {
 		step.optionValues[option.id] = this.value;
+		$$invalidate(0, step);
+	}
+
+	function select_change_handler(option) {
+		step.optionValues[option.id] = select_value(this);
 		$$invalidate(0, step);
 	}
 
@@ -23454,9 +26496,12 @@ function instance$f($$self, $$props, $$invalidate) {
 		ordinal,
 		calculatedKind,
 		error,
+		$pandocTemplates,
 		removeStep,
+		optionChanged,
 		input_input_handler,
 		textarea_input_handler,
+		select_change_handler,
 		input_change_handler
 	];
 }
@@ -23468,8 +26513,8 @@ class CompileStepView extends SvelteComponent {
 		init(
 			this,
 			options,
-			instance$f,
-			create_fragment$f,
+			instance$g,
+			create_fragment$g,
 			safe_not_equal,
 			{
 				step: 0,
@@ -23477,7 +26522,7 @@ class CompileStepView extends SvelteComponent {
 				calculatedKind: 2,
 				error: 3
 			},
-			add_css$e
+			add_css$f
 		);
 	}
 }
@@ -26266,7 +29311,7 @@ _extends(Remove, {
 
 /* src/view/sortable/SortableList.svelte generated by Svelte v3.49.0 */
 
-function get_each_context$5(ctx, list, i) {
+function get_each_context$7(ctx, list, i) {
 	const child_ctx = ctx.slice();
 	child_ctx[9] = list[i];
 	return child_ctx;
@@ -26276,7 +29321,7 @@ const get_default_slot_changes = dirty => ({ item: dirty & /*items*/ 1 });
 const get_default_slot_context = ctx => ({ item: /*item*/ ctx[9] });
 
 // (87:2) {#each items as item (item.id)}
-function create_each_block$5(key_1, ctx) {
+function create_each_block$7(key_1, ctx) {
 	let li;
 	let t;
 	let li_data_id_value;
@@ -26348,7 +29393,7 @@ function create_each_block$5(key_1, ctx) {
 	};
 }
 
-function create_fragment$e(ctx) {
+function create_fragment$f(ctx) {
 	let ul;
 	let each_blocks = [];
 	let each_1_lookup = new Map();
@@ -26358,9 +29403,9 @@ function create_fragment$e(ctx) {
 	const get_key = ctx => /*item*/ ctx[9].id;
 
 	for (let i = 0; i < each_value.length; i += 1) {
-		let child_ctx = get_each_context$5(ctx, each_value, i);
+		let child_ctx = get_each_context$7(ctx, each_value, i);
 		let key = get_key(child_ctx);
-		each_1_lookup.set(key, each_blocks[i] = create_each_block$5(key, child_ctx));
+		each_1_lookup.set(key, each_blocks[i] = create_each_block$7(key, child_ctx));
 	}
 
 	return {
@@ -26387,7 +29432,7 @@ function create_fragment$e(ctx) {
 			if (dirty & /*items, $$scope*/ 33) {
 				each_value = /*items*/ ctx[0];
 				group_outros();
-				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value, each_1_lookup, ul, outro_and_destroy_block, create_each_block$5, null, get_each_context$5);
+				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value, each_1_lookup, ul, outro_and_destroy_block, create_each_block$7, null, get_each_context$7);
 				check_outros();
 			}
 
@@ -26469,7 +29514,7 @@ function IndentPlugin() {
 // @ts-ignore
 Sortable.mount(new IndentPlugin());
 
-function instance$e($$self, $$props, $$invalidate) {
+function instance$f($$self, $$props, $$invalidate) {
 	let { $$slots: slots = {}, $$scope } = $$props;
 	let { items = [] } = $$props;
 	let { sortableOptions = {} } = $$props;
@@ -26560,12 +29605,2465 @@ class SortableList extends SvelteComponent {
 	constructor(options) {
 		super();
 
-		init(this, options, instance$e, create_fragment$e, safe_not_equal, {
+		init(this, options, instance$f, create_fragment$f, safe_not_equal, {
 			items: 0,
 			sortableOptions: 3,
 			trackIndents: 4
 		});
 	}
+}
+
+/**
+ * Return a NEW workflow (cloned steps + optionValues) with the batch overrides
+ * applied to the matching steps. The input workflow is never mutated, so a run's
+ * overrides don't touch the user's saved workflows.
+ */
+function applyBatchOverrides(workflow, o) {
+    const steps = workflow.steps.map((step) => {
+        var _a;
+        const ov = Object.assign({}, step.optionValues);
+        const id = (_a = step.description.canonicalID) !== null && _a !== void 0 ? _a : step.id;
+        if (id === "run-pandoc-export") {
+            if (o.dryRun !== undefined)
+                ov["dry-run"] = o.dryRun;
+            if (o.openAfter !== undefined)
+                ov["open-after"] = o.openAfter;
+        }
+        else if (id === "write-to-note") {
+            if (o.openAfter !== undefined)
+                ov["open-after"] = o.openAfter;
+        }
+        else if (id === "harvest-manuscript-lines") {
+            if (o.harvest !== undefined)
+                ov["enabled"] = o.harvest;
+        }
+        return Object.assign(Object.assign({}, step), { optionValues: ov });
+    });
+    return Object.assign(Object.assign({}, workflow), { steps });
+}
+/**
+ * Deep-clone a workflow so a row can edit its steps' `optionValues` in the matrix
+ * without mutating the user's saved workflow. Steps and their option maps are
+ * copied; the (immutable) `description` is shared by reference.
+ */
+function cloneWorkflow(workflow) {
+    return Object.assign(Object.assign({}, workflow), { steps: workflow.steps.map((step) => (Object.assign(Object.assign({}, step), { optionValues: Object.assign({}, step.optionValues) }))) });
+}
+const IDLE_ROW = { status: "idle", activeStep: -1 };
+/**
+ * Fold a `CompileStatus` from the runner into the next row state. The runner emits
+ * a Step event at the START of each step (so `activeStep` is the running one), a
+ * single Success at the end, and Error on a throw.
+ */
+function statusToRowState(status, prev) {
+    var _a;
+    switch (status.kind) {
+        case "CompileStatusStep":
+            return {
+                status: "running",
+                activeStep: status.stepIndex,
+                totalSteps: status.totalSteps,
+            };
+        case "CompileStatusSuccess":
+            return {
+                status: "done",
+                activeStep: (_a = prev.totalSteps) !== null && _a !== void 0 ? _a : prev.activeStep + 1,
+                totalSteps: prev.totalSteps,
+            };
+        case "CompileStatusError":
+            return Object.assign(Object.assign({}, prev), { status: "error", error: status.error });
+    }
+}
+/**
+ * A short 2-letter chip for a draft, matching the schematic's MS / SI / RL. Known
+ * academic drafts get a mnemonic; anything else falls back to word initials.
+ */
+function draftAbbrev(name) {
+    const n = (name || "").toLowerCase();
+    if (n.includes("supplement"))
+        return "SI";
+    if (n.includes("response"))
+        return "RL";
+    if (n.includes("cover"))
+        return "CL";
+    if (n.includes("manuscript") || n.includes("main"))
+        return "MS";
+    const initials = (name || "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((w) => w[0])
+        .join("")
+        .toUpperCase();
+    return initials || "··";
+}
+/** How far along a row is, 0..1, for the progress-line fill. */
+function rowProgress(state, totalSteps) {
+    if (totalSteps <= 0)
+        return 0;
+    if (state.status === "done")
+        return 1;
+    if (state.status === "idle" || state.activeStep < 0)
+        return 0;
+    // active step is in-flight → fill up to (but not including) it, plus a nudge.
+    return Math.min(1, (state.activeStep + 0.5) / totalSteps);
+}
+
+/* src/view/compile/compile-matrix/CompileMatrix.svelte generated by Svelte v3.49.0 */
+
+function add_css$e(target) {
+	append_styles(target, "svelte-1d84fds", ".matrix.svelte-1d84fds.svelte-1d84fds{display:flex;flex-direction:column;gap:var(--size-4-2)}.matrix-header.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;flex-wrap:wrap;gap:var(--size-4-3);padding-bottom:var(--size-4-2);border-bottom:1px solid var(--background-modifier-border)}.matrix-heading.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:baseline;gap:var(--size-4-2);margin-right:auto}.matrix-title.svelte-1d84fds.svelte-1d84fds{font-weight:700;font-size:var(--font-ui-large, 1.1em);color:var(--text-normal)}.matrix-count.svelte-1d84fds.svelte-1d84fds{font-size:var(--font-ui-smaller);color:var(--text-faint)}.matrix-batch.svelte-1d84fds.svelte-1d84fds{display:flex;gap:var(--size-2-2);flex-wrap:wrap}.batch-toggle.svelte-1d84fds.svelte-1d84fds{display:inline-flex;align-items:center;gap:var(--size-2-1);font-size:var(--font-ui-smaller);color:var(--text-muted);padding:2px var(--size-2-3);border:1px solid var(--background-modifier-border);border-radius:var(--radius-l);cursor:pointer;user-select:none;transition:color 0.15s, border-color 0.15s, background-color 0.15s}.batch-toggle.on.svelte-1d84fds.svelte-1d84fds{color:var(--text-accent);border-color:var(--interactive-accent);background:color-mix(in srgb, var(--interactive-accent) 12%, transparent)}.batch-toggle.svelte-1d84fds input.svelte-1d84fds{margin:0}.matrix-run.svelte-1d84fds.svelte-1d84fds{font-weight:700;color:var(--text-on-accent);background:var(--interactive-accent);border:none;border-radius:var(--radius-s);padding:var(--size-2-2) var(--size-4-4);cursor:pointer;transition:background-color 0.15s, transform 0.1s}.matrix-run.svelte-1d84fds.svelte-1d84fds:hover:not(:disabled){background:var(--interactive-accent-hover)}.matrix-run.svelte-1d84fds.svelte-1d84fds:active:not(:disabled){transform:translateY(1px)}.matrix-run.svelte-1d84fds.svelte-1d84fds:disabled{background:var(--background-modifier-border);color:var(--text-faint);cursor:default}.matrix-hint.svelte-1d84fds.svelte-1d84fds{font-size:var(--font-smallest);color:var(--text-faint);margin-top:calc(-1 * var(--size-2-1))}.matrix ul{list-style:none;margin:0;padding:0}.matrix-row.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;gap:var(--size-4-2);padding:var(--size-4-2) var(--size-4-1);border-radius:var(--radius-m, 8px);background:var(--background-secondary-alt);border:1px solid transparent;margin-bottom:var(--size-2-3);animation:svelte-1d84fds-matrix-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;transition:border-color 0.2s, box-shadow 0.2s}.matrix-row.status-running.svelte-1d84fds.svelte-1d84fds{border-color:color-mix(in srgb, var(--interactive-accent) 55%, transparent);box-shadow:0 0 0 1px\n      color-mix(in srgb, var(--interactive-accent) 25%, transparent)}.matrix-row.status-done.svelte-1d84fds.svelte-1d84fds{border-color:color-mix(in srgb, var(--interactive-success) 45%, transparent)}.matrix-row.status-error.svelte-1d84fds.svelte-1d84fds{border-color:color-mix(in srgb, var(--text-error) 55%, transparent)}.matrix-row.not-runnable.svelte-1d84fds.svelte-1d84fds{opacity:0.55}.matrix-drag.svelte-1d84fds.svelte-1d84fds{cursor:grab;color:var(--text-faint);letter-spacing:-3px;padding:0 var(--size-2-1);line-height:1;user-select:none}.matrix-drag.svelte-1d84fds.svelte-1d84fds:hover{color:var(--text-muted)}.matrix-draft.svelte-1d84fds.svelte-1d84fds{display:flex;flex-direction:column;gap:var(--size-2-1);width:200px;min-width:200px}.matrix-draft-head.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;gap:var(--size-2-3)}.matrix-workflow.svelte-1d84fds.svelte-1d84fds{max-width:100%;font-size:var(--font-smallest);color:var(--text-muted);background:var(--background-primary);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:1px var(--size-2-2);cursor:pointer}.matrix-workflow.svelte-1d84fds.svelte-1d84fds:disabled{cursor:default;opacity:0.7}.matrix-abbrev.svelte-1d84fds.svelte-1d84fds{display:inline-flex;align-items:center;justify-content:center;min-width:2.1em;height:1.7em;padding:0 var(--size-2-2);font-size:var(--font-smallest);font-weight:700;letter-spacing:0.04em;color:var(--text-on-accent);background:color-mix(\n      in srgb,\n      var(--text-accent) 55%,\n      var(--background-modifier-border) 45%\n    );border-radius:var(--radius-s)}.matrix-name.svelte-1d84fds.svelte-1d84fds{color:var(--text-normal);font-size:var(--font-ui-smaller);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.matrix-progress.svelte-1d84fds.svelte-1d84fds{flex:1;min-width:160px;display:flex;flex-direction:column;gap:2px}.matrix-runway.svelte-1d84fds.svelte-1d84fds{position:relative;min-width:160px;height:28px;display:flex;align-items:center;padding:0 var(--size-4-2)}.runway-track.svelte-1d84fds.svelte-1d84fds{position:absolute;left:var(--size-4-2);right:var(--size-4-2);top:50%;height:2px;transform:translateY(-50%);background:var(--background-modifier-border);border-radius:2px}.runway-fill.svelte-1d84fds.svelte-1d84fds{position:absolute;left:var(--size-4-2);right:var(--size-4-2);top:50%;height:3px;transform-origin:left center;transform:translateY(-50%) scaleX(0);background:var(--interactive-accent);border-radius:2px;transition:transform 0.4s cubic-bezier(0.3, 0.7, 0.3, 1)}.runway-nodes.svelte-1d84fds.svelte-1d84fds{position:relative;z-index:1;flex:1;display:flex;justify-content:space-between;align-items:center}.node.svelte-1d84fds.svelte-1d84fds{width:20px;height:20px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;background:var(--background-primary);border:2px solid var(--background-modifier-border);color:var(--text-faint);cursor:pointer;transition:background-color 0.2s, border-color 0.2s, transform 0.2s,\n      box-shadow 0.2s, color 0.2s}.node.svelte-1d84fds.svelte-1d84fds:hover,.node.is-hovered.svelte-1d84fds.svelte-1d84fds{border-color:var(--text-accent);color:var(--text-accent);transform:scale(1.12)}.node.is-open.svelte-1d84fds.svelte-1d84fds{box-shadow:0 0 0 2px\n      color-mix(in srgb, var(--text-accent) 60%, transparent)}.node.svelte-1d84fds.svelte-1d84fds:focus-visible{outline:none;box-shadow:0 0 0 2px var(--text-accent)}.node.is-done.svelte-1d84fds.svelte-1d84fds{background:var(--interactive-accent);border-color:var(--interactive-accent);color:var(--text-on-accent);animation:svelte-1d84fds-node-pop 0.25s ease}.node.is-active.svelte-1d84fds.svelte-1d84fds{border-color:var(--text-accent);background:var(--background-primary);animation:svelte-1d84fds-node-pulse 1.4s ease-in-out infinite}.node.is-error.svelte-1d84fds.svelte-1d84fds{background:var(--text-error);border-color:var(--text-error);color:var(--text-on-accent)}.node-num.svelte-1d84fds.svelte-1d84fds{font-size:10px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums}.node-glyph.svelte-1d84fds.svelte-1d84fds{font-size:11px;line-height:1;color:var(--text-on-accent);font-weight:800}.node-spinner.svelte-1d84fds.svelte-1d84fds{width:14px;height:14px;border-radius:50%;border:2px solid transparent;border-top-color:var(--text-accent);border-right-color:var(--text-accent);animation:svelte-1d84fds-matrix-spin 0.7s linear infinite}.runway-caption.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:baseline;gap:var(--size-2-2);min-height:1.1em;padding:0 var(--size-4-2);font-size:var(--font-smallest);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.caption-counter.svelte-1d84fds.svelte-1d84fds{flex:none;font-variant-numeric:tabular-nums;font-weight:700;color:var(--text-accent)}.caption-name.svelte-1d84fds.svelte-1d84fds{color:var(--text-muted);overflow:hidden;text-overflow:ellipsis}.caption-error.svelte-1d84fds.svelte-1d84fds{color:var(--text-error)}.caption-hint.svelte-1d84fds.svelte-1d84fds{color:var(--text-faint);font-style:italic}.matrix-skip.svelte-1d84fds.svelte-1d84fds{font-size:var(--font-ui-smaller);color:var(--text-faint);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.matrix-status.svelte-1d84fds.svelte-1d84fds{width:24px;min-width:24px;text-align:center;font-weight:800}.status-done.svelte-1d84fds.svelte-1d84fds{color:var(--interactive-success)}.status-error.svelte-1d84fds.svelte-1d84fds{color:var(--text-error)}.status-skip.svelte-1d84fds.svelte-1d84fds{color:var(--text-faint)}.status-spinner.svelte-1d84fds.svelte-1d84fds{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid var(--background-modifier-border);border-top-color:var(--text-accent);animation:svelte-1d84fds-matrix-spin 0.7s linear infinite}.step-editor.svelte-1d84fds.svelte-1d84fds{margin:calc(-1 * var(--size-2-2)) 0 var(--size-2-3) 0;padding:var(--size-4-2) var(--size-4-3);background:var(--background-primary);border:1px solid var(--background-modifier-border);border-top:2px solid var(--interactive-accent);border-radius:0 0 var(--radius-m, 8px) var(--radius-m, 8px);animation:svelte-1d84fds-step-editor-in 0.2s ease both}.step-editor-head.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;gap:var(--size-2-3)}.step-editor-head.svelte-1d84fds h4.svelte-1d84fds{margin:0;font-size:var(--font-ui-small);color:var(--text-normal);display:flex;align-items:center;gap:var(--size-2-2)}.step-editor-ord.svelte-1d84fds.svelte-1d84fds{display:inline-flex;align-items:center;justify-content:center;min-width:1.5em;height:1.5em;font-size:var(--font-smallest);font-weight:700;color:var(--text-on-accent);background:var(--interactive-accent);border-radius:50%}.step-editor-kind.svelte-1d84fds.svelte-1d84fds{font-size:var(--font-smallest);color:var(--text-muted);padding:1px var(--size-2-2);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s)}.step-editor-close.svelte-1d84fds.svelte-1d84fds{margin-left:auto;background:transparent;border:none;color:var(--text-faint);cursor:pointer;padding:2px var(--size-2-2);border-radius:var(--radius-s);font-weight:700}.step-editor-close.svelte-1d84fds.svelte-1d84fds:hover{color:var(--text-normal);background:var(--background-modifier-hover)}.step-editor-desc.svelte-1d84fds.svelte-1d84fds{margin:var(--size-2-2) 0 var(--size-2-3) 0;font-size:var(--font-ui-smaller);color:var(--text-muted)}.step-editor-option.svelte-1d84fds.svelte-1d84fds{margin-bottom:var(--size-4-2)}.step-editor-option.svelte-1d84fds>label.svelte-1d84fds{display:block;font-size:var(--font-ui-smaller);font-weight:600;color:var(--text-normal);margin-bottom:2px}.step-editor-option.svelte-1d84fds input[type=\"text\"].svelte-1d84fds,.step-editor-option.svelte-1d84fds textarea.svelte-1d84fds,.step-editor-option.svelte-1d84fds select.svelte-1d84fds{width:100%;box-sizing:border-box}.step-editor-option.svelte-1d84fds textarea.svelte-1d84fds{min-height:4.5em;resize:vertical;font-family:var(--font-monospace);font-size:var(--font-ui-smaller)}.step-editor-checkbox.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;gap:var(--size-2-2)}.step-editor-checkbox.svelte-1d84fds label.svelte-1d84fds{font-size:var(--font-ui-smaller);color:var(--text-normal)}.step-editor-option-desc.svelte-1d84fds.svelte-1d84fds{margin:2px 0 0 0;font-size:var(--font-smallest);color:var(--text-faint)}.step-editor-noopts.svelte-1d84fds.svelte-1d84fds{margin:0;font-size:var(--font-ui-smaller);color:var(--text-faint);font-style:italic}@keyframes svelte-1d84fds-step-editor-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}.caption-error-btn.svelte-1d84fds.svelte-1d84fds{background:transparent;border:none;padding:0;cursor:pointer;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.caption-error-btn.svelte-1d84fds:hover .caption-error.svelte-1d84fds{text-decoration:underline}.error-panel.svelte-1d84fds.svelte-1d84fds{margin:calc(-1 * var(--size-2-2)) 0 var(--size-2-3) 0;padding:var(--size-4-2) var(--size-4-3);background:var(--background-primary);border:1px solid var(--background-modifier-border);border-top:2px solid var(--text-error);border-radius:0 0 var(--radius-m, 8px) var(--radius-m, 8px)}.error-panel-head.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;justify-content:space-between;gap:var(--size-2-3);margin-bottom:var(--size-2-2);font-size:var(--font-ui-smaller);font-weight:600;color:var(--text-error)}.error-copy.svelte-1d84fds.svelte-1d84fds{flex:none;font-size:var(--font-smallest);color:var(--text-muted);background:var(--background-secondary);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:2px var(--size-2-3);cursor:pointer}.error-copy.svelte-1d84fds.svelte-1d84fds:hover{color:var(--text-normal);border-color:var(--text-accent)}.error-panel-body.svelte-1d84fds.svelte-1d84fds{margin:0;max-height:40vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:var(--font-monospace);font-size:var(--font-smallest);color:var(--text-muted);user-select:text}@keyframes svelte-1d84fds-matrix-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@keyframes svelte-1d84fds-matrix-spin{to{transform:rotate(360deg)}}@keyframes svelte-1d84fds-node-pop{0%{transform:scale(0.6)}60%{transform:scale(1.25)}100%{transform:scale(1)}}@keyframes svelte-1d84fds-node-pulse{0%,100%{box-shadow:0 0 0 0\n        color-mix(in srgb, var(--text-accent) 45%, transparent)}50%{box-shadow:0 0 0 5px transparent}}@media(prefers-reduced-motion: reduce){.matrix-row.svelte-1d84fds.svelte-1d84fds,.node.is-done.svelte-1d84fds.svelte-1d84fds,.step-editor.svelte-1d84fds.svelte-1d84fds{animation:none}.node.svelte-1d84fds.svelte-1d84fds:hover{transform:none}.node.is-active.svelte-1d84fds.svelte-1d84fds{animation:none;border-color:var(--text-accent)}.node-spinner.svelte-1d84fds.svelte-1d84fds,.status-spinner.svelte-1d84fds.svelte-1d84fds{animation:none;border-top-color:var(--text-accent);border-right-color:var(--text-accent)}.runway-fill.svelte-1d84fds.svelte-1d84fds{transition:none}}");
+}
+
+function get_each_context$6(ctx, list, i) {
+	const child_ctx = ctx.slice();
+	child_ctx[43] = list[i];
+	return child_ctx;
+}
+
+function get_each_context_1$2(ctx, list, i) {
+	const child_ctx = ctx.slice();
+	child_ctx[46] = list[i];
+	return child_ctx;
+}
+
+function get_if_ctx$1(ctx) {
+	const child_ctx = ctx.slice();
+	const constants_0 = /*item*/ child_ctx[41].workflow.steps[/*item*/ child_ctx[41].openStep];
+	child_ctx[42] = constants_0;
+	return child_ctx;
+}
+
+function get_each_context_2(ctx, list, i) {
+	const child_ctx = ctx.slice();
+	child_ctx[49] = list[i];
+	child_ctx[51] = i;
+	return child_ctx;
+}
+
+function get_each_context_3(ctx, list, i) {
+	const child_ctx = ctx.slice();
+	child_ctx[52] = list[i];
+	return child_ctx;
+}
+
+// (209:10) {#each allWorkflowNames as name}
+function create_each_block_3(ctx) {
+	let option;
+	let t_1_value = /*name*/ ctx[52] + "";
+	let t_1;
+	let option_value_value;
+
+	return {
+		c() {
+			option = element("option");
+			t_1 = text(t_1_value);
+			option.__value = option_value_value = /*name*/ ctx[52];
+			option.value = option.__value;
+		},
+		m(target, anchor) {
+			insert(target, option, anchor);
+			append(option, t_1);
+		},
+		p: noop,
+		d(detaching) {
+			if (detaching) detach(option);
+		}
+	};
+}
+
+// (251:10) {:else}
+function create_else_block_4(ctx) {
+	let div;
+	let t0_value = /*$t*/ ctx[9]("matrix.skipped") + "";
+	let t0;
+	let t1;
+	let t2_value = /*item*/ ctx[41].skipReason + "";
+	let t2;
+	let div_title_value;
+
+	return {
+		c() {
+			div = element("div");
+			t0 = text(t0_value);
+			t1 = text(" — ");
+			t2 = text(t2_value);
+			attr(div, "class", "matrix-skip svelte-1d84fds");
+			attr(div, "title", div_title_value = /*item*/ ctx[41].skipReason);
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, t0);
+			append(div, t1);
+			append(div, t2);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 512 && t0_value !== (t0_value = /*$t*/ ctx[9]("matrix.skipped") + "")) set_data(t0, t0_value);
+			if (dirty[1] & /*item*/ 1024 && t2_value !== (t2_value = /*item*/ ctx[41].skipReason + "")) set_data(t2, t2_value);
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && div_title_value !== (div_title_value = /*item*/ ctx[41].skipReason)) {
+				attr(div, "title", div_title_value);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (217:10) {#if item.runnable}
+function create_if_block_15$1(ctx) {
+	let div0;
+	let t0;
+	let div1;
+	let t1;
+	let div2;
+	let each_value_2 = /*item*/ ctx[41].steps;
+	let each_blocks = [];
+
+	for (let i = 0; i < each_value_2.length; i += 1) {
+		each_blocks[i] = create_each_block_2(get_each_context_2(ctx, each_value_2, i));
+	}
+
+	return {
+		c() {
+			div0 = element("div");
+			t0 = space();
+			div1 = element("div");
+			t1 = space();
+			div2 = element("div");
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].c();
+			}
+
+			attr(div0, "class", "runway-track svelte-1d84fds");
+			attr(div1, "class", "runway-fill svelte-1d84fds");
+			set_style(div1, "transform", "scaleX(" + rowProgress(/*item*/ ctx[41].state, /*item*/ ctx[41].steps.length) + ")");
+			attr(div2, "class", "runway-nodes svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, div0, anchor);
+			insert(target, t0, anchor);
+			insert(target, div1, anchor);
+			insert(target, t1, anchor);
+			insert(target, div2, anchor);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].m(div2, null);
+			}
+		},
+		p(ctx, dirty) {
+			if (dirty[1] & /*item*/ 1024) {
+				set_style(div1, "transform", "scaleX(" + rowProgress(/*item*/ ctx[41].state, /*item*/ ctx[41].steps.length) + ")");
+			}
+
+			if (dirty[0] & /*hovered, toggleStep, hoverStep, clearHover*/ 155712 | dirty[1] & /*item*/ 1024) {
+				each_value_2 = /*item*/ ctx[41].steps;
+				let i;
+
+				for (i = 0; i < each_value_2.length; i += 1) {
+					const child_ctx = get_each_context_2(ctx, each_value_2, i);
+
+					if (each_blocks[i]) {
+						each_blocks[i].p(child_ctx, dirty);
+					} else {
+						each_blocks[i] = create_each_block_2(child_ctx);
+						each_blocks[i].c();
+						each_blocks[i].m(div2, null);
+					}
+				}
+
+				for (; i < each_blocks.length; i += 1) {
+					each_blocks[i].d(1);
+				}
+
+				each_blocks.length = each_value_2.length;
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div0);
+			if (detaching) detach(t0);
+			if (detaching) detach(div1);
+			if (detaching) detach(t1);
+			if (detaching) detach(div2);
+			destroy_each(each_blocks, detaching);
+		}
+	};
+}
+
+// (245:18) {:else}
+function create_else_block_3$1(ctx) {
+	let span;
+	let t_1_value = /*i*/ ctx[51] + 1 + "";
+	let t_1;
+
+	return {
+		c() {
+			span = element("span");
+			t_1 = text(t_1_value);
+			attr(span, "class", "node-num svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+			append(span, t_1);
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (243:68) 
+function create_if_block_18$1(ctx) {
+	let span;
+
+	return {
+		c() {
+			span = element("span");
+			span.textContent = "✕";
+			attr(span, "class", "node-glyph svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (241:67) 
+function create_if_block_17$1(ctx) {
+	let span;
+
+	return {
+		c() {
+			span = element("span");
+			span.textContent = "✓";
+			attr(span, "class", "node-glyph svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (239:18) {#if nodeClass(item.state, i) === "is-active"}
+function create_if_block_16$1(ctx) {
+	let span;
+
+	return {
+		c() {
+			span = element("span");
+			attr(span, "class", "node-spinner svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (224:14) {#each item.steps as s, i}
+function create_each_block_2(ctx) {
+	let button;
+	let show_if;
+	let show_if_1;
+	let show_if_2;
+	let t_1;
+	let button_class_value;
+	let button_title_value;
+	let button_aria_label_value;
+	let button_aria_expanded_value;
+	let mounted;
+	let dispose;
+
+	function select_block_type_1(ctx, dirty) {
+		if (dirty[1] & /*item*/ 1024) show_if = null;
+		if (dirty[1] & /*item*/ 1024) show_if_1 = null;
+		if (dirty[1] & /*item*/ 1024) show_if_2 = null;
+		if (show_if == null) show_if = !!(nodeClass(/*item*/ ctx[41].state, /*i*/ ctx[51]) === "is-active");
+		if (show_if) return create_if_block_16$1;
+		if (show_if_1 == null) show_if_1 = !!(nodeClass(/*item*/ ctx[41].state, /*i*/ ctx[51]) === "is-done");
+		if (show_if_1) return create_if_block_17$1;
+		if (show_if_2 == null) show_if_2 = !!(nodeClass(/*item*/ ctx[41].state, /*i*/ ctx[51]) === "is-error");
+		if (show_if_2) return create_if_block_18$1;
+		return create_else_block_3$1;
+	}
+
+	let current_block_type = select_block_type_1(ctx, [-1, -1]);
+	let if_block = current_block_type(ctx);
+
+	function click_handler() {
+		return /*click_handler*/ ctx[25](/*item*/ ctx[41], /*i*/ ctx[51]);
+	}
+
+	function mouseenter_handler() {
+		return /*mouseenter_handler*/ ctx[26](/*item*/ ctx[41], /*i*/ ctx[51]);
+	}
+
+	function focus_handler() {
+		return /*focus_handler*/ ctx[27](/*item*/ ctx[41], /*i*/ ctx[51]);
+	}
+
+	return {
+		c() {
+			button = element("button");
+			if_block.c();
+			t_1 = space();
+			attr(button, "type", "button");
+			attr(button, "class", button_class_value = "node " + nodeClass(/*item*/ ctx[41].state, /*i*/ ctx[51]) + " svelte-1d84fds");
+			attr(button, "title", button_title_value = "" + (/*i*/ ctx[51] + 1 + ". " + /*s*/ ctx[49].name));
+			attr(button, "aria-label", button_aria_label_value = "Step " + (/*i*/ ctx[51] + 1) + ": " + /*s*/ ctx[49].name);
+			attr(button, "aria-expanded", button_aria_expanded_value = /*item*/ ctx[41].openStep === /*i*/ ctx[51]);
+			toggle_class(button, "is-open", /*item*/ ctx[41].openStep === /*i*/ ctx[51]);
+			toggle_class(button, "is-hovered", /*hovered*/ ctx[6].id === /*item*/ ctx[41].id && /*hovered*/ ctx[6].i === /*i*/ ctx[51]);
+		},
+		m(target, anchor) {
+			insert(target, button, anchor);
+			if_block.m(button, null);
+			append(button, t_1);
+
+			if (!mounted) {
+				dispose = [
+					listen(button, "click", click_handler),
+					listen(button, "mouseenter", mouseenter_handler),
+					listen(button, "mouseleave", /*clearHover*/ ctx[14]),
+					listen(button, "focus", focus_handler),
+					listen(button, "blur", /*clearHover*/ ctx[14])
+				];
+
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+
+			if (current_block_type !== (current_block_type = select_block_type_1(ctx, dirty))) {
+				if_block.d(1);
+				if_block = current_block_type(ctx);
+
+				if (if_block) {
+					if_block.c();
+					if_block.m(button, t_1);
+				}
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && button_class_value !== (button_class_value = "node " + nodeClass(/*item*/ ctx[41].state, /*i*/ ctx[51]) + " svelte-1d84fds")) {
+				attr(button, "class", button_class_value);
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && button_title_value !== (button_title_value = "" + (/*i*/ ctx[51] + 1 + ". " + /*s*/ ctx[49].name))) {
+				attr(button, "title", button_title_value);
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && button_aria_label_value !== (button_aria_label_value = "Step " + (/*i*/ ctx[51] + 1) + ": " + /*s*/ ctx[49].name)) {
+				attr(button, "aria-label", button_aria_label_value);
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && button_aria_expanded_value !== (button_aria_expanded_value = /*item*/ ctx[41].openStep === /*i*/ ctx[51])) {
+				attr(button, "aria-expanded", button_aria_expanded_value);
+			}
+
+			if (dirty[1] & /*item, item*/ 1024) {
+				toggle_class(button, "is-open", /*item*/ ctx[41].openStep === /*i*/ ctx[51]);
+			}
+
+			if (dirty[0] & /*hovered*/ 64 | dirty[1] & /*item, item*/ 1024) {
+				toggle_class(button, "is-hovered", /*hovered*/ ctx[6].id === /*item*/ ctx[41].id && /*hovered*/ ctx[6].i === /*i*/ ctx[51]);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(button);
+			if_block.d();
+			mounted = false;
+			run_all(dispose);
+		}
+	};
+}
+
+// (257:8) {#if item.runnable}
+function create_if_block_10$1(ctx) {
+	let div;
+
+	function select_block_type_2(ctx, dirty) {
+		if (/*hovered*/ ctx[6].id === /*item*/ ctx[41].id && /*item*/ ctx[41].steps[/*hovered*/ ctx[6].i]) return create_if_block_11$1;
+		if (/*item*/ ctx[41].state.status === "running" && /*item*/ ctx[41].steps[/*item*/ ctx[41].state.activeStep]) return create_if_block_12$1;
+		if (/*item*/ ctx[41].state.status === "done") return create_if_block_13$1;
+		if (/*item*/ ctx[41].state.status === "error") return create_if_block_14$1;
+		return create_else_block_2$1;
+	}
+
+	let current_block_type = select_block_type_2(ctx);
+	let if_block = current_block_type(ctx);
+
+	return {
+		c() {
+			div = element("div");
+			if_block.c();
+			attr(div, "class", "runway-caption svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			if_block.m(div, null);
+		},
+		p(ctx, dirty) {
+			if (current_block_type === (current_block_type = select_block_type_2(ctx)) && if_block) {
+				if_block.p(ctx, dirty);
+			} else {
+				if_block.d(1);
+				if_block = current_block_type(ctx);
+
+				if (if_block) {
+					if_block.c();
+					if_block.m(div, null);
+				}
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+			if_block.d();
+		}
+	};
+}
+
+// (285:12) {:else}
+function create_else_block_2$1(ctx) {
+	let span;
+	let t_1_value = /*$t*/ ctx[9]("matrix.clickStepHint") + "";
+	let t_1;
+
+	return {
+		c() {
+			span = element("span");
+			t_1 = text(t_1_value);
+			attr(span, "class", "caption-hint svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+			append(span, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 512 && t_1_value !== (t_1_value = /*$t*/ ctx[9]("matrix.clickStepHint") + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (273:52) 
+function create_if_block_14$1(ctx) {
+	let button;
+	let span;
+	let t0_value = (/*item*/ ctx[41].steps[/*item*/ ctx[41].state.activeStep]?.name ?? "") + "";
+	let t0;
+	let t1;
+	let t2_value = /*$t*/ ctx[9]("matrix.viewError") + "";
+	let t2;
+	let button_title_value;
+	let mounted;
+	let dispose;
+
+	function click_handler_1() {
+		return /*click_handler_1*/ ctx[28](/*item*/ ctx[41]);
+	}
+
+	return {
+		c() {
+			button = element("button");
+			span = element("span");
+			t0 = text(t0_value);
+			t1 = text(" — ");
+			t2 = text(t2_value);
+			attr(span, "class", "caption-name caption-error svelte-1d84fds");
+			attr(button, "class", "caption-error-btn svelte-1d84fds");
+			attr(button, "title", button_title_value = /*$t*/ ctx[9]("matrix.viewError"));
+		},
+		m(target, anchor) {
+			insert(target, button, anchor);
+			append(button, span);
+			append(span, t0);
+			append(span, t1);
+			append(span, t2);
+
+			if (!mounted) {
+				dispose = listen(button, "click", click_handler_1);
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+			if (dirty[1] & /*item*/ 1024 && t0_value !== (t0_value = (/*item*/ ctx[41].steps[/*item*/ ctx[41].state.activeStep]?.name ?? "") + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*$t*/ 512 && t2_value !== (t2_value = /*$t*/ ctx[9]("matrix.viewError") + "")) set_data(t2, t2_value);
+
+			if (dirty[0] & /*$t*/ 512 && button_title_value !== (button_title_value = /*$t*/ ctx[9]("matrix.viewError"))) {
+				attr(button, "title", button_title_value);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(button);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (271:51) 
+function create_if_block_13$1(ctx) {
+	let span;
+	let t_1_value = /*$t*/ ctx[9]("matrix.finished") + "";
+	let t_1;
+
+	return {
+		c() {
+			span = element("span");
+			t_1 = text(t_1_value);
+			attr(span, "class", "caption-name svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+			append(span, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 512 && t_1_value !== (t_1_value = /*$t*/ ctx[9]("matrix.finished") + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (266:91) 
+function create_if_block_12$1(ctx) {
+	let span0;
+	let t0_value = /*item*/ ctx[41].state.activeStep + 1 + "";
+	let t0;
+	let t1;
+	let t2_value = /*item*/ ctx[41].steps.length + "";
+	let t2;
+	let t3;
+	let span1;
+	let t4_value = /*item*/ ctx[41].steps[/*item*/ ctx[41].state.activeStep].name + "";
+	let t4;
+
+	return {
+		c() {
+			span0 = element("span");
+			t0 = text(t0_value);
+			t1 = text("/");
+			t2 = text(t2_value);
+			t3 = space();
+			span1 = element("span");
+			t4 = text(t4_value);
+			attr(span0, "class", "caption-counter svelte-1d84fds");
+			attr(span1, "class", "caption-name svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span0, anchor);
+			append(span0, t0);
+			append(span0, t1);
+			append(span0, t2);
+			insert(target, t3, anchor);
+			insert(target, span1, anchor);
+			append(span1, t4);
+		},
+		p(ctx, dirty) {
+			if (dirty[1] & /*item*/ 1024 && t0_value !== (t0_value = /*item*/ ctx[41].state.activeStep + 1 + "")) set_data(t0, t0_value);
+			if (dirty[1] & /*item*/ 1024 && t2_value !== (t2_value = /*item*/ ctx[41].steps.length + "")) set_data(t2, t2_value);
+			if (dirty[1] & /*item*/ 1024 && t4_value !== (t4_value = /*item*/ ctx[41].steps[/*item*/ ctx[41].state.activeStep].name + "")) set_data(t4, t4_value);
+		},
+		d(detaching) {
+			if (detaching) detach(span0);
+			if (detaching) detach(t3);
+			if (detaching) detach(span1);
+		}
+	};
+}
+
+// (261:12) {#if hovered.id === item.id && item.steps[hovered.i]}
+function create_if_block_11$1(ctx) {
+	let span0;
+	let t0_value = /*hovered*/ ctx[6].i + 1 + "";
+	let t0;
+	let t1;
+	let t2_value = /*item*/ ctx[41].steps.length + "";
+	let t2;
+	let t3;
+	let span1;
+	let t4_value = /*item*/ ctx[41].steps[/*hovered*/ ctx[6].i].name + "";
+	let t4;
+
+	return {
+		c() {
+			span0 = element("span");
+			t0 = text(t0_value);
+			t1 = text("/");
+			t2 = text(t2_value);
+			t3 = space();
+			span1 = element("span");
+			t4 = text(t4_value);
+			attr(span0, "class", "caption-counter svelte-1d84fds");
+			attr(span1, "class", "caption-name svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span0, anchor);
+			append(span0, t0);
+			append(span0, t1);
+			append(span0, t2);
+			insert(target, t3, anchor);
+			insert(target, span1, anchor);
+			append(span1, t4);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*hovered*/ 64 && t0_value !== (t0_value = /*hovered*/ ctx[6].i + 1 + "")) set_data(t0, t0_value);
+			if (dirty[1] & /*item*/ 1024 && t2_value !== (t2_value = /*item*/ ctx[41].steps.length + "")) set_data(t2, t2_value);
+			if (dirty[0] & /*hovered*/ 64 | dirty[1] & /*item*/ 1024 && t4_value !== (t4_value = /*item*/ ctx[41].steps[/*hovered*/ ctx[6].i].name + "")) set_data(t4, t4_value);
+		},
+		d(detaching) {
+			if (detaching) detach(span0);
+			if (detaching) detach(t3);
+			if (detaching) detach(span1);
+		}
+	};
+}
+
+// (299:50) 
+function create_if_block_9$2(ctx) {
+	let span;
+
+	return {
+		c() {
+			span = element("span");
+			span.textContent = "–";
+			attr(span, "class", "status-skip svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+		},
+		p: noop,
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (297:48) 
+function create_if_block_8$2(ctx) {
+	let span;
+	let t_1;
+	let span_title_value;
+
+	return {
+		c() {
+			span = element("span");
+			t_1 = text("✕");
+			attr(span, "class", "status-error svelte-1d84fds");
+			attr(span, "title", span_title_value = /*item*/ ctx[41].state.error);
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+			append(span, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && span_title_value !== (span_title_value = /*item*/ ctx[41].state.error)) {
+				attr(span, "title", span_title_value);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (295:47) 
+function create_if_block_7$3(ctx) {
+	let span;
+
+	return {
+		c() {
+			span = element("span");
+			span.textContent = "✓";
+			attr(span, "class", "status-done svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+		},
+		p: noop,
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (293:8) {#if item.state.status === "running"}
+function create_if_block_6$3(ctx) {
+	let span;
+
+	return {
+		c() {
+			span = element("span");
+			attr(span, "class", "status-spinner svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+		},
+		p: noop,
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (305:4) {#if item.state.status === "error" && openError === item.id}
+function create_if_block_5$4(ctx) {
+	let div1;
+	let div0;
+	let span;
+	let t0_value = /*item*/ ctx[41].title + "";
+	let t0;
+	let t1;
+	let t2_value = /*$t*/ ctx[9]("matrix.errorTitle") + "";
+	let t2;
+	let t3;
+	let button;
+	let t4_value = /*$t*/ ctx[9]("matrix.copyError") + "";
+	let t4;
+	let t5;
+	let pre;
+	let t6_value = /*item*/ ctx[41].state.error + "";
+	let t6;
+	let mounted;
+	let dispose;
+
+	function click_handler_2() {
+		return /*click_handler_2*/ ctx[29](/*item*/ ctx[41]);
+	}
+
+	return {
+		c() {
+			div1 = element("div");
+			div0 = element("div");
+			span = element("span");
+			t0 = text(t0_value);
+			t1 = text(" — ");
+			t2 = text(t2_value);
+			t3 = space();
+			button = element("button");
+			t4 = text(t4_value);
+			t5 = space();
+			pre = element("pre");
+			t6 = text(t6_value);
+			attr(button, "class", "error-copy svelte-1d84fds");
+			attr(div0, "class", "error-panel-head svelte-1d84fds");
+			attr(pre, "class", "error-panel-body svelte-1d84fds");
+			attr(div1, "class", "error-panel svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, div1, anchor);
+			append(div1, div0);
+			append(div0, span);
+			append(span, t0);
+			append(span, t1);
+			append(span, t2);
+			append(div0, t3);
+			append(div0, button);
+			append(button, t4);
+			append(div1, t5);
+			append(div1, pre);
+			append(pre, t6);
+
+			if (!mounted) {
+				dispose = listen(button, "click", click_handler_2);
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+			if (dirty[1] & /*item*/ 1024 && t0_value !== (t0_value = /*item*/ ctx[41].title + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*$t*/ 512 && t2_value !== (t2_value = /*$t*/ ctx[9]("matrix.errorTitle") + "")) set_data(t2, t2_value);
+			if (dirty[0] & /*$t*/ 512 && t4_value !== (t4_value = /*$t*/ ctx[9]("matrix.copyError") + "")) set_data(t4, t4_value);
+			if (dirty[1] & /*item*/ 1024 && t6_value !== (t6_value = /*item*/ ctx[41].state.error + "")) set_data(t6, t6_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div1);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (317:4) {#if item.runnable && item.openStep >= 0 && item.workflow.steps[item.openStep]}
+function create_if_block$c(ctx) {
+	let div1;
+	let div0;
+	let h4;
+	let span0;
+	let t0_value = /*item*/ ctx[41].openStep + 1 + "";
+	let t0;
+	let t1;
+	let t2_value = /*step*/ ctx[42].description.name + "";
+	let t2;
+	let t3;
+	let span1;
+	let t4_value = /*item*/ ctx[41].steps[/*item*/ ctx[41].openStep]?.kind + "";
+	let t4;
+	let span1_title_value;
+	let t5;
+	let button;
+	let t7;
+	let p;
+	let t8_value = /*step*/ ctx[42].description.description + "";
+	let t8;
+	let t9;
+	let mounted;
+	let dispose;
+
+	function click_handler_3() {
+		return /*click_handler_3*/ ctx[30](/*item*/ ctx[41]);
+	}
+
+	function select_block_type_4(ctx, dirty) {
+		if (/*step*/ ctx[42].description.options.length > 0) return create_if_block_1$9;
+		return create_else_block_1$2;
+	}
+
+	let current_block_type = select_block_type_4(ctx);
+	let if_block = current_block_type(ctx);
+
+	return {
+		c() {
+			div1 = element("div");
+			div0 = element("div");
+			h4 = element("h4");
+			span0 = element("span");
+			t0 = text(t0_value);
+			t1 = space();
+			t2 = text(t2_value);
+			t3 = space();
+			span1 = element("span");
+			t4 = text(t4_value);
+			t5 = space();
+			button = element("button");
+			button.textContent = "✕";
+			t7 = space();
+			p = element("p");
+			t8 = text(t8_value);
+			t9 = space();
+			if_block.c();
+			attr(span0, "class", "step-editor-ord svelte-1d84fds");
+			attr(h4, "class", "svelte-1d84fds");
+			attr(span1, "class", "step-editor-kind svelte-1d84fds");
+			attr(span1, "title", span1_title_value = explainStepKind(/*item*/ ctx[41].steps[/*item*/ ctx[41].openStep]?.kindRaw));
+			attr(button, "class", "step-editor-close svelte-1d84fds");
+			attr(button, "title", "Close");
+			attr(div0, "class", "step-editor-head svelte-1d84fds");
+			attr(p, "class", "step-editor-desc svelte-1d84fds");
+			attr(div1, "class", "step-editor svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, div1, anchor);
+			append(div1, div0);
+			append(div0, h4);
+			append(h4, span0);
+			append(span0, t0);
+			append(h4, t1);
+			append(h4, t2);
+			append(div0, t3);
+			append(div0, span1);
+			append(span1, t4);
+			append(div0, t5);
+			append(div0, button);
+			append(div1, t7);
+			append(div1, p);
+			append(p, t8);
+			append(div1, t9);
+			if_block.m(div1, null);
+
+			if (!mounted) {
+				dispose = listen(button, "click", click_handler_3);
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+			if (dirty[1] & /*item*/ 1024 && t0_value !== (t0_value = /*item*/ ctx[41].openStep + 1 + "")) set_data(t0, t0_value);
+			if (dirty[1] & /*item*/ 1024 && t2_value !== (t2_value = /*step*/ ctx[42].description.name + "")) set_data(t2, t2_value);
+			if (dirty[1] & /*item*/ 1024 && t4_value !== (t4_value = /*item*/ ctx[41].steps[/*item*/ ctx[41].openStep]?.kind + "")) set_data(t4, t4_value);
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && span1_title_value !== (span1_title_value = explainStepKind(/*item*/ ctx[41].steps[/*item*/ ctx[41].openStep]?.kindRaw))) {
+				attr(span1, "title", span1_title_value);
+			}
+
+			if (dirty[1] & /*item*/ 1024 && t8_value !== (t8_value = /*step*/ ctx[42].description.description + "")) set_data(t8, t8_value);
+
+			if (current_block_type === (current_block_type = select_block_type_4(ctx)) && if_block) {
+				if_block.p(ctx, dirty);
+			} else {
+				if_block.d(1);
+				if_block = current_block_type(ctx);
+
+				if (if_block) {
+					if_block.c();
+					if_block.m(div1, null);
+				}
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div1);
+			if_block.d();
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (387:8) {:else}
+function create_else_block_1$2(ctx) {
+	let p;
+	let t_1_value = /*$t*/ ctx[9]("matrix.noOptions") + "";
+	let t_1;
+
+	return {
+		c() {
+			p = element("p");
+			t_1 = text(t_1_value);
+			attr(p, "class", "step-editor-noopts svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, p, anchor);
+			append(p, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 512 && t_1_value !== (t_1_value = /*$t*/ ctx[9]("matrix.noOptions") + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(p);
+		}
+	};
+}
+
+// (331:8) {#if step.description.options.length > 0}
+function create_if_block_1$9(ctx) {
+	let div;
+	let each_value = /*step*/ ctx[42].description.options;
+	let each_blocks = [];
+
+	for (let i = 0; i < each_value.length; i += 1) {
+		each_blocks[i] = create_each_block$6(get_each_context$6(ctx, each_value, i));
+	}
+
+	return {
+		c() {
+			div = element("div");
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].c();
+			}
+
+			attr(div, "class", "step-editor-options");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].m(div, null);
+			}
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*running, setOption, $pandocTemplates*/ 263169 | dirty[1] & /*item*/ 1024) {
+				each_value = /*step*/ ctx[42].description.options;
+				let i;
+
+				for (i = 0; i < each_value.length; i += 1) {
+					const child_ctx = get_each_context$6(ctx, each_value, i);
+
+					if (each_blocks[i]) {
+						each_blocks[i].p(child_ctx, dirty);
+					} else {
+						each_blocks[i] = create_each_block$6(child_ctx);
+						each_blocks[i].c();
+						each_blocks[i].m(div, null);
+					}
+				}
+
+				for (; i < each_blocks.length; i += 1) {
+					each_blocks[i].d(1);
+				}
+
+				each_blocks.length = each_value.length;
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+			destroy_each(each_blocks, detaching);
+		}
+	};
+}
+
+// (370:16) {:else}
+function create_else_block$5(ctx) {
+	let div;
+	let input;
+	let input_id_value;
+	let input_checked_value;
+	let t0;
+	let label;
+	let t1_value = /*option*/ ctx[43].name + "";
+	let t1;
+	let label_for_value;
+	let mounted;
+	let dispose;
+
+	function change_handler_2(...args) {
+		return /*change_handler_2*/ ctx[34](/*item*/ ctx[41], /*option*/ ctx[43], ...args);
+	}
+
+	return {
+		c() {
+			div = element("div");
+			input = element("input");
+			t0 = space();
+			label = element("label");
+			t1 = text(t1_value);
+			attr(input, "id", input_id_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id);
+			attr(input, "type", "checkbox");
+			input.disabled = /*running*/ ctx[0];
+			input.checked = input_checked_value = !!/*step*/ ctx[42].optionValues[/*option*/ ctx[43].id];
+			attr(label, "for", label_for_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id);
+			attr(label, "class", "svelte-1d84fds");
+			attr(div, "class", "step-editor-checkbox svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, input);
+			append(div, t0);
+			append(div, label);
+			append(label, t1);
+
+			if (!mounted) {
+				dispose = listen(input, "change", change_handler_2);
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && input_id_value !== (input_id_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id)) {
+				attr(input, "id", input_id_value);
+			}
+
+			if (dirty[0] & /*running*/ 1) {
+				input.disabled = /*running*/ ctx[0];
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && input_checked_value !== (input_checked_value = !!/*step*/ ctx[42].optionValues[/*option*/ ctx[43].id])) {
+				input.checked = input_checked_value;
+			}
+
+			if (dirty[1] & /*item*/ 1024 && t1_value !== (t1_value = /*option*/ ctx[43].name + "")) set_data(t1, t1_value);
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && label_for_value !== (label_for_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id)) {
+				attr(label, "for", label_for_value);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (356:73) 
+function create_if_block_4$4(ctx) {
+	let label;
+	let t0_value = /*option*/ ctx[43].name + "";
+	let t0;
+	let label_for_value;
+	let t1;
+	let select;
+	let option;
+	let t2_value = (/*option*/ ctx[43].emptyLabel ?? "(default)") + "";
+	let t2;
+	let select_id_value;
+	let select_value_value;
+	let mounted;
+	let dispose;
+
+	let each_value_1 = /*option*/ ctx[43].dynamicChoices === "pandoc-templates"
+	? /*$pandocTemplates*/ ctx[10]
+	: /*option*/ ctx[43].choices ?? [];
+
+	let each_blocks = [];
+
+	for (let i = 0; i < each_value_1.length; i += 1) {
+		each_blocks[i] = create_each_block_1$2(get_each_context_1$2(ctx, each_value_1, i));
+	}
+
+	function change_handler_1(...args) {
+		return /*change_handler_1*/ ctx[33](/*item*/ ctx[41], /*option*/ ctx[43], ...args);
+	}
+
+	return {
+		c() {
+			label = element("label");
+			t0 = text(t0_value);
+			t1 = space();
+			select = element("select");
+			option = element("option");
+			t2 = text(t2_value);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].c();
+			}
+
+			attr(label, "for", label_for_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id);
+			attr(label, "class", "svelte-1d84fds");
+			option.__value = "";
+			option.value = option.__value;
+			attr(select, "id", select_id_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id);
+			select.disabled = /*running*/ ctx[0];
+			attr(select, "class", "svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, label, anchor);
+			append(label, t0);
+			insert(target, t1, anchor);
+			insert(target, select, anchor);
+			append(select, option);
+			append(option, t2);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].m(select, null);
+			}
+
+			select_option(select, /*step*/ ctx[42].optionValues[/*option*/ ctx[43].id] ?? "");
+
+			if (!mounted) {
+				dispose = listen(select, "change", change_handler_1);
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+			if (dirty[1] & /*item*/ 1024 && t0_value !== (t0_value = /*option*/ ctx[43].name + "")) set_data(t0, t0_value);
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && label_for_value !== (label_for_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id)) {
+				attr(label, "for", label_for_value);
+			}
+
+			if (dirty[1] & /*item*/ 1024 && t2_value !== (t2_value = (/*option*/ ctx[43].emptyLabel ?? "(default)") + "")) set_data(t2, t2_value);
+
+			if (dirty[0] & /*$pandocTemplates*/ 1024 | dirty[1] & /*item*/ 1024) {
+				each_value_1 = /*option*/ ctx[43].dynamicChoices === "pandoc-templates"
+				? /*$pandocTemplates*/ ctx[10]
+				: /*option*/ ctx[43].choices ?? [];
+
+				let i;
+
+				for (i = 0; i < each_value_1.length; i += 1) {
+					const child_ctx = get_each_context_1$2(ctx, each_value_1, i);
+
+					if (each_blocks[i]) {
+						each_blocks[i].p(child_ctx, dirty);
+					} else {
+						each_blocks[i] = create_each_block_1$2(child_ctx);
+						each_blocks[i].c();
+						each_blocks[i].m(select, null);
+					}
+				}
+
+				for (; i < each_blocks.length; i += 1) {
+					each_blocks[i].d(1);
+				}
+
+				each_blocks.length = each_value_1.length;
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && select_id_value !== (select_id_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id)) {
+				attr(select, "id", select_id_value);
+			}
+
+			if (dirty[0] & /*running*/ 1) {
+				select.disabled = /*running*/ ctx[0];
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && select_value_value !== (select_value_value = /*step*/ ctx[42].optionValues[/*option*/ ctx[43].id] ?? "")) {
+				select_option(select, /*step*/ ctx[42].optionValues[/*option*/ ctx[43].id] ?? "");
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(label);
+			if (detaching) detach(t1);
+			if (detaching) detach(select);
+			destroy_each(each_blocks, detaching);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (346:78) 
+function create_if_block_3$4(ctx) {
+	let label;
+	let t0_value = /*option*/ ctx[43].name + "";
+	let t0;
+	let label_for_value;
+	let t1;
+	let textarea;
+	let textarea_id_value;
+	let textarea_value_value;
+	let mounted;
+	let dispose;
+
+	function input_handler_1(...args) {
+		return /*input_handler_1*/ ctx[32](/*item*/ ctx[41], /*option*/ ctx[43], ...args);
+	}
+
+	return {
+		c() {
+			label = element("label");
+			t0 = text(t0_value);
+			t1 = space();
+			textarea = element("textarea");
+			attr(label, "for", label_for_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id);
+			attr(label, "class", "svelte-1d84fds");
+			attr(textarea, "id", textarea_id_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id);
+			textarea.disabled = /*running*/ ctx[0];
+			attr(textarea, "placeholder", "key: value");
+			textarea.value = textarea_value_value = /*step*/ ctx[42].optionValues[/*option*/ ctx[43].id] ?? "";
+			attr(textarea, "class", "svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, label, anchor);
+			append(label, t0);
+			insert(target, t1, anchor);
+			insert(target, textarea, anchor);
+
+			if (!mounted) {
+				dispose = listen(textarea, "input", input_handler_1);
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+			if (dirty[1] & /*item*/ 1024 && t0_value !== (t0_value = /*option*/ ctx[43].name + "")) set_data(t0, t0_value);
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && label_for_value !== (label_for_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id)) {
+				attr(label, "for", label_for_value);
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && textarea_id_value !== (textarea_id_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id)) {
+				attr(textarea, "id", textarea_id_value);
+			}
+
+			if (dirty[0] & /*running*/ 1) {
+				textarea.disabled = /*running*/ ctx[0];
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && textarea_value_value !== (textarea_value_value = /*step*/ ctx[42].optionValues[/*option*/ ctx[43].id] ?? "")) {
+				textarea.value = textarea_value_value;
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(label);
+			if (detaching) detach(t1);
+			if (detaching) detach(textarea);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (335:16) {#if option.type === CompileStepOptionType.Text}
+function create_if_block_2$8(ctx) {
+	let label;
+	let t0_value = /*option*/ ctx[43].name + "";
+	let t0;
+	let label_for_value;
+	let t1;
+	let input;
+	let input_id_value;
+	let input_placeholder_value;
+	let input_value_value;
+	let mounted;
+	let dispose;
+
+	function input_handler(...args) {
+		return /*input_handler*/ ctx[31](/*item*/ ctx[41], /*option*/ ctx[43], ...args);
+	}
+
+	return {
+		c() {
+			label = element("label");
+			t0 = text(t0_value);
+			t1 = space();
+			input = element("input");
+			attr(label, "for", label_for_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id);
+			attr(label, "class", "svelte-1d84fds");
+			attr(input, "id", input_id_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id);
+			attr(input, "type", "text");
+			input.disabled = /*running*/ ctx[0];
+			attr(input, "placeholder", input_placeholder_value = String(/*option*/ ctx[43].default ?? "").replace(/\n/g, "\\n"));
+			input.value = input_value_value = /*step*/ ctx[42].optionValues[/*option*/ ctx[43].id] ?? "";
+			attr(input, "class", "svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, label, anchor);
+			append(label, t0);
+			insert(target, t1, anchor);
+			insert(target, input, anchor);
+
+			if (!mounted) {
+				dispose = listen(input, "input", input_handler);
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+			if (dirty[1] & /*item*/ 1024 && t0_value !== (t0_value = /*option*/ ctx[43].name + "")) set_data(t0, t0_value);
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && label_for_value !== (label_for_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id)) {
+				attr(label, "for", label_for_value);
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && input_id_value !== (input_id_value = /*step*/ ctx[42].id + "-" + /*option*/ ctx[43].id)) {
+				attr(input, "id", input_id_value);
+			}
+
+			if (dirty[0] & /*running*/ 1) {
+				input.disabled = /*running*/ ctx[0];
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && input_placeholder_value !== (input_placeholder_value = String(/*option*/ ctx[43].default ?? "").replace(/\n/g, "\\n"))) {
+				attr(input, "placeholder", input_placeholder_value);
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && input_value_value !== (input_value_value = /*step*/ ctx[42].optionValues[/*option*/ ctx[43].id] ?? "") && input.value !== input_value_value) {
+				input.value = input_value_value;
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(label);
+			if (detaching) detach(t1);
+			if (detaching) detach(input);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (366:20) {#each option.dynamicChoices === "pandoc-templates" ? $pandocTemplates : option.choices ?? [] as choice}
+function create_each_block_1$2(ctx) {
+	let option;
+	let t_1_value = /*choice*/ ctx[46] + "";
+	let t_1;
+	let option_value_value;
+
+	return {
+		c() {
+			option = element("option");
+			t_1 = text(t_1_value);
+			option.__value = option_value_value = /*choice*/ ctx[46];
+			option.value = option.__value;
+		},
+		m(target, anchor) {
+			insert(target, option, anchor);
+			append(option, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$pandocTemplates*/ 1024 | dirty[1] & /*item*/ 1024 && t_1_value !== (t_1_value = /*choice*/ ctx[46] + "")) set_data(t_1, t_1_value);
+
+			if (dirty[0] & /*$pandocTemplates, allWorkflowNames*/ 33792 | dirty[1] & /*item*/ 1024 && option_value_value !== (option_value_value = /*choice*/ ctx[46])) {
+				option.__value = option_value_value;
+				option.value = option.__value;
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(option);
+		}
+	};
+}
+
+// (333:12) {#each step.description.options as option}
+function create_each_block$6(ctx) {
+	let div;
+	let t0;
+	let p;
+	let t1_value = /*option*/ ctx[43].description + "";
+	let t1;
+	let t2;
+
+	function select_block_type_5(ctx, dirty) {
+		if (/*option*/ ctx[43].type === CompileStepOptionType.Text) return create_if_block_2$8;
+		if (/*option*/ ctx[43].type === CompileStepOptionType.MultilineText) return create_if_block_3$4;
+		if (/*option*/ ctx[43].type === CompileStepOptionType.Dropdown) return create_if_block_4$4;
+		return create_else_block$5;
+	}
+
+	let current_block_type = select_block_type_5(ctx);
+	let if_block = current_block_type(ctx);
+
+	return {
+		c() {
+			div = element("div");
+			if_block.c();
+			t0 = space();
+			p = element("p");
+			t1 = text(t1_value);
+			t2 = space();
+			attr(p, "class", "step-editor-option-desc svelte-1d84fds");
+			attr(div, "class", "step-editor-option svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			if_block.m(div, null);
+			append(div, t0);
+			append(div, p);
+			append(p, t1);
+			append(div, t2);
+		},
+		p(ctx, dirty) {
+			if (current_block_type === (current_block_type = select_block_type_5(ctx)) && if_block) {
+				if_block.p(ctx, dirty);
+			} else {
+				if_block.d(1);
+				if_block = current_block_type(ctx);
+
+				if (if_block) {
+					if_block.c();
+					if_block.m(div, t0);
+				}
+			}
+
+			if (dirty[1] & /*item*/ 1024 && t1_value !== (t1_value = /*option*/ ctx[43].description + "")) set_data(t1, t1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+			if_block.d();
+		}
+	};
+}
+
+// (189:2) <SortableList items={rows} {sortableOptions} on:orderChanged={onReorder} let:item>
+function create_default_slot$2(ctx) {
+	let div6;
+	let div0;
+	let t0;
+	let div0_title_value;
+	let t1;
+	let div2;
+	let div1;
+	let span0;
+	let t2_value = /*item*/ ctx[41].abbrev + "";
+	let t2;
+	let t3;
+	let span1;
+	let t4_value = /*item*/ ctx[41].title + "";
+	let t4;
+	let span1_title_value;
+	let t5;
+	let select;
+	let select_value_value;
+	let select_title_value;
+	let t6;
+	let div4;
+	let div3;
+	let t7;
+	let t8;
+	let div5;
+	let div5_aria_label_value;
+	let div6_class_value;
+	let t9;
+	let t10;
+	let if_block4_anchor;
+	let mounted;
+	let dispose;
+	let each_value_3 = /*allWorkflowNames*/ ctx[15];
+	let each_blocks = [];
+
+	for (let i = 0; i < each_value_3.length; i += 1) {
+		each_blocks[i] = create_each_block_3(get_each_context_3(ctx, each_value_3, i));
+	}
+
+	function change_handler(...args) {
+		return /*change_handler*/ ctx[24](/*item*/ ctx[41], ...args);
+	}
+
+	function select_block_type(ctx, dirty) {
+		if (/*item*/ ctx[41].runnable) return create_if_block_15$1;
+		return create_else_block_4;
+	}
+
+	let current_block_type = select_block_type(ctx);
+	let if_block0 = current_block_type(ctx);
+	let if_block1 = /*item*/ ctx[41].runnable && create_if_block_10$1(ctx);
+
+	function select_block_type_3(ctx, dirty) {
+		if (/*item*/ ctx[41].state.status === "running") return create_if_block_6$3;
+		if (/*item*/ ctx[41].state.status === "done") return create_if_block_7$3;
+		if (/*item*/ ctx[41].state.status === "error") return create_if_block_8$2;
+		if (/*item*/ ctx[41].state.status === "skipped") return create_if_block_9$2;
+	}
+
+	let current_block_type_1 = select_block_type_3(ctx);
+	let if_block2 = current_block_type_1 && current_block_type_1(ctx);
+	let if_block3 = /*item*/ ctx[41].state.status === "error" && /*openError*/ ctx[5] === /*item*/ ctx[41].id && create_if_block_5$4(ctx);
+	let if_block4 = /*item*/ ctx[41].runnable && /*item*/ ctx[41].openStep >= 0 && /*item*/ ctx[41].workflow.steps[/*item*/ ctx[41].openStep] && create_if_block$c(get_if_ctx$1(ctx));
+
+	return {
+		c() {
+			div6 = element("div");
+			div0 = element("div");
+			t0 = text("⋮⋮");
+			t1 = space();
+			div2 = element("div");
+			div1 = element("div");
+			span0 = element("span");
+			t2 = text(t2_value);
+			t3 = space();
+			span1 = element("span");
+			t4 = text(t4_value);
+			t5 = space();
+			select = element("select");
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].c();
+			}
+
+			t6 = space();
+			div4 = element("div");
+			div3 = element("div");
+			if_block0.c();
+			t7 = space();
+			if (if_block1) if_block1.c();
+			t8 = space();
+			div5 = element("div");
+			if (if_block2) if_block2.c();
+			t9 = space();
+			if (if_block3) if_block3.c();
+			t10 = space();
+			if (if_block4) if_block4.c();
+			if_block4_anchor = empty();
+			attr(div0, "class", "matrix-drag svelte-1d84fds");
+			attr(div0, "title", div0_title_value = /*$t*/ ctx[9]("matrix.reorderHint"));
+			attr(div0, "aria-label", "Reorder");
+			attr(span0, "class", "matrix-abbrev svelte-1d84fds");
+			attr(span1, "class", "matrix-name svelte-1d84fds");
+			attr(span1, "title", span1_title_value = /*item*/ ctx[41].title);
+			attr(div1, "class", "matrix-draft-head svelte-1d84fds");
+			attr(select, "class", "matrix-workflow svelte-1d84fds");
+			select.disabled = /*running*/ ctx[0];
+			attr(select, "title", select_title_value = /*$t*/ ctx[9]("matrix.workflow"));
+			attr(div2, "class", "matrix-draft svelte-1d84fds");
+			attr(div3, "class", "matrix-runway svelte-1d84fds");
+			attr(div4, "class", "matrix-progress svelte-1d84fds");
+			attr(div5, "class", "matrix-status svelte-1d84fds");
+			attr(div5, "aria-label", div5_aria_label_value = /*item*/ ctx[41].state.status);
+			attr(div6, "class", div6_class_value = "matrix-row status-" + /*item*/ ctx[41].state.status + " svelte-1d84fds");
+			set_style(div6, "animation-delay", /*rows*/ ctx[1].indexOf(/*item*/ ctx[41]) * 45 + "ms");
+			toggle_class(div6, "not-runnable", !/*item*/ ctx[41].runnable);
+		},
+		m(target, anchor) {
+			insert(target, div6, anchor);
+			append(div6, div0);
+			append(div0, t0);
+			append(div6, t1);
+			append(div6, div2);
+			append(div2, div1);
+			append(div1, span0);
+			append(span0, t2);
+			append(div1, t3);
+			append(div1, span1);
+			append(span1, t4);
+			append(div2, t5);
+			append(div2, select);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].m(select, null);
+			}
+
+			select_option(select, /*item*/ ctx[41].workflowName);
+			append(div6, t6);
+			append(div6, div4);
+			append(div4, div3);
+			if_block0.m(div3, null);
+			append(div4, t7);
+			if (if_block1) if_block1.m(div4, null);
+			append(div6, t8);
+			append(div6, div5);
+			if (if_block2) if_block2.m(div5, null);
+			insert(target, t9, anchor);
+			if (if_block3) if_block3.m(target, anchor);
+			insert(target, t10, anchor);
+			if (if_block4) if_block4.m(target, anchor);
+			insert(target, if_block4_anchor, anchor);
+
+			if (!mounted) {
+				dispose = listen(select, "change", change_handler);
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+
+			if (dirty[0] & /*$t*/ 512 && div0_title_value !== (div0_title_value = /*$t*/ ctx[9]("matrix.reorderHint"))) {
+				attr(div0, "title", div0_title_value);
+			}
+
+			if (dirty[1] & /*item*/ 1024 && t2_value !== (t2_value = /*item*/ ctx[41].abbrev + "")) set_data(t2, t2_value);
+			if (dirty[1] & /*item*/ 1024 && t4_value !== (t4_value = /*item*/ ctx[41].title + "")) set_data(t4, t4_value);
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && span1_title_value !== (span1_title_value = /*item*/ ctx[41].title)) {
+				attr(span1, "title", span1_title_value);
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768) {
+				each_value_3 = /*allWorkflowNames*/ ctx[15];
+				let i;
+
+				for (i = 0; i < each_value_3.length; i += 1) {
+					const child_ctx = get_each_context_3(ctx, each_value_3, i);
+
+					if (each_blocks[i]) {
+						each_blocks[i].p(child_ctx, dirty);
+					} else {
+						each_blocks[i] = create_each_block_3(child_ctx);
+						each_blocks[i].c();
+						each_blocks[i].m(select, null);
+					}
+				}
+
+				for (; i < each_blocks.length; i += 1) {
+					each_blocks[i].d(1);
+				}
+
+				each_blocks.length = each_value_3.length;
+			}
+
+			if (dirty[0] & /*running*/ 1) {
+				select.disabled = /*running*/ ctx[0];
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && select_value_value !== (select_value_value = /*item*/ ctx[41].workflowName)) {
+				select_option(select, /*item*/ ctx[41].workflowName);
+			}
+
+			if (dirty[0] & /*$t*/ 512 && select_title_value !== (select_title_value = /*$t*/ ctx[9]("matrix.workflow"))) {
+				attr(select, "title", select_title_value);
+			}
+
+			if (current_block_type === (current_block_type = select_block_type(ctx)) && if_block0) {
+				if_block0.p(ctx, dirty);
+			} else {
+				if_block0.d(1);
+				if_block0 = current_block_type(ctx);
+
+				if (if_block0) {
+					if_block0.c();
+					if_block0.m(div3, null);
+				}
+			}
+
+			if (/*item*/ ctx[41].runnable) {
+				if (if_block1) {
+					if_block1.p(ctx, dirty);
+				} else {
+					if_block1 = create_if_block_10$1(ctx);
+					if_block1.c();
+					if_block1.m(div4, null);
+				}
+			} else if (if_block1) {
+				if_block1.d(1);
+				if_block1 = null;
+			}
+
+			if (current_block_type_1 === (current_block_type_1 = select_block_type_3(ctx)) && if_block2) {
+				if_block2.p(ctx, dirty);
+			} else {
+				if (if_block2) if_block2.d(1);
+				if_block2 = current_block_type_1 && current_block_type_1(ctx);
+
+				if (if_block2) {
+					if_block2.c();
+					if_block2.m(div5, null);
+				}
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && div5_aria_label_value !== (div5_aria_label_value = /*item*/ ctx[41].state.status)) {
+				attr(div5, "aria-label", div5_aria_label_value);
+			}
+
+			if (dirty[0] & /*allWorkflowNames*/ 32768 | dirty[1] & /*item*/ 1024 && div6_class_value !== (div6_class_value = "matrix-row status-" + /*item*/ ctx[41].state.status + " svelte-1d84fds")) {
+				attr(div6, "class", div6_class_value);
+			}
+
+			if (dirty[0] & /*rows*/ 2 | dirty[1] & /*item*/ 1024) {
+				set_style(div6, "animation-delay", /*rows*/ ctx[1].indexOf(/*item*/ ctx[41]) * 45 + "ms");
+			}
+
+			if (dirty[1] & /*item, item*/ 1024) {
+				toggle_class(div6, "not-runnable", !/*item*/ ctx[41].runnable);
+			}
+
+			if (/*item*/ ctx[41].state.status === "error" && /*openError*/ ctx[5] === /*item*/ ctx[41].id) {
+				if (if_block3) {
+					if_block3.p(ctx, dirty);
+				} else {
+					if_block3 = create_if_block_5$4(ctx);
+					if_block3.c();
+					if_block3.m(t10.parentNode, t10);
+				}
+			} else if (if_block3) {
+				if_block3.d(1);
+				if_block3 = null;
+			}
+
+			if (/*item*/ ctx[41].runnable && /*item*/ ctx[41].openStep >= 0 && /*item*/ ctx[41].workflow.steps[/*item*/ ctx[41].openStep]) {
+				if (if_block4) {
+					if_block4.p(get_if_ctx$1(ctx), dirty);
+				} else {
+					if_block4 = create_if_block$c(get_if_ctx$1(ctx));
+					if_block4.c();
+					if_block4.m(if_block4_anchor.parentNode, if_block4_anchor);
+				}
+			} else if (if_block4) {
+				if_block4.d(1);
+				if_block4 = null;
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div6);
+			destroy_each(each_blocks, detaching);
+			if_block0.d();
+			if (if_block1) if_block1.d();
+
+			if (if_block2) {
+				if_block2.d();
+			}
+
+			if (detaching) detach(t9);
+			if (if_block3) if_block3.d(detaching);
+			if (detaching) detach(t10);
+			if (if_block4) if_block4.d(detaching);
+			if (detaching) detach(if_block4_anchor);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+function create_fragment$e(ctx) {
+	let div4;
+	let div2;
+	let div0;
+	let span0;
+	let t0_value = /*$t*/ ctx[9]("matrix.title") + "";
+	let t0;
+	let t1;
+	let span1;
+	let t2_value = /*rows*/ ctx[1].length + "";
+	let t2;
+	let t3;
+	let t4_value = /*$t*/ ctx[9]("matrix.drafts") + "";
+	let t4;
+	let t5;
+	let div1;
+	let label0;
+	let input0;
+	let t6;
+	let t7_value = /*$t*/ ctx[9]("matrix.dryRun") + "";
+	let t7;
+	let t8;
+	let label1;
+	let input1;
+	let t9;
+	let t10_value = /*$t*/ ctx[9]("matrix.openPdf") + "";
+	let t10;
+	let t11;
+	let label2;
+	let input2;
+	let t12;
+	let t13_value = /*$t*/ ctx[9]("matrix.harvest") + "";
+	let t13;
+	let t14;
+	let button;
+
+	let t15_value = (/*running*/ ctx[0]
+	? /*$t*/ ctx[9]("matrix.running")
+	: /*$t*/ ctx[9]("matrix.run")) + "";
+
+	let t15;
+	let button_disabled_value;
+	let t16;
+	let div3;
+	let t17_value = /*$t*/ ctx[9]("matrix.reorderHint") + "";
+	let t17;
+	let t18;
+	let sortablelist;
+	let current;
+	let mounted;
+	let dispose;
+
+	sortablelist = new SortableList({
+			props: {
+				items: /*rows*/ ctx[1],
+				sortableOptions: /*sortableOptions*/ ctx[7],
+				$$slots: {
+					default: [
+						create_default_slot$2,
+						({ item }) => ({ 41: item }),
+						({ item }) => [0, item ? 1024 : 0]
+					]
+				},
+				$$scope: { ctx }
+			}
+		});
+
+	sortablelist.$on("orderChanged", /*onReorder*/ ctx[19]);
+
+	return {
+		c() {
+			div4 = element("div");
+			div2 = element("div");
+			div0 = element("div");
+			span0 = element("span");
+			t0 = text(t0_value);
+			t1 = space();
+			span1 = element("span");
+			t2 = text(t2_value);
+			t3 = space();
+			t4 = text(t4_value);
+			t5 = space();
+			div1 = element("div");
+			label0 = element("label");
+			input0 = element("input");
+			t6 = space();
+			t7 = text(t7_value);
+			t8 = space();
+			label1 = element("label");
+			input1 = element("input");
+			t9 = space();
+			t10 = text(t10_value);
+			t11 = space();
+			label2 = element("label");
+			input2 = element("input");
+			t12 = space();
+			t13 = text(t13_value);
+			t14 = space();
+			button = element("button");
+			t15 = text(t15_value);
+			t16 = space();
+			div3 = element("div");
+			t17 = text(t17_value);
+			t18 = space();
+			create_component(sortablelist.$$.fragment);
+			attr(span0, "class", "matrix-title svelte-1d84fds");
+			attr(span1, "class", "matrix-count svelte-1d84fds");
+			attr(div0, "class", "matrix-heading svelte-1d84fds");
+			attr(input0, "type", "checkbox");
+			input0.disabled = /*running*/ ctx[0];
+			attr(input0, "class", "svelte-1d84fds");
+			attr(label0, "class", "batch-toggle svelte-1d84fds");
+			toggle_class(label0, "on", /*dryRun*/ ctx[2]);
+			attr(input1, "type", "checkbox");
+			input1.disabled = /*running*/ ctx[0];
+			attr(input1, "class", "svelte-1d84fds");
+			attr(label1, "class", "batch-toggle svelte-1d84fds");
+			toggle_class(label1, "on", /*openAfter*/ ctx[3]);
+			attr(input2, "type", "checkbox");
+			input2.disabled = /*running*/ ctx[0];
+			attr(input2, "class", "svelte-1d84fds");
+			attr(label2, "class", "batch-toggle svelte-1d84fds");
+			toggle_class(label2, "on", /*harvest*/ ctx[4]);
+			attr(div1, "class", "matrix-batch svelte-1d84fds");
+			attr(button, "class", "matrix-run svelte-1d84fds");
+			button.disabled = button_disabled_value = /*running*/ ctx[0] || !/*anyRunnable*/ ctx[8];
+			attr(div2, "class", "matrix-header svelte-1d84fds");
+			attr(div3, "class", "matrix-hint svelte-1d84fds");
+			attr(div4, "class", "matrix svelte-1d84fds");
+		},
+		m(target, anchor) {
+			insert(target, div4, anchor);
+			append(div4, div2);
+			append(div2, div0);
+			append(div0, span0);
+			append(span0, t0);
+			append(div0, t1);
+			append(div0, span1);
+			append(span1, t2);
+			append(span1, t3);
+			append(span1, t4);
+			append(div2, t5);
+			append(div2, div1);
+			append(div1, label0);
+			append(label0, input0);
+			input0.checked = /*dryRun*/ ctx[2];
+			append(label0, t6);
+			append(label0, t7);
+			append(div1, t8);
+			append(div1, label1);
+			append(label1, input1);
+			input1.checked = /*openAfter*/ ctx[3];
+			append(label1, t9);
+			append(label1, t10);
+			append(div1, t11);
+			append(div1, label2);
+			append(label2, input2);
+			input2.checked = /*harvest*/ ctx[4];
+			append(label2, t12);
+			append(label2, t13);
+			append(div2, t14);
+			append(div2, button);
+			append(button, t15);
+			append(div4, t16);
+			append(div4, div3);
+			append(div3, t17);
+			append(div4, t18);
+			mount_component(sortablelist, div4, null);
+			current = true;
+
+			if (!mounted) {
+				dispose = [
+					listen(input0, "change", /*input0_change_handler*/ ctx[21]),
+					listen(input1, "change", /*input1_change_handler*/ ctx[22]),
+					listen(input2, "change", /*input2_change_handler*/ ctx[23]),
+					listen(button, "click", /*run*/ ctx[20])
+				];
+
+				mounted = true;
+			}
+		},
+		p(ctx, dirty) {
+			if ((!current || dirty[0] & /*$t*/ 512) && t0_value !== (t0_value = /*$t*/ ctx[9]("matrix.title") + "")) set_data(t0, t0_value);
+			if ((!current || dirty[0] & /*rows*/ 2) && t2_value !== (t2_value = /*rows*/ ctx[1].length + "")) set_data(t2, t2_value);
+			if ((!current || dirty[0] & /*$t*/ 512) && t4_value !== (t4_value = /*$t*/ ctx[9]("matrix.drafts") + "")) set_data(t4, t4_value);
+
+			if (!current || dirty[0] & /*running*/ 1) {
+				input0.disabled = /*running*/ ctx[0];
+			}
+
+			if (dirty[0] & /*dryRun*/ 4) {
+				input0.checked = /*dryRun*/ ctx[2];
+			}
+
+			if ((!current || dirty[0] & /*$t*/ 512) && t7_value !== (t7_value = /*$t*/ ctx[9]("matrix.dryRun") + "")) set_data(t7, t7_value);
+
+			if (dirty[0] & /*dryRun*/ 4) {
+				toggle_class(label0, "on", /*dryRun*/ ctx[2]);
+			}
+
+			if (!current || dirty[0] & /*running*/ 1) {
+				input1.disabled = /*running*/ ctx[0];
+			}
+
+			if (dirty[0] & /*openAfter*/ 8) {
+				input1.checked = /*openAfter*/ ctx[3];
+			}
+
+			if ((!current || dirty[0] & /*$t*/ 512) && t10_value !== (t10_value = /*$t*/ ctx[9]("matrix.openPdf") + "")) set_data(t10, t10_value);
+
+			if (dirty[0] & /*openAfter*/ 8) {
+				toggle_class(label1, "on", /*openAfter*/ ctx[3]);
+			}
+
+			if (!current || dirty[0] & /*running*/ 1) {
+				input2.disabled = /*running*/ ctx[0];
+			}
+
+			if (dirty[0] & /*harvest*/ 16) {
+				input2.checked = /*harvest*/ ctx[4];
+			}
+
+			if ((!current || dirty[0] & /*$t*/ 512) && t13_value !== (t13_value = /*$t*/ ctx[9]("matrix.harvest") + "")) set_data(t13, t13_value);
+
+			if (dirty[0] & /*harvest*/ 16) {
+				toggle_class(label2, "on", /*harvest*/ ctx[4]);
+			}
+
+			if ((!current || dirty[0] & /*running, $t*/ 513) && t15_value !== (t15_value = (/*running*/ ctx[0]
+			? /*$t*/ ctx[9]("matrix.running")
+			: /*$t*/ ctx[9]("matrix.run")) + "")) set_data(t15, t15_value);
+
+			if (!current || dirty[0] & /*running, anyRunnable*/ 257 && button_disabled_value !== (button_disabled_value = /*running*/ ctx[0] || !/*anyRunnable*/ ctx[8])) {
+				button.disabled = button_disabled_value;
+			}
+
+			if ((!current || dirty[0] & /*$t*/ 512) && t17_value !== (t17_value = /*$t*/ ctx[9]("matrix.reorderHint") + "")) set_data(t17, t17_value);
+			const sortablelist_changes = {};
+			if (dirty[0] & /*rows*/ 2) sortablelist_changes.items = /*rows*/ ctx[1];
+			if (dirty[0] & /*sortableOptions*/ 128) sortablelist_changes.sortableOptions = /*sortableOptions*/ ctx[7];
+
+			if (dirty[0] & /*running, $pandocTemplates, $t, openError, rows, hovered*/ 1635 | dirty[1] & /*$$scope, item*/ 16778240) {
+				sortablelist_changes.$$scope = { dirty, ctx };
+			}
+
+			sortablelist.$set(sortablelist_changes);
+		},
+		i(local) {
+			if (current) return;
+			transition_in(sortablelist.$$.fragment, local);
+			current = true;
+		},
+		o(local) {
+			transition_out(sortablelist.$$.fragment, local);
+			current = false;
+		},
+		d(detaching) {
+			if (detaching) detach(div4);
+			destroy_component(sortablelist);
+			mounted = false;
+			run_all(dispose);
+		}
+	};
+}
+
+function nodeClass(state, i) {
+	if (state.status === "error") {
+		if (i === state.activeStep) return "is-error";
+		if (i < state.activeStep) return "is-done";
+		return "is-pending";
+	}
+
+	if (state.status === "done") return "is-done";
+
+	if (state.status === "running") {
+		if (i < state.activeStep) return "is-done";
+		if (i === state.activeStep) return "is-active";
+	}
+
+	return "is-pending";
+}
+
+function instance$e($$self, $$props, $$invalidate) {
+	let anyRunnable;
+	let sortableOptions;
+	let $t;
+	let $pandocTemplates;
+	component_subscribe($$self, t, $$value => $$invalidate(9, $t = $$value));
+	component_subscribe($$self, pandocTemplates, $$value => $$invalidate(10, $pandocTemplates = $$value));
+	const app = useApp();
+	getContext("close");
+
+	// Batch toggles (per-run; sensible batch defaults).
+	let dryRun = false;
+
+	let openAfter = false;
+	let harvest = true;
+	let running = false;
+
+	// Which failed row's full-error panel is expanded.
+	let openError = null;
+
+	const toggleError = row => $$invalidate(5, openError = openError === row.id ? null : row.id);
+
+	function copyError(text) {
+		return __awaiter(this, void 0, void 0, function* () {
+			yield navigator.clipboard.writeText(text !== null && text !== void 0 ? text : "");
+			new obsidian.Notice(translate("matrix.errorCopied"));
+		});
+	}
+
+	// Which step node the pointer/focus is on, so the fixed caption can preview it.
+	let hovered = { id: null, i: -1 };
+
+	const hoverStep = (row, i) => $$invalidate(6, hovered = { id: row.id, i });
+	const clearHover = () => $$invalidate(6, hovered = { id: null, i: -1 });
+	const wfsSnapshot = get_store_value(workflows);
+	const allWorkflowNames = Object.keys(wfsSnapshot).sort();
+
+	// Resolve a (cloned, editable) workflow into the row fields the board renders:
+	// node list + validity. Steps mirror `wf.steps`, so option edits keep them in sync.
+	function resolveRow(draft, wf) {
+		if (!wf) {
+			return {
+				steps: [],
+				runnable: false,
+				skipReason: "no workflow assigned"
+			};
+		}
+
+		const [valid, kinds] = calculateWorkflow(wf, draft.format === "scenes");
+
+		if (valid.error !== WorkflowError.Valid) {
+			return {
+				steps: [],
+				runnable: false,
+				skipReason: valid.error
+			};
+		}
+
+		const steps = wf.steps.map((s, i) => ({
+			name: s.description.name,
+			kind: formatStepKind(kinds[i]),
+			kindRaw: kinds[i]
+		}));
+
+		return { steps, runnable: true, skipReason: "" };
+	}
+
+	// The row's editable copy of a workflow. Join steps are dropped up front for a
+	// single-file draft (see effectiveWorkflow) so that the clone, the rendered
+	// node list, the step-options editor, and compile()'s progress indices all
+	// agree on one step list.
+	function rowWorkflow(source, draft) {
+		if (!source) return null;
+		return effectiveWorkflow(cloneWorkflow(source), draft.format === "scenes");
+	}
+
+	// Snapshot the project's drafts, resolving each to its default workflow. Each row
+	// owns an editable clone of its workflow so per-step option edits and the workflow
+	// picker stay local to this run and never touch the user's saved workflows.
+	function buildRows() {
+		var _a;
+
+		const projectDrafts = (_a = get_store_value(selectedProject)) !== null && _a !== void 0
+		? _a
+		: [];
+
+		const cur = get_store_value(currentWorkflow);
+
+		return projectDrafts.map(draft => {
+			var _a, _b, _c;
+
+			const defaultName = (_c = (_b = (_a = draft.workflow && wfsSnapshot[draft.workflow]
+			? draft.workflow
+			: null) !== null && _a !== void 0
+			? _a
+			: cur === null || cur === void 0 ? void 0 : cur.name) !== null && _b !== void 0
+			? _b
+			: allWorkflowNames[0]) !== null && _c !== void 0
+			? _c
+			: null;
+
+			const source = defaultName ? wfsSnapshot[defaultName] : cur;
+			const workflow = rowWorkflow(source, draft);
+
+			return Object.assign(
+				Object.assign(
+					{
+						id: draft.vaultPath,
+						draft,
+						title: draftTitle(draft),
+						abbrev: draftAbbrev(draft.draftTitle || draft.title),
+						workflowName: defaultName,
+						workflow,
+						openStep: -1
+					},
+					resolveRow(draft, workflow)
+				),
+				{ state: Object.assign({}, IDLE_ROW) }
+			);
+		});
+	}
+
+	let rows = buildRows();
+
+	function selectWorkflow(row, name) {
+		if (running) return;
+		row.workflowName = name;
+		row.workflow = rowWorkflow(wfsSnapshot[name], row.draft);
+		row.openStep = -1;
+		row.state = Object.assign({}, IDLE_ROW);
+		Object.assign(row, resolveRow(row.draft, row.workflow));
+		$$invalidate(1, rows);
+	}
+
+	function toggleStep(row, i) {
+		row.openStep = row.openStep === i ? -1 : i;
+		$$invalidate(1, rows);
+	}
+
+	// Slot `let:item` vars can't be `bind:`-ed in Svelte 3, so option inputs are
+	// controlled: write straight into the row's cloned workflow and re-render.
+	function setOption(row, stepIndex, optionId, value) {
+		row.workflow.steps[stepIndex].optionValues[optionId] = value;
+		$$invalidate(1, rows);
+	}
+
+	function onReorder(e) {
+		$$invalidate(1, rows = e.detail);
+	}
+
+	function run() {
+		var _a;
+
+		return __awaiter(this, void 0, void 0, function* () {
+			if (running || !anyRunnable) return;
+			$$invalidate(0, running = true);
+			const projectRoot = projectRootPath(rows.map(r => r.draft));
+
+			for (let i = 0; i < rows.length; i++) {
+				const row = rows[i];
+
+				if (!row.runnable) {
+					row.state = {
+						status: "skipped",
+						activeStep: -1,
+						error: row.skipReason
+					};
+
+					$$invalidate(1, rows);
+					continue;
+				}
+
+				// Batch toggles win over per-step edits for their specific options; every
+				// other manual edit on the row's cloned workflow is preserved.
+				const wf = applyBatchOverrides(row.workflow, { dryRun, openAfter, harvest });
+
+				const [,kinds] = calculateWorkflow(wf, row.draft.format === "scenes");
+
+				try {
+					yield compile(
+						app,
+						row.draft,
+						wf,
+						kinds,
+						status => {
+							row.state = statusToRowState(status, row.state);
+							$$invalidate(1, rows);
+						},
+						{
+							suppressOpenAfter: !openAfter,
+							projectRoot
+						}
+					);
+				} catch(e) {
+					row.state = Object.assign(Object.assign({}, row.state), {
+						status: "error",
+						error: String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0
+						? _a
+						: e)
+					});
+
+					$$invalidate(1, rows);
+				}
+			}
+
+			$$invalidate(0, running = false);
+			const ok = rows.filter(r => r.state.status === "done").length;
+			new obsidian.Notice(`Compiled ${ok} draft${ok === 1 ? "" : "s"}.`);
+		});
+	}
+
+	function input0_change_handler() {
+		dryRun = this.checked;
+		$$invalidate(2, dryRun);
+	}
+
+	function input1_change_handler() {
+		openAfter = this.checked;
+		$$invalidate(3, openAfter);
+	}
+
+	function input2_change_handler() {
+		harvest = this.checked;
+		$$invalidate(4, harvest);
+	}
+
+	const change_handler = (item, e) => selectWorkflow(item, e.currentTarget.value);
+	const click_handler = (item, i) => toggleStep(item, i);
+	const mouseenter_handler = (item, i) => hoverStep(item, i);
+	const focus_handler = (item, i) => hoverStep(item, i);
+	const click_handler_1 = item => toggleError(item);
+	const click_handler_2 = item => copyError(item.state.error);
+	const click_handler_3 = item => toggleStep(item, item.openStep);
+	const input_handler = (item, option, e) => setOption(item, item.openStep, option.id, e.currentTarget.value);
+	const input_handler_1 = (item, option, e) => setOption(item, item.openStep, option.id, e.currentTarget.value);
+	const change_handler_1 = (item, option, e) => setOption(item, item.openStep, option.id, e.currentTarget.value);
+	const change_handler_2 = (item, option, e) => setOption(item, item.openStep, option.id, e.currentTarget.checked);
+
+	$$self.$$.update = () => {
+		if ($$self.$$.dirty[0] & /*rows*/ 2) {
+			$$invalidate(8, anyRunnable = rows.some(r => r.runnable));
+		}
+
+		if ($$self.$$.dirty[0] & /*running*/ 1) {
+			$$invalidate(7, sortableOptions = {
+				handle: ".matrix-drag",
+				animation: 150,
+				disabled: running
+			});
+		}
+	};
+
+	return [
+		running,
+		rows,
+		dryRun,
+		openAfter,
+		harvest,
+		openError,
+		hovered,
+		sortableOptions,
+		anyRunnable,
+		$t,
+		$pandocTemplates,
+		toggleError,
+		copyError,
+		hoverStep,
+		clearHover,
+		allWorkflowNames,
+		selectWorkflow,
+		toggleStep,
+		setOption,
+		onReorder,
+		run,
+		input0_change_handler,
+		input1_change_handler,
+		input2_change_handler,
+		change_handler,
+		click_handler,
+		mouseenter_handler,
+		focus_handler,
+		click_handler_1,
+		click_handler_2,
+		click_handler_3,
+		input_handler,
+		input_handler_1,
+		change_handler_1,
+		change_handler_2
+	];
+}
+
+class CompileMatrix extends SvelteComponent {
+	constructor(options) {
+		super();
+		init(this, options, instance$e, create_fragment$e, safe_not_equal, {}, add_css$e, [-1, -1]);
+	}
+}
+
+/**
+ * Opens the Compile Matrix: a board of the project's drafts that shows each one's
+ * live compile progress, reorders the compile order by drag, batch-overrides a few
+ * options for the run, and runs them sequentially on demand.
+ */
+class CompileMatrixModal extends obsidian.Modal {
+    constructor(app) {
+        super(app);
+        this.view = null;
+    }
+    onOpen() {
+        // Wider than the default modal so the step runways have room.
+        this.modalEl.style.width = "min(760px, 92vw)";
+        const entrypoint = this.contentEl.createDiv("longform-compile-matrix-root");
+        const context = appContext(this);
+        context.set("close", () => this.close());
+        this.view = new CompileMatrix({ target: entrypoint, context });
+    }
+    onClose() {
+        var _a;
+        (_a = this.view) === null || _a === void 0 ? void 0 : _a.$destroy();
+        this.view = null;
+        this.contentEl.empty();
+    }
 }
 
 var ListCache$2 = _ListCache;
@@ -27701,11 +33199,11 @@ var _initCloneArray = initCloneArray$1;
 var root = _root;
 
 /** Built-in value references. */
-var Uint8Array$1 = root.Uint8Array;
+var Uint8Array$2 = root.Uint8Array;
 
-var _Uint8Array = Uint8Array$1;
+var _Uint8Array = Uint8Array$2;
 
-var Uint8Array = _Uint8Array;
+var Uint8Array$1 = _Uint8Array;
 
 /**
  * Creates a clone of `arrayBuffer`.
@@ -27716,7 +33214,7 @@ var Uint8Array = _Uint8Array;
  */
 function cloneArrayBuffer$3(arrayBuffer) {
   var result = new arrayBuffer.constructor(arrayBuffer.byteLength);
-  new Uint8Array(result).set(new Uint8Array(arrayBuffer));
+  new Uint8Array$1(result).set(new Uint8Array$1(arrayBuffer));
   return result;
 }
 
@@ -28535,20 +34033,3335 @@ class AutoTextArea extends SvelteComponent {
 	}
 }
 
-/* src/view/compile/CompileView.svelte generated by Svelte v3.49.0 */
+class LongformErrorModal extends obsidian.Modal {
+    constructor(app, title, message, actions = []) {
+        super(app);
+        this.titleText = title;
+        this.message = message;
+        this.actions = actions;
+    }
+    onOpen() {
+        const { contentEl, titleEl } = this;
+        titleEl.setText(this.titleText);
+        contentEl.empty();
+        const pre = contentEl.createEl("pre", { cls: "longform-error-modal-log" });
+        pre.setText(this.message);
+        const buttons = contentEl.createDiv({
+            cls: "longform-error-modal-buttons",
+        });
+        // Fix-it actions come first and take the CTA styling: when the failure is a
+        // known setup problem, acting on it beats copying the log.
+        for (const action of this.actions) {
+            const actionButton = buttons.createEl("button", {
+                text: action.text,
+                cls: "mod-cta",
+            });
+            actionButton.addEventListener("click", () => {
+                this.close();
+                action.onClick();
+            });
+        }
+        const copyButton = buttons.createEl("button", {
+            text: "Copy error",
+            cls: this.actions.length > 0 ? "" : "mod-cta",
+        });
+        copyButton.addEventListener("click", () => __awaiter(this, void 0, void 0, function* () {
+            try {
+                yield navigator.clipboard.writeText(this.message);
+                copyButton.setText("Copied!");
+                window.setTimeout(() => copyButton.setText("Copy error"), 1500);
+            }
+            catch (e) {
+                new obsidian.Notice("Could not copy to clipboard.");
+            }
+        }));
+        const closeButton = buttons.createEl("button", { text: "Close" });
+        closeButton.addEventListener("click", () => this.close());
+    }
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+/** Convenience helper: construct and open a {@link LongformErrorModal}. */
+function showErrorModal(app, title, message, actions = []) {
+    new LongformErrorModal(app, title, message, actions).open();
+}
+
+// DEFLATE is a complex format; to read this code, you should probably check the RFC first:
+
+// aliases for shorter compressed code (most minifers don't do this)
+var u8 = Uint8Array, u16 = Uint16Array, i32 = Int32Array;
+// fixed length extra bits
+var fleb = new u8([0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, /* unused */ 0, 0, /* impossible */ 0]);
+// fixed distance extra bits
+var fdeb = new u8([0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, /* unused */ 0, 0]);
+// code length index map
+var clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
+// get base, reverse index map from extra bits
+var freb = function (eb, start) {
+    var b = new u16(31);
+    for (var i = 0; i < 31; ++i) {
+        b[i] = start += 1 << eb[i - 1];
+    }
+    // numbers here are at max 18 bits
+    var r = new i32(b[30]);
+    for (var i = 1; i < 30; ++i) {
+        for (var j = b[i]; j < b[i + 1]; ++j) {
+            r[j] = ((j - b[i]) << 5) | i;
+        }
+    }
+    return { b: b, r: r };
+};
+var _a = freb(fleb, 2), fl = _a.b, revfl = _a.r;
+// we can ignore the fact that the other numbers are wrong; they never happen anyway
+fl[28] = 258, revfl[258] = 28;
+var _b = freb(fdeb, 0), fd = _b.b;
+// map of value to reverse (assuming 16 bits)
+var rev = new u16(32768);
+for (var i = 0; i < 32768; ++i) {
+    // reverse table algorithm from SO
+    var x = ((i & 0xAAAA) >> 1) | ((i & 0x5555) << 1);
+    x = ((x & 0xCCCC) >> 2) | ((x & 0x3333) << 2);
+    x = ((x & 0xF0F0) >> 4) | ((x & 0x0F0F) << 4);
+    rev[i] = (((x & 0xFF00) >> 8) | ((x & 0x00FF) << 8)) >> 1;
+}
+// create huffman tree from u8 "map": index -> code length for code index
+// mb (max bits) must be at most 15
+// TODO: optimize/split up?
+var hMap = (function (cd, mb, r) {
+    var s = cd.length;
+    // index
+    var i = 0;
+    // u16 "map": index -> # of codes with bit length = index
+    var l = new u16(mb);
+    // length of cd must be 288 (total # of codes)
+    for (; i < s; ++i) {
+        if (cd[i])
+            ++l[cd[i] - 1];
+    }
+    // u16 "map": index -> minimum code for bit length = index
+    var le = new u16(mb);
+    for (i = 1; i < mb; ++i) {
+        le[i] = (le[i - 1] + l[i - 1]) << 1;
+    }
+    var co;
+    if (r) {
+        // u16 "map": index -> number of actual bits, symbol for code
+        co = new u16(1 << mb);
+        // bits to remove for reverser
+        var rvb = 15 - mb;
+        for (i = 0; i < s; ++i) {
+            // ignore 0 lengths
+            if (cd[i]) {
+                // num encoding both symbol and bits read
+                var sv = (i << 4) | cd[i];
+                // free bits
+                var r_1 = mb - cd[i];
+                // start value
+                var v = le[cd[i] - 1]++ << r_1;
+                // m is end value
+                for (var m = v | ((1 << r_1) - 1); v <= m; ++v) {
+                    // every 16 bit value starting with the code yields the same result
+                    co[rev[v] >> rvb] = sv;
+                }
+            }
+        }
+    }
+    else {
+        co = new u16(s);
+        for (i = 0; i < s; ++i) {
+            if (cd[i]) {
+                co[i] = rev[le[cd[i] - 1]++] >> (15 - cd[i]);
+            }
+        }
+    }
+    return co;
+});
+// fixed length tree
+var flt = new u8(288);
+for (var i = 0; i < 144; ++i)
+    flt[i] = 8;
+for (var i = 144; i < 256; ++i)
+    flt[i] = 9;
+for (var i = 256; i < 280; ++i)
+    flt[i] = 7;
+for (var i = 280; i < 288; ++i)
+    flt[i] = 8;
+// fixed distance tree
+var fdt = new u8(32);
+for (var i = 0; i < 32; ++i)
+    fdt[i] = 5;
+// fixed length map
+var flrm = /*#__PURE__*/ hMap(flt, 9, 1);
+// fixed distance map
+var fdrm = /*#__PURE__*/ hMap(fdt, 5, 1);
+// find max of array
+var max$1 = function (a) {
+    var m = a[0];
+    for (var i = 1; i < a.length; ++i) {
+        if (a[i] > m)
+            m = a[i];
+    }
+    return m;
+};
+// read d, starting at bit p and mask with m
+var bits = function (d, p, m) {
+    var o = (p / 8) | 0;
+    return ((d[o] | (d[o + 1] << 8)) >> (p & 7)) & m;
+};
+// read d, starting at bit p continuing for at least 16 bits
+var bits16 = function (d, p) {
+    var o = (p / 8) | 0;
+    return ((d[o] | (d[o + 1] << 8) | (d[o + 2] << 16)) >> (p & 7));
+};
+// get end of byte
+var shft = function (p) { return ((p + 7) / 8) | 0; };
+// typed array slice - allows garbage collector to free original reference,
+// while being more compatible than .slice
+var slc = function (v, s, e) {
+    if (s == null || s < 0)
+        s = 0;
+    if (e == null || e > v.length)
+        e = v.length;
+    // can't use .constructor in case user-supplied
+    return new u8(v.subarray(s, e));
+};
+// error codes
+var ec = [
+    'unexpected EOF',
+    'invalid block type',
+    'invalid length/literal',
+    'invalid distance',
+    'stream finished',
+    'no stream handler',
+    , // determined by compression function
+    'no callback',
+    'invalid UTF-8 data',
+    'extra field too long',
+    'date not in range 1980-2099',
+    'filename too long',
+    'stream finishing',
+    'invalid zip data'
+    // determined by unknown compression method
+];
+var err = function (ind, msg, nt) {
+    var e = new Error(msg || ec[ind]);
+    e.code = ind;
+    if (Error.captureStackTrace)
+        Error.captureStackTrace(e, err);
+    if (!nt)
+        throw e;
+    return e;
+};
+// expands raw DEFLATE data
+var inflt = function (dat, st, buf, dict) {
+    // source length       dict length
+    var sl = dat.length, dl = dict ? dict.length : 0;
+    if (!sl || st.f && !st.l)
+        return buf || new u8(0);
+    var noBuf = !buf;
+    // have to estimate size
+    var resize = noBuf || st.i != 2;
+    // no state
+    var noSt = st.i;
+    // Assumes roughly 33% compression ratio average
+    if (noBuf)
+        buf = new u8(sl * 3);
+    // ensure buffer can fit at least l elements
+    var cbuf = function (l) {
+        var bl = buf.length;
+        // need to increase size to fit
+        if (l > bl) {
+            // Double or set to necessary, whichever is greater
+            var nbuf = new u8(Math.max(bl * 2, l));
+            nbuf.set(buf);
+            buf = nbuf;
+        }
+    };
+    //  last chunk         bitpos           bytes
+    var final = st.f || 0, pos = st.p || 0, bt = st.b || 0, lm = st.l, dm = st.d, lbt = st.m, dbt = st.n;
+    // total bits
+    var tbts = sl * 8;
+    do {
+        if (!lm) {
+            // BFINAL - this is only 1 when last chunk is next
+            final = bits(dat, pos, 1);
+            // type: 0 = no compression, 1 = fixed huffman, 2 = dynamic huffman
+            var type = bits(dat, pos + 1, 3);
+            pos += 3;
+            if (!type) {
+                // go to end of byte boundary
+                var s = shft(pos) + 4, l = dat[s - 4] | (dat[s - 3] << 8), t = s + l;
+                if (t > sl) {
+                    if (noSt)
+                        err(0);
+                    break;
+                }
+                // ensure size
+                if (resize)
+                    cbuf(bt + l);
+                // Copy over uncompressed data
+                buf.set(dat.subarray(s, t), bt);
+                // Get new bitpos, update byte count
+                st.b = bt += l, st.p = pos = t * 8, st.f = final;
+                continue;
+            }
+            else if (type == 1)
+                lm = flrm, dm = fdrm, lbt = 9, dbt = 5;
+            else if (type == 2) {
+                //  literal                            lengths
+                var hLit = bits(dat, pos, 31) + 257, hcLen = bits(dat, pos + 10, 15) + 4;
+                var tl = hLit + bits(dat, pos + 5, 31) + 1;
+                pos += 14;
+                // length+distance tree
+                var ldt = new u8(tl);
+                // code length tree
+                var clt = new u8(19);
+                for (var i = 0; i < hcLen; ++i) {
+                    // use index map to get real code
+                    clt[clim[i]] = bits(dat, pos + i * 3, 7);
+                }
+                pos += hcLen * 3;
+                // code lengths bits
+                var clb = max$1(clt), clbmsk = (1 << clb) - 1;
+                // code lengths map
+                var clm = hMap(clt, clb, 1);
+                for (var i = 0; i < tl;) {
+                    var r = clm[bits(dat, pos, clbmsk)];
+                    // bits read
+                    pos += r & 15;
+                    // symbol
+                    var s = r >> 4;
+                    // code length to copy
+                    if (s < 16) {
+                        ldt[i++] = s;
+                    }
+                    else {
+                        //  copy   count
+                        var c = 0, n = 0;
+                        if (s == 16)
+                            n = 3 + bits(dat, pos, 3), pos += 2, c = ldt[i - 1];
+                        else if (s == 17)
+                            n = 3 + bits(dat, pos, 7), pos += 3;
+                        else if (s == 18)
+                            n = 11 + bits(dat, pos, 127), pos += 7;
+                        while (n--)
+                            ldt[i++] = c;
+                    }
+                }
+                //    length tree                 distance tree
+                var lt = ldt.subarray(0, hLit), dt = ldt.subarray(hLit);
+                // max length bits
+                lbt = max$1(lt);
+                // max dist bits
+                dbt = max$1(dt);
+                lm = hMap(lt, lbt, 1);
+                dm = hMap(dt, dbt, 1);
+            }
+            else
+                err(1);
+            if (pos > tbts) {
+                if (noSt)
+                    err(0);
+                break;
+            }
+        }
+        // Make sure the buffer can hold this + the largest possible addition
+        // Maximum chunk size (practically, theoretically infinite) is 2^17
+        if (resize)
+            cbuf(bt + 131072);
+        var lms = (1 << lbt) - 1, dms = (1 << dbt) - 1;
+        var lpos = pos;
+        for (;; lpos = pos) {
+            // bits read, code
+            var c = lm[bits16(dat, pos) & lms], sym = c >> 4;
+            pos += c & 15;
+            if (pos > tbts) {
+                if (noSt)
+                    err(0);
+                break;
+            }
+            if (!c)
+                err(2);
+            if (sym < 256)
+                buf[bt++] = sym;
+            else if (sym == 256) {
+                lpos = pos, lm = null;
+                break;
+            }
+            else {
+                var add = sym - 254;
+                // no extra bits needed if less
+                if (sym > 264) {
+                    // index
+                    var i = sym - 257, b = fleb[i];
+                    add = bits(dat, pos, (1 << b) - 1) + fl[i];
+                    pos += b;
+                }
+                // dist
+                var d = dm[bits16(dat, pos) & dms], dsym = d >> 4;
+                if (!d)
+                    err(3);
+                pos += d & 15;
+                var dt = fd[dsym];
+                if (dsym > 3) {
+                    var b = fdeb[dsym];
+                    dt += bits16(dat, pos) & (1 << b) - 1, pos += b;
+                }
+                if (pos > tbts) {
+                    if (noSt)
+                        err(0);
+                    break;
+                }
+                if (resize)
+                    cbuf(bt + 131072);
+                var end = bt + add;
+                if (bt < dt) {
+                    var shift = dl - dt, dend = Math.min(dt, end);
+                    if (shift + bt < 0)
+                        err(3);
+                    for (; bt < dend; ++bt)
+                        buf[bt] = dict[shift + bt];
+                }
+                for (; bt < end; ++bt)
+                    buf[bt] = buf[bt - dt];
+            }
+        }
+        st.l = lm, st.p = lpos, st.b = bt, st.f = final;
+        if (lm)
+            final = 1, st.m = lbt, st.d = dm, st.n = dbt;
+    } while (!final);
+    // don't reallocate for streams or user buffers
+    return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
+};
+// empty
+var et = /*#__PURE__*/ new u8(0);
+// read 2 bytes
+var b2 = function (d, b) { return d[b] | (d[b + 1] << 8); };
+// read 4 bytes
+var b4 = function (d, b) { return (d[b] | (d[b + 1] << 8) | (d[b + 2] << 16) | (d[b + 3] << 24)) >>> 0; };
+// read 8 bytes
+var b8 = function (d, b) { return b4(d, b) + (b4(d, b + 4) * 4294967296); };
+function inflateSync(data, opts) {
+    return inflt(data, { i: 2 }, opts && opts.out, opts && opts.dictionary);
+}
+// text decoder
+var td = typeof TextDecoder != 'undefined' && /*#__PURE__*/ new TextDecoder();
+// text decoder stream
+var tds = 0;
+try {
+    td.decode(et, { stream: true });
+    tds = 1;
+}
+catch (e) { }
+// decode UTF8
+var dutf8 = function (d) {
+    for (var r = '', i = 0;;) {
+        var c = d[i++];
+        var eb = (c > 127) + (c > 223) + (c > 239);
+        if (i + eb > d.length)
+            return { s: r, r: slc(d, i - 1) };
+        if (!eb)
+            r += String.fromCharCode(c);
+        else if (eb == 3) {
+            c = ((c & 15) << 18 | (d[i++] & 63) << 12 | (d[i++] & 63) << 6 | (d[i++] & 63)) - 65536,
+                r += String.fromCharCode(55296 | (c >> 10), 56320 | (c & 1023));
+        }
+        else if (eb & 1)
+            r += String.fromCharCode((c & 31) << 6 | (d[i++] & 63));
+        else
+            r += String.fromCharCode((c & 15) << 12 | (d[i++] & 63) << 6 | (d[i++] & 63));
+    }
+};
+/**
+ * Converts a Uint8Array to a string
+ * @param dat The data to decode to string
+ * @param latin1 Whether or not to interpret the data as Latin-1. This should
+ *               not need to be true unless encoding to binary string.
+ * @returns The original UTF-8/Latin-1 string
+ */
+function strFromU8(dat, latin1) {
+    if (latin1) {
+        var r = '';
+        for (var i = 0; i < dat.length; i += 16384)
+            r += String.fromCharCode.apply(null, dat.subarray(i, i + 16384));
+        return r;
+    }
+    else if (td) {
+        return td.decode(dat);
+    }
+    else {
+        var _a = dutf8(dat), s = _a.s, r = _a.r;
+        if (r.length)
+            err(8);
+        return s;
+    }
+}
+// skip local zip header
+var slzh = function (d, b) { return b + 30 + b2(d, b + 26) + b2(d, b + 28); };
+// read zip header
+var zh = function (d, b, z) {
+    var fnl = b2(d, b + 28), efl = b2(d, b + 30), fn = strFromU8(d.subarray(b + 46, b + 46 + fnl), !(b2(d, b + 8) & 2048)), es = b + 46 + fnl;
+    var _a = z64hs(d, es, efl, z, b4(d, b + 20), b4(d, b + 24), b4(d, b + 42)), sc = _a[0], su = _a[1], off = _a[2];
+    return [b2(d, b + 10), sc, su, fn, es + efl + b2(d, b + 32), off];
+};
+// read zip64 header sizes
+var z64hs = function (d, b, l, z, sc, su, off) {
+    var nsc = sc == 4294967295, nsu = su == 4294967295, noff = off == 4294967295, e = b + l;
+    var nf = nsc + nsu + noff;
+    if (z && nf) {
+        for (; b + 4 < e; b += 4 + b2(d, b + 2)) {
+            if (b2(d, b) == 1) {
+                return [
+                    nsc ? b8(d, b + 4 + 8 * nsu) : sc,
+                    nsu ? b8(d, b + 4) : su,
+                    noff ? b8(d, b + 4 + 8 * (nsu + nsc)) : off,
+                    1
+                ];
+            }
+        }
+        // z == 2 for unknown whether or not zip64
+        if (z < 2)
+            err(13);
+    }
+    return [sc, su, off, 0];
+};
+/**
+ * Synchronously decompresses a ZIP archive. Prefer using `unzip` for better
+ * performance with more than one file.
+ * @param data The raw compressed ZIP file
+ * @param opts The ZIP extraction options
+ * @returns The decompressed files
+ */
+function unzipSync(data, opts) {
+    var files = {};
+    var e = data.length - 22;
+    for (; b4(data, e) != 0x6054B50; --e) {
+        if (!e || data.length - e > 65558)
+            err(13);
+    }
+    var c = b2(data, e + 8);
+    if (!c)
+        return {};
+    var o = b4(data, e + 16);
+    var z = b4(data, e - 20) == 0x7064B50;
+    if (z) {
+        var ze = b4(data, e - 12);
+        z = b4(data, ze) == 0x6064B50;
+        if (z) {
+            c = b4(data, ze + 32);
+            o = b4(data, ze + 48);
+        }
+    }
+    var fltr = opts && opts.filter;
+    for (var i = 0; i < c; ++i) {
+        var _a = zh(data, o, z), c_2 = _a[0], sc = _a[1], su = _a[2], fn = _a[3], no = _a[4], off = _a[5], b = slzh(data, off);
+        o = no;
+        if (!fltr || fltr({
+            name: fn,
+            size: sc,
+            originalSize: su,
+            compression: c_2
+        })) {
+            if (!c_2)
+                files[fn] = slc(data, b, b + sc);
+            else if (c_2 == 8)
+                files[fn] = inflateSync(data.subarray(b, b + sc), { out: new u8(su) });
+            else
+                err(14, 'unknown compression type ' + c_2);
+        }
+    }
+    return files;
+}
+
+/**
+ * The Pandoc asset marketplace: types + pure logic for a machine-readable index
+ * of downloadable Pandoc assets (recipes / filters / templates / CSL) and bundles,
+ * hosted as a single `index.json` in an external assets repository. This module is
+ * pure and unit-tested (no obsidian import); fetching (`fetchMarketIndex`) and
+ * installing live in `pandoc-assets.ts`, the browse UI in `src/view/pandoc-market/`.
+ * See docs/ASSET_MARKETPLACE_SPEC.md for the repo spec.
+ */
+/**
+ * Default marketplace index — the `index.json` published as a release asset of the
+ * assets repo. `releases/latest/download/…` always resolves to the newest release,
+ * so this URL is stable across versions. Overridable in settings.
+ */
+const DEFAULT_MARKET_INDEX_URL = "https://github.com/PaperBell-Org/paperout-assets-market/releases/latest/download/index.json";
+/** The index schema version this plugin understands. */
+const MARKET_SCHEMA_VERSION = 1;
+/** File name of the install manifest, written at the assets root. */
+const INSTALLED_MANIFEST_NAME = "installed.json";
+/** Validate a parsed index against the schema this plugin supports. Throws on mismatch. */
+function validateIndex(parsed) {
+    const idx = parsed;
+    if (!idx || typeof idx !== "object") {
+        throw new Error("Marketplace index is empty or not an object.");
+    }
+    if (idx.schemaVersion !== MARKET_SCHEMA_VERSION) {
+        throw new Error(`Unsupported marketplace schemaVersion ${idx.schemaVersion} (this plugin supports ${MARKET_SCHEMA_VERSION}). Update the plugin or the index.`);
+    }
+    if (!Array.isArray(idx.assets) || !Array.isArray(idx.bundles)) {
+        throw new Error("Marketplace index must have `assets` and `bundles` arrays.");
+    }
+    return idx;
+}
+/**
+ * Normalize an index entry from the assets repo's published shape into the shape
+ * the plugin consumes. The `build-index.mjs` output uses `title`, a single `url` +
+ * `sourcePath` (+ `extraFiles`), and bundle `url`; internally we use `name` and a
+ * `files[]` array with a `download` URL each. Already-internal entries pass through.
+ */
+function normalizeAssetFiles(raw) {
+    var _a;
+    if (Array.isArray(raw.files))
+        return raw.files;
+    const files = [];
+    const src = ((_a = raw.sourcePath) !== null && _a !== void 0 ? _a : raw.path);
+    const url = raw.url;
+    if (src && url) {
+        files.push({ path: src, download: url, sha256: raw.sha256 });
+        // extraFiles are bare repo-relative paths; derive their URL from the main
+        // one's base (the `.../<tag>/` prefix before sourcePath).
+        const extra = raw.extraFiles;
+        if (Array.isArray(extra) && url.endsWith(src)) {
+            const base = url.slice(0, url.length - src.length);
+            for (const ef of extra)
+                files.push({ path: ef, download: base + ef });
+        }
+    }
+    return files;
+}
+/** Pick a localized string from a plain string or a `{ locale: string }` map. */
+function pickLocalized(v, locale) {
+    var _a, _b;
+    if (v == null)
+        return undefined;
+    if (typeof v === "string")
+        return v;
+    if (typeof v === "object") {
+        const o = v;
+        return (_b = (_a = o[locale]) !== null && _a !== void 0 ? _a : o.en) !== null && _b !== void 0 ? _b : Object.values(o)[0];
+    }
+    return String(v);
+}
+function normalizeIndex(idx, locale = "en") {
+    const raw = idx;
+    const repo = raw.repo;
+    const tag = raw.tag;
+    const rawBase = repo && tag ? `https://raw.githubusercontent.com/${repo}/${tag}/` : "";
+    const url = (path) => typeof path === "string" && rawBase ? rawBase + path : undefined;
+    const asset = (a) => {
+        var _a, _b, _c;
+        return ({
+            id: a.id,
+            type: a.type,
+            name: (_b = pickLocalized((_a = a.title) !== null && _a !== void 0 ? _a : a.name, locale)) !== null && _b !== void 0 ? _b : a.id,
+            description: pickLocalized(a.description, locale),
+            version: ((_c = a.version) !== null && _c !== void 0 ? _c : "0.0.0"),
+            author: a.author,
+            tags: a.tags,
+            files: normalizeAssetFiles(a),
+            requires: a.requires,
+            systemDeps: a.systemDeps,
+            tier: a.tier,
+            reviewed: a.reviewed,
+            readmePath: a.readmePath,
+            previewPath: a.previewPath,
+            readmeUrl: url(a.readmePath),
+            previewUrl: url(a.previewPath),
+        });
+    };
+    const assets = idx.assets.map((a) => asset(a));
+    // A bundle is a recipe's packaging and shares its id. Upstream only localizes
+    // recipes (bundle title/description stay English), so reuse the same-id recipe's
+    // localized name/description when present; fall back to the bundle's own.
+    const recipeName = new Map();
+    const recipeDesc = new Map();
+    for (const a of assets)
+        if (a.type === "recipe") {
+            recipeName.set(a.id, a.name);
+            recipeDesc.set(a.id, a.description);
+        }
+    const bundle = (b) => {
+        var _a, _b, _c, _d, _e, _f;
+        const id = b.id;
+        return {
+            id,
+            name: (_c = (_a = recipeName.get(id)) !== null && _a !== void 0 ? _a : pickLocalized((_b = b.title) !== null && _b !== void 0 ? _b : b.name, locale)) !== null && _c !== void 0 ? _c : id,
+            description: (_d = recipeDesc.get(id)) !== null && _d !== void 0 ? _d : pickLocalized(b.description, locale),
+            version: ((_e = b.version) !== null && _e !== void 0 ? _e : "0.0.0"),
+            author: b.author,
+            tags: b.tags,
+            download: ((_f = b.download) !== null && _f !== void 0 ? _f : b.url),
+            sha256: b.sha256,
+            assets: b.assets,
+            workflows: b.workflows,
+            tier: b.tier,
+            reviewed: b.reviewed,
+            readmePath: b.readmePath,
+            previewPath: b.previewPath,
+            readmeUrl: url(b.readmePath),
+            previewUrl: url(b.previewPath),
+        };
+    };
+    return Object.assign(Object.assign({}, idx), { assets, bundles: idx.bundles.map((b) => bundle(b)) });
+}
+/**
+ * Expand an asset id into the ordered install set: its `requires` closure first,
+ * then the asset itself, deduplicated. Throws on an unknown dependency id; cycles
+ * are tolerated (each id installs once). Used to auto-install a recipe's
+ * filters/template/csl alongside it.
+ */
+function resolveInstallSet(index, assetId) {
+    const byId = new Map(index.assets.map((a) => [a.id, a]));
+    const out = [];
+    const seen = new Set();
+    const visit = (id) => {
+        var _a;
+        if (seen.has(id))
+            return;
+        const asset = byId.get(id);
+        if (!asset)
+            throw new Error(`Unknown asset id referenced as a dependency: ${id}`);
+        seen.add(id); // mark before recursing so a cycle back to `id` short-circuits
+        for (const dep of (_a = asset.requires) !== null && _a !== void 0 ? _a : [])
+            visit(dep);
+        out.push(asset);
+    };
+    visit(assetId);
+    return out;
+}
+/**
+ * Minimal numeric semver compare (ignores pre-release tags): returns -1 / 0 / 1
+ * for a < / = / > b. Used to flag "update available".
+ */
+function compareVersions(a, b) {
+    var _a, _b;
+    const norm = (v) => v
+        .split("-")[0]
+        .split(".")
+        .map((n) => parseInt(n, 10) || 0);
+    const pa = norm(a);
+    const pb = norm(b);
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        const d = ((_a = pa[i]) !== null && _a !== void 0 ? _a : 0) - ((_b = pb[i]) !== null && _b !== void 0 ? _b : 0);
+        if (d !== 0)
+            return d < 0 ? -1 : 1;
+    }
+    return 0;
+}
+function installStateFor(manifest, id, marketVersion, presentIds) {
+    const rec = manifest[id];
+    if (rec) {
+        return compareVersions(rec.version, marketVersion) < 0
+            ? "update-available"
+            : "installed";
+    }
+    if (presentIds === null || presentIds === void 0 ? void 0 : presentIds.has(id))
+        return "present";
+    return "not-installed";
+}
+
+function ensureFolder$1(adapter, folder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const parts = folder.split("/").filter((p) => p.length > 0);
+        let cur = "";
+        for (const p of parts) {
+            cur = cur ? `${cur}/${p}` : p;
+            if (!(yield adapter.exists(cur))) {
+                try {
+                    yield adapter.mkdir(cur);
+                }
+                catch (e) {
+                    // already exists / concurrent create — ignore
+                }
+            }
+        }
+    });
+}
+/**
+ * Download the Pandoc toolchain zip from `url` and extract it into the
+ * vault-relative `destFolder`. Files (filters, templates, CSL, defaults) are
+ * managed in a separate assets repository and published as a release zip, so
+ * they are not bundled with the plugin. A single wrapping top-level directory
+ * (as in GitHub source zipballs) is stripped.
+ */
+function downloadPandocAssets(app, url, destFolder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!url || !/^https?:\/\//.test(url)) {
+            throw new Error("No valid assets URL configured. Set the 'Pandoc assets URL' in Longform settings to a link to the toolchain zip.");
+        }
+        const res = yield obsidian.requestUrl({ url, method: "GET" });
+        if (res.status < 200 || res.status >= 300) {
+            throw new Error(`Download failed (HTTP ${res.status}) from ${url}`);
+        }
+        const bytes = new Uint8Array(res.arrayBuffer);
+        let files;
+        try {
+            files = unzipSync(bytes);
+        }
+        catch (e) {
+            throw new Error(`Could not unzip the downloaded file — is the URL a .zip? (${e.message})`);
+        }
+        const filePaths = Object.keys(files).filter((p) => !p.endsWith("/"));
+        const top = commonTopDir(filePaths);
+        const adapter = app.vault.adapter;
+        const written = [];
+        for (const p of filePaths) {
+            const rel = top ? p.slice(top.length) : p;
+            if (!rel)
+                continue;
+            const full = `${destFolder}/${rel}`;
+            const parent = full.split("/").slice(0, -1).join("/");
+            if (parent)
+                yield ensureFolder$1(adapter, parent);
+            const data = files[p];
+            const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+            yield adapter.writeBinary(full, ab);
+            written.push(rel);
+        }
+        if (written.length === 0) {
+            throw new Error("The downloaded archive contained no files.");
+        }
+        return { count: written.length, dest: destFolder, files: written };
+    });
+}
+/** SHA-256 of an ArrayBuffer as lowercase hex, for optional integrity checks. */
+function sha256Hex(ab) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const digest = yield crypto.subtle.digest("SHA-256", ab);
+        return Array.from(new Uint8Array(digest))
+            .map((b) => b.toString(16).padStart(2, "0"))
+            .join("");
+    });
+}
+/**
+ * Fetch and validate the marketplace index from a raw `index.json` URL. The pure
+ * validation/logic lives in `pandoc-market.ts`; this is the obsidian-facing fetch.
+ */
+function fetchMarketIndex(url, locale = "en") {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (!url || !/^https?:\/\//.test(url)) {
+            throw new Error("No valid marketplace index URL configured. Set it in Longform settings → Compile → Pandoc export.");
+        }
+        const res = yield obsidian.requestUrl({ url, method: "GET" });
+        if (res.status < 200 || res.status >= 300) {
+            throw new Error(`Marketplace index fetch failed (HTTP ${res.status}) from ${url}`);
+        }
+        let parsed;
+        try {
+            parsed = JSON.parse(res.text);
+        }
+        catch (e) {
+            throw new Error(`Marketplace index is not valid JSON: ${e.message}`);
+        }
+        return normalizeIndex(validateIndex(parsed), locale);
+    });
+}
+/** Fetch an asset/bundle's README markdown (for the in-modal "how to use" panel). */
+function fetchMarketReadme(url) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const res = yield obsidian.requestUrl({ url, method: "GET" });
+        if (res.status < 200 || res.status >= 300) {
+            throw new Error(`README fetch failed (HTTP ${res.status}).`);
+        }
+        return res.text;
+    });
+}
+/**
+ * Detect which assets/bundles are already present on disk (files exist under the
+ * assets root) — even if not tracked in the install manifest, e.g. synced or
+ * downloaded via the legacy zip. An asset is "present" when all its files exist;
+ * a bundle when all its listed files exist.
+ */
+function detectPresentIds(app, index, destFolder) {
+    var _a, _b, _c;
+    return __awaiter(this, void 0, void 0, function* () {
+        const adapter = app.vault.adapter;
+        const paths = new Set();
+        for (const a of index.assets)
+            for (const f of (_a = a.files) !== null && _a !== void 0 ? _a : [])
+                paths.add(f.path);
+        const onDisk = new Set();
+        yield Promise.all([...paths].map((p) => __awaiter(this, void 0, void 0, function* () {
+            if (yield adapter.exists(`${destFolder}/${p}`))
+                onDisk.add(p);
+        })));
+        const ids = new Set();
+        for (const a of index.assets) {
+            const files = (_b = a.files) !== null && _b !== void 0 ? _b : [];
+            if (files.length > 0 && files.every((f) => onDisk.has(f.path)))
+                ids.add(a.id);
+        }
+        for (const b of index.bundles) {
+            const assets = (_c = b.assets) !== null && _c !== void 0 ? _c : [];
+            if (assets.length > 0 && assets.every((p) => onDisk.has(p)))
+                ids.add(b.id);
+        }
+        return ids;
+    });
+}
+/** Read the install manifest at the assets root; missing/corrupt → empty object. */
+function readInstalledManifest(app, destFolder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const path = `${destFolder}/${INSTALLED_MANIFEST_NAME}`;
+        try {
+            if (!(yield app.vault.adapter.exists(path)))
+                return {};
+            return JSON.parse(yield app.vault.adapter.read(path));
+        }
+        catch (_a) {
+            return {};
+        }
+    });
+}
+function writeInstalledManifest(app, destFolder, manifest) {
+    return __awaiter(this, void 0, void 0, function* () {
+        yield ensureFolder$1(app.vault.adapter, destFolder);
+        yield app.vault.adapter.write(`${destFolder}/${INSTALLED_MANIFEST_NAME}`, JSON.stringify(manifest, null, 2) + "\n");
+    });
+}
+/** Download one asset's files into `destFolder`; verify sha256 when provided. */
+function installMarketAsset(app, asset, destFolder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const adapter = app.vault.adapter;
+        const written = [];
+        for (const file of asset.files) {
+            const res = yield obsidian.requestUrl({ url: file.download, method: "GET" });
+            if (res.status < 200 || res.status >= 300) {
+                throw new Error(`Download failed (HTTP ${res.status}) for ${file.path}`);
+            }
+            const ab = res.arrayBuffer;
+            if (file.sha256) {
+                const actual = yield sha256Hex(ab);
+                if (actual.toLowerCase() !== file.sha256.toLowerCase()) {
+                    throw new Error(`Checksum mismatch for ${file.path}.`);
+                }
+            }
+            const full = `${destFolder}/${file.path}`;
+            const parent = full.split("/").slice(0, -1).join("/");
+            if (parent)
+                yield ensureFolder$1(adapter, parent);
+            yield adapter.writeBinary(full, ab);
+            written.push(file.path);
+        }
+        return written;
+    });
+}
+/**
+ * Install an asset and its `requires` closure (recipe → its filters/template/csl),
+ * recording each in the install manifest. Returns the added/updated records.
+ */
+function installAssetWithDeps(app, index, assetId, destFolder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const set = resolveInstallSet(index, assetId);
+        const manifest = yield readInstalledManifest(app, destFolder);
+        const records = [];
+        for (const asset of set) {
+            const files = yield installMarketAsset(app, asset, destFolder);
+            const rec = {
+                id: asset.id,
+                version: asset.version,
+                kind: "asset",
+                files,
+                installedAt: new Date().toISOString(),
+            };
+            manifest[asset.id] = rec;
+            records.push(rec);
+        }
+        yield writeInstalledManifest(app, destFolder, manifest);
+        return records;
+    });
+}
+/** Install a bundle zip (reusing the zip downloader) and record it in the manifest. */
+function installMarketBundle(app, bundle, destFolder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { files } = yield downloadPandocAssets(app, bundle.download, destFolder);
+        const manifest = yield readInstalledManifest(app, destFolder);
+        const rec = {
+            id: bundle.id,
+            version: bundle.version,
+            kind: "bundle",
+            files,
+            installedAt: new Date().toISOString(),
+        };
+        manifest[bundle.id] = rec;
+        yield writeInstalledManifest(app, destFolder, manifest);
+        return rec;
+    });
+}
+/**
+ * Remove an installed asset/bundle's files and its manifest record. If the item
+ * isn't tracked in the manifest (present on disk but untracked), `fallbackFiles`
+ * (e.g. the index's declared file paths) are removed instead. Returns how many
+ * files were deleted.
+ */
+function uninstallMarketItem(app, destFolder, id, fallbackFiles = []) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const manifest = yield readInstalledManifest(app, destFolder);
+        const rec = manifest[id];
+        const files = rec ? rec.files : fallbackFiles;
+        let removed = 0;
+        for (const rel of files) {
+            const full = `${destFolder}/${rel}`;
+            if (yield app.vault.adapter.exists(full)) {
+                yield app.vault.adapter.remove(full);
+                removed += 1;
+            }
+        }
+        if (rec) {
+            delete manifest[id];
+            yield writeInstalledManifest(app, destFolder, manifest);
+        }
+        return removed;
+    });
+}
+
+/* src/view/pandoc-market/PandocMarket.svelte generated by Svelte v3.49.0 */
 
 function add_css$c(target) {
+	append_styles(target, "svelte-xbtpff", ".market.svelte-xbtpff{display:flex;flex-direction:column;gap:var(--size-4-2)}.market-header.svelte-xbtpff{display:flex;align-items:center;gap:var(--size-4-2);padding-bottom:var(--size-4-2);border-bottom:1px solid var(--background-modifier-border)}.market-heading.svelte-xbtpff{display:flex;align-items:baseline;gap:var(--size-2-3);margin-right:auto}.market-title.svelte-xbtpff{font-weight:700;font-size:var(--font-ui-large, 1.1em);color:var(--text-normal)}.market-count.svelte-xbtpff{font-size:var(--font-ui-smaller);color:var(--text-faint)}.market-search.svelte-xbtpff{flex:1;max-width:260px;background:var(--background-primary);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:4px var(--size-2-3);color:var(--text-normal);font-size:var(--font-ui-smaller)}.market-reload.svelte-xbtpff{font-size:var(--font-ui-smaller);color:var(--text-muted);background:var(--background-primary);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:4px var(--size-4-2);cursor:pointer}.market-reload.svelte-xbtpff:hover:not(:disabled){color:var(--text-normal);border-color:var(--text-accent)}.market-note.svelte-xbtpff{font-size:var(--font-smallest);color:var(--text-muted);background:var(--background-secondary);border-radius:var(--radius-s);padding:var(--size-2-2) var(--size-2-3)}.market-section-title.svelte-xbtpff{font-size:var(--font-ui-smaller);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-faint);margin-top:var(--size-2-2)}.market-grid.svelte-xbtpff{display:grid;grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));gap:var(--size-2-3)}.card.svelte-xbtpff{display:flex;flex-direction:column;gap:var(--size-2-2);padding:var(--size-4-2) var(--size-4-3);background:var(--background-secondary-alt);border:1px solid var(--background-modifier-border);border-radius:var(--radius-m, 8px)}.card-bundle.svelte-xbtpff{border-color:color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border))}.card-top.svelte-xbtpff{display:flex;align-items:baseline;gap:var(--size-2-2);flex-wrap:wrap}.card-name.svelte-xbtpff{font-weight:600;color:var(--text-normal);font-size:var(--font-ui-small)}.card-version.svelte-xbtpff{margin-left:auto;font-size:var(--font-smallest);color:var(--text-faint);font-variant-numeric:tabular-nums}.card-type.svelte-xbtpff{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:1px 5px;border-radius:var(--radius-s);color:var(--text-on-accent);background:var(--text-accent)}.type-filter.svelte-xbtpff{background:var(--color-green, #4caf7d)}.type-template.svelte-xbtpff{background:var(--color-orange, #e0883a)}.type-csl.svelte-xbtpff{background:var(--color-cyan, #3a9bd0)}.card-desc.svelte-xbtpff{margin:0;font-size:var(--font-ui-smaller);color:var(--text-muted)}.card-meta.svelte-xbtpff{font-size:var(--font-smallest);color:var(--text-faint)}.card-sysdep.svelte-xbtpff{color:var(--text-warning, var(--text-muted))}.card-actions.svelte-xbtpff{margin-top:auto;display:flex;justify-content:flex-end}.card-install.svelte-xbtpff{font-weight:600;font-size:var(--font-ui-smaller);color:var(--text-on-accent);background:var(--interactive-accent);border:none;border-radius:var(--radius-s);padding:4px var(--size-4-3);cursor:pointer;transition:background-color 0.15s}.card-install.svelte-xbtpff:hover:not(:disabled){background:var(--interactive-accent-hover)}.card-install.is-installed.svelte-xbtpff{background:transparent;color:var(--interactive-success);border:1px solid color-mix(in srgb, var(--interactive-success) 45%, transparent);cursor:default}.card-install.svelte-xbtpff:disabled:not(.is-installed){opacity:0.6;cursor:default}.installed-check.svelte-xbtpff{color:var(--interactive-success);font-weight:800;font-size:var(--font-ui-smaller)}.clickable.svelte-xbtpff{cursor:pointer;transition:border-color 0.15s, transform 0.1s}.clickable.svelte-xbtpff:hover{border-color:var(--text-accent)}.card-hint.svelte-xbtpff{font-size:var(--font-smallest);color:var(--text-faint);font-style:italic}.detail.svelte-xbtpff{display:flex;flex-direction:column;gap:var(--size-2-3)}.detail-back.svelte-xbtpff{align-self:flex-start;background:transparent;border:none;color:var(--text-muted);cursor:pointer;padding:2px 0;font-size:var(--font-ui-smaller)}.detail-back.svelte-xbtpff:hover{color:var(--text-normal)}.detail-head.svelte-xbtpff{display:flex;align-items:baseline;gap:var(--size-2-2);flex-wrap:wrap}.detail-name.svelte-xbtpff{font-weight:700;font-size:var(--font-ui-large);color:var(--text-normal)}.detail-desc.svelte-xbtpff{margin:0;color:var(--text-muted);font-size:var(--font-ui-small)}.detail-readme.svelte-xbtpff{border-top:1px solid var(--background-modifier-border);padding-top:var(--size-4-2);margin-top:var(--size-2-2);max-height:52vh;overflow-y:auto}.detail-readme.svelte-xbtpff h1,.detail-readme.svelte-xbtpff h2,.detail-readme.svelte-xbtpff h3{margin-top:var(--size-4-3)}.detail-readme.svelte-xbtpff pre{overflow-x:auto}.detail-readme.svelte-xbtpff img{max-width:100%}.detail-actions.svelte-xbtpff{display:flex;justify-content:flex-end;align-items:center;gap:var(--size-2-3)}.detail-uninstall.svelte-xbtpff{margin-right:auto;font-size:var(--font-ui-smaller);color:var(--text-error);background:transparent;border:1px solid color-mix(in srgb, var(--text-error) 45%, transparent);border-radius:var(--radius-s);padding:4px var(--size-4-3);cursor:pointer}.detail-uninstall.svelte-xbtpff:hover:not(:disabled){background:color-mix(in srgb, var(--text-error) 12%, transparent)}.detail-uninstall.svelte-xbtpff:disabled{opacity:0.5;cursor:default}.market-state.svelte-xbtpff{display:flex;flex-direction:column;align-items:center;gap:var(--size-2-2);padding:var(--size-4-6, 24px);color:var(--text-muted);font-size:var(--font-ui-smaller)}.market-error-detail.svelte-xbtpff{font-size:var(--font-smallest);color:var(--text-error);font-family:var(--font-monospace);word-break:break-word}.market-spinner.svelte-xbtpff{width:22px;height:22px;border-radius:50%;border:3px solid var(--background-modifier-border);border-top-color:var(--text-accent);animation:svelte-xbtpff-market-spin 0.8s linear infinite}@keyframes svelte-xbtpff-market-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion: reduce){.market-spinner.svelte-xbtpff{animation:none}}");
+}
+
+function get_each_context$5(ctx, list, i) {
+	const child_ctx = ctx.slice();
+	child_ctx[39] = list[i];
+	const constants_0 = installStateFor(/*manifest*/ child_ctx[3], /*a*/ child_ctx[39].id, /*a*/ child_ctx[39].version, /*present*/ child_ctx[4]);
+	child_ctx[40] = constants_0;
+	return child_ctx;
+}
+
+function get_each_context_1$1(ctx, list, i) {
+	const child_ctx = ctx.slice();
+	child_ctx[43] = list[i];
+	const constants_0 = installStateFor(/*manifest*/ child_ctx[3], /*b*/ child_ctx[43].id, /*b*/ child_ctx[43].version, /*present*/ child_ctx[4]);
+	child_ctx[40] = constants_0;
+	return child_ctx;
+}
+
+function get_if_ctx(ctx) {
+	const child_ctx = ctx.slice();
+	const constants_0 = installStateFor(/*manifest*/ child_ctx[3], /*detail*/ child_ctx[7].id, /*detail*/ child_ctx[7].version, /*present*/ child_ctx[4]);
+	child_ctx[38] = constants_0;
+	return child_ctx;
+}
+
+// (194:6) {#if index}
+function create_if_block_24(ctx) {
+	let span;
+	let t0_value = /*index*/ ctx[0].bundles.length + /*index*/ ctx[0].assets.length + "";
+	let t0;
+	let t1;
+	let t2_value = /*$t*/ ctx[12]("market.items") + "";
+	let t2;
+
+	return {
+		c() {
+			span = element("span");
+			t0 = text(t0_value);
+			t1 = space();
+			t2 = text(t2_value);
+			attr(span, "class", "market-count svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+			append(span, t0);
+			append(span, t1);
+			append(span, t2);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*index*/ 1 && t0_value !== (t0_value = /*index*/ ctx[0].bundles.length + /*index*/ ctx[0].assets.length + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*$t*/ 4096 && t2_value !== (t2_value = /*$t*/ ctx[12]("market.items") + "")) set_data(t2, t2_value);
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (212:2) {#if !Platform.isDesktop}
+function create_if_block_23(ctx) {
+	let div;
+	let t_1_value = /*$t*/ ctx[12]("market.desktopNote") + "";
+	let t_1;
+
+	return {
+		c() {
+			div = element("div");
+			t_1 = text(t_1_value);
+			attr(div, "class", "market-note svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t_1_value !== (t_1_value = /*$t*/ ctx[12]("market.desktopNote") + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (284:18) 
+function create_if_block_12(ctx) {
+	let t0;
+	let t1;
+	let if_block2_anchor;
+	let if_block0 = /*bundles*/ ctx[11].length && create_if_block_19(ctx);
+	let if_block1 = /*assets*/ ctx[10].length && create_if_block_14(ctx);
+	let if_block2 = !/*bundles*/ ctx[11].length && !/*assets*/ ctx[10].length && create_if_block_13(ctx);
+
+	return {
+		c() {
+			if (if_block0) if_block0.c();
+			t0 = space();
+			if (if_block1) if_block1.c();
+			t1 = space();
+			if (if_block2) if_block2.c();
+			if_block2_anchor = empty();
+		},
+		m(target, anchor) {
+			if (if_block0) if_block0.m(target, anchor);
+			insert(target, t0, anchor);
+			if (if_block1) if_block1.m(target, anchor);
+			insert(target, t1, anchor);
+			if (if_block2) if_block2.m(target, anchor);
+			insert(target, if_block2_anchor, anchor);
+		},
+		p(ctx, dirty) {
+			if (/*bundles*/ ctx[11].length) {
+				if (if_block0) {
+					if_block0.p(ctx, dirty);
+				} else {
+					if_block0 = create_if_block_19(ctx);
+					if_block0.c();
+					if_block0.m(t0.parentNode, t0);
+				}
+			} else if (if_block0) {
+				if_block0.d(1);
+				if_block0 = null;
+			}
+
+			if (/*assets*/ ctx[10].length) {
+				if (if_block1) {
+					if_block1.p(ctx, dirty);
+				} else {
+					if_block1 = create_if_block_14(ctx);
+					if_block1.c();
+					if_block1.m(t1.parentNode, t1);
+				}
+			} else if (if_block1) {
+				if_block1.d(1);
+				if_block1 = null;
+			}
+
+			if (!/*bundles*/ ctx[11].length && !/*assets*/ ctx[10].length) {
+				if (if_block2) {
+					if_block2.p(ctx, dirty);
+				} else {
+					if_block2 = create_if_block_13(ctx);
+					if_block2.c();
+					if_block2.m(if_block2_anchor.parentNode, if_block2_anchor);
+				}
+			} else if (if_block2) {
+				if_block2.d(1);
+				if_block2 = null;
+			}
+		},
+		d(detaching) {
+			if (if_block0) if_block0.d(detaching);
+			if (detaching) detach(t0);
+			if (if_block1) if_block1.d(detaching);
+			if (detaching) detach(t1);
+			if (if_block2) if_block2.d(detaching);
+			if (detaching) detach(if_block2_anchor);
+		}
+	};
+}
+
+// (224:28) 
+function create_if_block_2$7(ctx) {
+	let div3;
+	let button0;
+	let t0;
+	let t1_value = /*$t*/ ctx[12]("market.back") + "";
+	let t1;
+	let t2;
+	let div0;
+	let span0;
+	let t3_value = (/*detail*/ ctx[7].type ?? "bundle") + "";
+	let t3;
+	let span0_class_value;
+	let t4;
+	let show_if = /*isPresent*/ ctx[17](/*dstate*/ ctx[38]);
+	let t5;
+	let span1;
+	let t6_value = /*detail*/ ctx[7].name + "";
+	let t6;
+	let t7;
+	let span2;
+	let t8;
+	let t9_value = /*detail*/ ctx[7].version + "";
+	let t9;
+	let t10;
+	let t11;
+	let t12;
+	let t13;
+	let t14;
+	let div1;
+	let t15;
+	let div2;
+	let t16;
+	let button1;
+
+	let t17_value = (/*busy*/ ctx[6][/*detail*/ ctx[7].id]
+	? /*$t*/ ctx[12]("market.installing")
+	: /*stateLabel*/ ctx[16](/*dstate*/ ctx[38])) + "";
+
+	let t17;
+	let button1_disabled_value;
+	let mounted;
+	let dispose;
+	let if_block0 = show_if && create_if_block_11(ctx);
+	let if_block1 = /*detail*/ ctx[7].description && create_if_block_10(ctx);
+	let if_block2 = /*detail*/ ctx[7].reviewed === false && create_if_block_9$1(ctx);
+	let if_block3 = /*detail*/ ctx[7].requires?.length && create_if_block_8$1(ctx);
+	let if_block4 = /*detail*/ ctx[7].systemDeps?.length && create_if_block_7$2(ctx);
+
+	function select_block_type_1(ctx, dirty) {
+		if (/*readmeState*/ ctx[9] === "loading") return create_if_block_4$3;
+		if (/*readmeState*/ ctx[9] === "ok") return create_if_block_5$3;
+		if (/*readmeState*/ ctx[9] === "error") return create_if_block_6$2;
+		return create_else_block$4;
+	}
+
+	let current_block_type = select_block_type_1(ctx);
+	let if_block5 = current_block_type(ctx);
+	let if_block6 = /*dstate*/ ctx[38] !== "not-installed" && create_if_block_3$3(ctx);
+
+	return {
+		c() {
+			div3 = element("div");
+			button0 = element("button");
+			t0 = text("← ");
+			t1 = text(t1_value);
+			t2 = space();
+			div0 = element("div");
+			span0 = element("span");
+			t3 = text(t3_value);
+			t4 = space();
+			if (if_block0) if_block0.c();
+			t5 = space();
+			span1 = element("span");
+			t6 = text(t6_value);
+			t7 = space();
+			span2 = element("span");
+			t8 = text("v");
+			t9 = text(t9_value);
+			t10 = space();
+			if (if_block1) if_block1.c();
+			t11 = space();
+			if (if_block2) if_block2.c();
+			t12 = space();
+			if (if_block3) if_block3.c();
+			t13 = space();
+			if (if_block4) if_block4.c();
+			t14 = space();
+			div1 = element("div");
+			if_block5.c();
+			t15 = space();
+			div2 = element("div");
+			if (if_block6) if_block6.c();
+			t16 = space();
+			button1 = element("button");
+			t17 = text(t17_value);
+			attr(button0, "class", "detail-back svelte-xbtpff");
+			attr(span0, "class", span0_class_value = "card-type type-" + (/*detail*/ ctx[7].type ?? 'bundle') + " svelte-xbtpff");
+			attr(span1, "class", "detail-name svelte-xbtpff");
+			attr(span2, "class", "card-version svelte-xbtpff");
+			attr(div0, "class", "detail-head svelte-xbtpff");
+			attr(div1, "class", "detail-readme svelte-xbtpff");
+			attr(button1, "class", "card-install svelte-xbtpff");
+			button1.disabled = button1_disabled_value = /*busy*/ ctx[6][/*detail*/ ctx[7].id] || /*dstate*/ ctx[38] === "installed";
+			toggle_class(button1, "is-installed", /*dstate*/ ctx[38] === "installed");
+			attr(div2, "class", "detail-actions svelte-xbtpff");
+			attr(div3, "class", "detail svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div3, anchor);
+			append(div3, button0);
+			append(button0, t0);
+			append(button0, t1);
+			append(div3, t2);
+			append(div3, div0);
+			append(div0, span0);
+			append(span0, t3);
+			append(div0, t4);
+			if (if_block0) if_block0.m(div0, null);
+			append(div0, t5);
+			append(div0, span1);
+			append(span1, t6);
+			append(div0, t7);
+			append(div0, span2);
+			append(span2, t8);
+			append(span2, t9);
+			append(div3, t10);
+			if (if_block1) if_block1.m(div3, null);
+			append(div3, t11);
+			if (if_block2) if_block2.m(div3, null);
+			append(div3, t12);
+			if (if_block3) if_block3.m(div3, null);
+			append(div3, t13);
+			if (if_block4) if_block4.m(div3, null);
+			append(div3, t14);
+			append(div3, div1);
+			if_block5.m(div1, null);
+			append(div3, t15);
+			append(div3, div2);
+			if (if_block6) if_block6.m(div2, null);
+			append(div2, t16);
+			append(div2, button1);
+			append(button1, t17);
+
+			if (!mounted) {
+				dispose = [
+					listen(button0, "click", /*click_handler*/ ctx[23]),
+					listen(button1, "click", /*click_handler_2*/ ctx[25])
+				];
+
+				mounted = true;
+			}
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t1_value !== (t1_value = /*$t*/ ctx[12]("market.back") + "")) set_data(t1, t1_value);
+			if (dirty[0] & /*detail*/ 128 && t3_value !== (t3_value = (/*detail*/ ctx[7].type ?? "bundle") + "")) set_data(t3, t3_value);
+
+			if (dirty[0] & /*detail*/ 128 && span0_class_value !== (span0_class_value = "card-type type-" + (/*detail*/ ctx[7].type ?? 'bundle') + " svelte-xbtpff")) {
+				attr(span0, "class", span0_class_value);
+			}
+
+			if (dirty[0] & /*manifest, detail, present*/ 152) show_if = /*isPresent*/ ctx[17](/*dstate*/ ctx[38]);
+
+			if (show_if) {
+				if (if_block0) {
+					if_block0.p(ctx, dirty);
+				} else {
+					if_block0 = create_if_block_11(ctx);
+					if_block0.c();
+					if_block0.m(div0, t5);
+				}
+			} else if (if_block0) {
+				if_block0.d(1);
+				if_block0 = null;
+			}
+
+			if (dirty[0] & /*detail*/ 128 && t6_value !== (t6_value = /*detail*/ ctx[7].name + "")) set_data(t6, t6_value);
+			if (dirty[0] & /*detail*/ 128 && t9_value !== (t9_value = /*detail*/ ctx[7].version + "")) set_data(t9, t9_value);
+
+			if (/*detail*/ ctx[7].description) {
+				if (if_block1) {
+					if_block1.p(ctx, dirty);
+				} else {
+					if_block1 = create_if_block_10(ctx);
+					if_block1.c();
+					if_block1.m(div3, t11);
+				}
+			} else if (if_block1) {
+				if_block1.d(1);
+				if_block1 = null;
+			}
+
+			if (/*detail*/ ctx[7].reviewed === false) {
+				if (if_block2) {
+					if_block2.p(ctx, dirty);
+				} else {
+					if_block2 = create_if_block_9$1(ctx);
+					if_block2.c();
+					if_block2.m(div3, t12);
+				}
+			} else if (if_block2) {
+				if_block2.d(1);
+				if_block2 = null;
+			}
+
+			if (/*detail*/ ctx[7].requires?.length) {
+				if (if_block3) {
+					if_block3.p(ctx, dirty);
+				} else {
+					if_block3 = create_if_block_8$1(ctx);
+					if_block3.c();
+					if_block3.m(div3, t13);
+				}
+			} else if (if_block3) {
+				if_block3.d(1);
+				if_block3 = null;
+			}
+
+			if (/*detail*/ ctx[7].systemDeps?.length) {
+				if (if_block4) {
+					if_block4.p(ctx, dirty);
+				} else {
+					if_block4 = create_if_block_7$2(ctx);
+					if_block4.c();
+					if_block4.m(div3, t14);
+				}
+			} else if (if_block4) {
+				if_block4.d(1);
+				if_block4 = null;
+			}
+
+			if (current_block_type === (current_block_type = select_block_type_1(ctx)) && if_block5) {
+				if_block5.p(ctx, dirty);
+			} else {
+				if_block5.d(1);
+				if_block5 = current_block_type(ctx);
+
+				if (if_block5) {
+					if_block5.c();
+					if_block5.m(div1, null);
+				}
+			}
+
+			if (/*dstate*/ ctx[38] !== "not-installed") {
+				if (if_block6) {
+					if_block6.p(ctx, dirty);
+				} else {
+					if_block6 = create_if_block_3$3(ctx);
+					if_block6.c();
+					if_block6.m(div2, t16);
+				}
+			} else if (if_block6) {
+				if_block6.d(1);
+				if_block6 = null;
+			}
+
+			if (dirty[0] & /*busy, detail, $t, manifest, present*/ 4312 && t17_value !== (t17_value = (/*busy*/ ctx[6][/*detail*/ ctx[7].id]
+			? /*$t*/ ctx[12]("market.installing")
+			: /*stateLabel*/ ctx[16](/*dstate*/ ctx[38])) + "")) set_data(t17, t17_value);
+
+			if (dirty[0] & /*busy, detail, manifest, present*/ 216 && button1_disabled_value !== (button1_disabled_value = /*busy*/ ctx[6][/*detail*/ ctx[7].id] || /*dstate*/ ctx[38] === "installed")) {
+				button1.disabled = button1_disabled_value;
+			}
+
+			if (dirty[0] & /*manifest, detail, present*/ 152) {
+				toggle_class(button1, "is-installed", /*dstate*/ ctx[38] === "installed");
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div3);
+			if (if_block0) if_block0.d();
+			if (if_block1) if_block1.d();
+			if (if_block2) if_block2.d();
+			if (if_block3) if_block3.d();
+			if (if_block4) if_block4.d();
+			if_block5.d();
+			if (if_block6) if_block6.d();
+			mounted = false;
+			run_all(dispose);
+		}
+	};
+}
+
+// (218:18) 
+function create_if_block_1$8(ctx) {
+	let div;
+	let p0;
+	let t0_value = /*$t*/ ctx[12]("market.loadError") + "";
+	let t0;
+	let t1;
+	let p1;
+	let t2;
+	let t3;
+	let button;
+	let t4_value = /*$t*/ ctx[12]("market.reload") + "";
+	let t4;
+	let mounted;
+	let dispose;
+
+	return {
+		c() {
+			div = element("div");
+			p0 = element("p");
+			t0 = text(t0_value);
+			t1 = space();
+			p1 = element("p");
+			t2 = text(/*error*/ ctx[2]);
+			t3 = space();
+			button = element("button");
+			t4 = text(t4_value);
+			attr(p1, "class", "market-error-detail svelte-xbtpff");
+			attr(button, "class", "market-reload svelte-xbtpff");
+			attr(div, "class", "market-state market-error svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, p0);
+			append(p0, t0);
+			append(div, t1);
+			append(div, p1);
+			append(p1, t2);
+			append(div, t3);
+			append(div, button);
+			append(button, t4);
+
+			if (!mounted) {
+				dispose = listen(button, "click", /*load*/ ctx[13]);
+				mounted = true;
+			}
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t0_value !== (t0_value = /*$t*/ ctx[12]("market.loadError") + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*error*/ 4) set_data(t2, /*error*/ ctx[2]);
+			if (dirty[0] & /*$t*/ 4096 && t4_value !== (t4_value = /*$t*/ ctx[12]("market.reload") + "")) set_data(t4, t4_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (216:2) {#if loading}
+function create_if_block$b(ctx) {
+	let div;
+
+	return {
+		c() {
+			div = element("div");
+			div.innerHTML = `<span class="market-spinner svelte-xbtpff"></span>`;
+			attr(div, "class", "market-state svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+		},
+		p: noop,
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (285:4) {#if bundles.length}
+function create_if_block_19(ctx) {
+	let div0;
+	let t0_value = /*$t*/ ctx[12]("market.bundles") + "";
+	let t0;
+	let t1;
+	let div1;
+	let each_blocks = [];
+	let each_1_lookup = new Map();
+	let each_value_1 = /*bundles*/ ctx[11];
+	const get_key = ctx => /*b*/ ctx[43].id;
+
+	for (let i = 0; i < each_value_1.length; i += 1) {
+		let child_ctx = get_each_context_1$1(ctx, each_value_1, i);
+		let key = get_key(child_ctx);
+		each_1_lookup.set(key, each_blocks[i] = create_each_block_1$1(key, child_ctx));
+	}
+
+	return {
+		c() {
+			div0 = element("div");
+			t0 = text(t0_value);
+			t1 = space();
+			div1 = element("div");
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].c();
+			}
+
+			attr(div0, "class", "market-section-title svelte-xbtpff");
+			attr(div1, "class", "market-grid svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div0, anchor);
+			append(div0, t0);
+			insert(target, t1, anchor);
+			insert(target, div1, anchor);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].m(div1, null);
+			}
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t0_value !== (t0_value = /*$t*/ ctx[12]("market.bundles") + "")) set_data(t0, t0_value);
+
+			if (dirty[0] & /*openDetail, bundles, busy, manifest, present, installBundle, $t, stateLabel, isPresent*/ 481368) {
+				each_value_1 = /*bundles*/ ctx[11];
+				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value_1, each_1_lookup, div1, destroy_block, create_each_block_1$1, null, get_each_context_1$1);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div0);
+			if (detaching) detach(t1);
+			if (detaching) detach(div1);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].d();
+			}
+		}
+	};
+}
+
+// (292:14) {#if isPresent(state)}
+function create_if_block_22(ctx) {
+	let span;
+	let t_1;
+	let span_title_value;
+
+	return {
+		c() {
+			span = element("span");
+			t_1 = text("✓");
+			attr(span, "class", "installed-check svelte-xbtpff");
+			attr(span, "title", span_title_value = /*$t*/ ctx[12]("market.installed"));
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+			append(span, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && span_title_value !== (span_title_value = /*$t*/ ctx[12]("market.installed"))) {
+				attr(span, "title", span_title_value);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (296:12) {#if b.description}
+function create_if_block_21(ctx) {
+	let p;
+	let t_1_value = /*b*/ ctx[43].description + "";
+	let t_1;
+
+	return {
+		c() {
+			p = element("p");
+			t_1 = text(t_1_value);
+			attr(p, "class", "card-desc svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, p, anchor);
+			append(p, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*bundles*/ 2048 && t_1_value !== (t_1_value = /*b*/ ctx[43].description + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(p);
+		}
+	};
+}
+
+// (297:12) {#if b.assets?.length}
+function create_if_block_20(ctx) {
+	let div;
+	let t0_value = /*b*/ ctx[43].assets.length + "";
+	let t0;
+	let t1;
+	let t2_value = /*$t*/ ctx[12]("market.assetsIncluded") + "";
+	let t2;
+
+	return {
+		c() {
+			div = element("div");
+			t0 = text(t0_value);
+			t1 = space();
+			t2 = text(t2_value);
+			attr(div, "class", "card-meta svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, t0);
+			append(div, t1);
+			append(div, t2);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*bundles*/ 2048 && t0_value !== (t0_value = /*b*/ ctx[43].assets.length + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*$t*/ 4096 && t2_value !== (t2_value = /*$t*/ ctx[12]("market.assetsIncluded") + "")) set_data(t2, t2_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (288:8) {#each bundles as b (b.id)}
+function create_each_block_1$1(key_1, ctx) {
+	let div2;
+	let div0;
+	let show_if = /*isPresent*/ ctx[17](/*state*/ ctx[40]);
+	let t0;
+	let span0;
+	let t1_value = /*b*/ ctx[43].name + "";
+	let t1;
+	let t2;
+	let span1;
+	let t3;
+	let t4_value = /*b*/ ctx[43].version + "";
+	let t4;
+	let t5;
+	let t6;
+	let t7;
+	let div1;
+	let button;
+
+	let t8_value = (/*busy*/ ctx[6][/*b*/ ctx[43].id]
+	? /*$t*/ ctx[12]("market.installing")
+	: /*stateLabel*/ ctx[16](/*state*/ ctx[40])) + "";
+
+	let t8;
+	let button_disabled_value;
+	let t9;
+	let mounted;
+	let dispose;
+	let if_block0 = show_if && create_if_block_22(ctx);
+	let if_block1 = /*b*/ ctx[43].description && create_if_block_21(ctx);
+	let if_block2 = /*b*/ ctx[43].assets?.length && create_if_block_20(ctx);
+
+	function click_handler_3() {
+		return /*click_handler_3*/ ctx[26](/*b*/ ctx[43]);
+	}
+
+	function click_handler_4() {
+		return /*click_handler_4*/ ctx[27](/*b*/ ctx[43]);
+	}
+
+	return {
+		key: key_1,
+		first: null,
+		c() {
+			div2 = element("div");
+			div0 = element("div");
+			if (if_block0) if_block0.c();
+			t0 = space();
+			span0 = element("span");
+			t1 = text(t1_value);
+			t2 = space();
+			span1 = element("span");
+			t3 = text("v");
+			t4 = text(t4_value);
+			t5 = space();
+			if (if_block1) if_block1.c();
+			t6 = space();
+			if (if_block2) if_block2.c();
+			t7 = space();
+			div1 = element("div");
+			button = element("button");
+			t8 = text(t8_value);
+			t9 = space();
+			attr(span0, "class", "card-name svelte-xbtpff");
+			attr(span1, "class", "card-version svelte-xbtpff");
+			attr(div0, "class", "card-top svelte-xbtpff");
+			attr(button, "class", "card-install svelte-xbtpff");
+			button.disabled = button_disabled_value = /*busy*/ ctx[6][/*b*/ ctx[43].id] || /*state*/ ctx[40] === "installed";
+			toggle_class(button, "is-installed", /*state*/ ctx[40] === "installed");
+			attr(div1, "class", "card-actions svelte-xbtpff");
+			attr(div2, "class", "card card-bundle clickable svelte-xbtpff");
+			this.first = div2;
+		},
+		m(target, anchor) {
+			insert(target, div2, anchor);
+			append(div2, div0);
+			if (if_block0) if_block0.m(div0, null);
+			append(div0, t0);
+			append(div0, span0);
+			append(span0, t1);
+			append(div0, t2);
+			append(div0, span1);
+			append(span1, t3);
+			append(span1, t4);
+			append(div2, t5);
+			if (if_block1) if_block1.m(div2, null);
+			append(div2, t6);
+			if (if_block2) if_block2.m(div2, null);
+			append(div2, t7);
+			append(div2, div1);
+			append(div1, button);
+			append(button, t8);
+			append(div2, t9);
+
+			if (!mounted) {
+				dispose = [
+					listen(button, "click", stop_propagation(click_handler_3)),
+					listen(div2, "click", click_handler_4)
+				];
+
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+			if (dirty[0] & /*manifest, bundles, present*/ 2072) show_if = /*isPresent*/ ctx[17](/*state*/ ctx[40]);
+
+			if (show_if) {
+				if (if_block0) {
+					if_block0.p(ctx, dirty);
+				} else {
+					if_block0 = create_if_block_22(ctx);
+					if_block0.c();
+					if_block0.m(div0, t0);
+				}
+			} else if (if_block0) {
+				if_block0.d(1);
+				if_block0 = null;
+			}
+
+			if (dirty[0] & /*bundles*/ 2048 && t1_value !== (t1_value = /*b*/ ctx[43].name + "")) set_data(t1, t1_value);
+			if (dirty[0] & /*bundles*/ 2048 && t4_value !== (t4_value = /*b*/ ctx[43].version + "")) set_data(t4, t4_value);
+
+			if (/*b*/ ctx[43].description) {
+				if (if_block1) {
+					if_block1.p(ctx, dirty);
+				} else {
+					if_block1 = create_if_block_21(ctx);
+					if_block1.c();
+					if_block1.m(div2, t6);
+				}
+			} else if (if_block1) {
+				if_block1.d(1);
+				if_block1 = null;
+			}
+
+			if (/*b*/ ctx[43].assets?.length) {
+				if (if_block2) {
+					if_block2.p(ctx, dirty);
+				} else {
+					if_block2 = create_if_block_20(ctx);
+					if_block2.c();
+					if_block2.m(div2, t7);
+				}
+			} else if (if_block2) {
+				if_block2.d(1);
+				if_block2 = null;
+			}
+
+			if (dirty[0] & /*busy, bundles, $t, manifest, present*/ 6232 && t8_value !== (t8_value = (/*busy*/ ctx[6][/*b*/ ctx[43].id]
+			? /*$t*/ ctx[12]("market.installing")
+			: /*stateLabel*/ ctx[16](/*state*/ ctx[40])) + "")) set_data(t8, t8_value);
+
+			if (dirty[0] & /*busy, bundles, manifest, present*/ 2136 && button_disabled_value !== (button_disabled_value = /*busy*/ ctx[6][/*b*/ ctx[43].id] || /*state*/ ctx[40] === "installed")) {
+				button.disabled = button_disabled_value;
+			}
+
+			if (dirty[0] & /*manifest, bundles, present*/ 2072) {
+				toggle_class(button, "is-installed", /*state*/ ctx[40] === "installed");
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div2);
+			if (if_block0) if_block0.d();
+			if (if_block1) if_block1.d();
+			if (if_block2) if_block2.d();
+			mounted = false;
+			run_all(dispose);
+		}
+	};
+}
+
+// (315:4) {#if assets.length}
+function create_if_block_14(ctx) {
+	let div0;
+	let t0_value = /*$t*/ ctx[12]("market.assets") + "";
+	let t0;
+	let t1;
+	let div1;
+	let each_blocks = [];
+	let each_1_lookup = new Map();
+	let each_value = /*assets*/ ctx[10];
+	const get_key = ctx => /*a*/ ctx[39].id;
+
+	for (let i = 0; i < each_value.length; i += 1) {
+		let child_ctx = get_each_context$5(ctx, each_value, i);
+		let key = get_key(child_ctx);
+		each_1_lookup.set(key, each_blocks[i] = create_each_block$5(key, child_ctx));
+	}
+
+	return {
+		c() {
+			div0 = element("div");
+			t0 = text(t0_value);
+			t1 = space();
+			div1 = element("div");
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].c();
+			}
+
+			attr(div0, "class", "market-section-title svelte-xbtpff");
+			attr(div1, "class", "market-grid svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div0, anchor);
+			append(div0, t0);
+			insert(target, t1, anchor);
+			insert(target, div1, anchor);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].m(div1, null);
+			}
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t0_value !== (t0_value = /*$t*/ ctx[12]("market.assets") + "")) set_data(t0, t0_value);
+
+			if (dirty[0] & /*openDetail, assets, busy, manifest, present, installAsset, $t, stateLabel, isPresent*/ 742488) {
+				each_value = /*assets*/ ctx[10];
+				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value, each_1_lookup, div1, destroy_block, create_each_block$5, null, get_each_context$5);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div0);
+			if (detaching) detach(t1);
+			if (detaching) detach(div1);
+
+			for (let i = 0; i < each_blocks.length; i += 1) {
+				each_blocks[i].d();
+			}
+		}
+	};
+}
+
+// (323:14) {#if isPresent(state)}
+function create_if_block_18(ctx) {
+	let span;
+	let t_1;
+	let span_title_value;
+
+	return {
+		c() {
+			span = element("span");
+			t_1 = text("✓");
+			attr(span, "class", "installed-check svelte-xbtpff");
+			attr(span, "title", span_title_value = /*$t*/ ctx[12]("market.installed"));
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+			append(span, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && span_title_value !== (span_title_value = /*$t*/ ctx[12]("market.installed"))) {
+				attr(span, "title", span_title_value);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (327:12) {#if a.description}
+function create_if_block_17(ctx) {
+	let p;
+	let t_1_value = /*a*/ ctx[39].description + "";
+	let t_1;
+
+	return {
+		c() {
+			p = element("p");
+			t_1 = text(t_1_value);
+			attr(p, "class", "card-desc svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, p, anchor);
+			append(p, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*assets*/ 1024 && t_1_value !== (t_1_value = /*a*/ ctx[39].description + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(p);
+		}
+	};
+}
+
+// (328:12) {#if a.reviewed === false}
+function create_if_block_16(ctx) {
+	let div;
+	let t0;
+	let t1_value = /*$t*/ ctx[12]("market.unverified") + "";
+	let t1;
+
+	return {
+		c() {
+			div = element("div");
+			t0 = text("⚠ ");
+			t1 = text(t1_value);
+			attr(div, "class", "card-meta card-sysdep svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, t0);
+			append(div, t1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t1_value !== (t1_value = /*$t*/ ctx[12]("market.unverified") + "")) set_data(t1, t1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (331:12) {#if a.systemDeps?.length}
+function create_if_block_15(ctx) {
+	let div;
+	let t0_value = /*$t*/ ctx[12]("market.systemDeps") + "";
+	let t0;
+	let t1;
+	let t2_value = /*a*/ ctx[39].systemDeps.join(", ") + "";
+	let t2;
+
+	return {
+		c() {
+			div = element("div");
+			t0 = text(t0_value);
+			t1 = text(": ");
+			t2 = text(t2_value);
+			attr(div, "class", "card-meta card-sysdep svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, t0);
+			append(div, t1);
+			append(div, t2);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t0_value !== (t0_value = /*$t*/ ctx[12]("market.systemDeps") + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*assets*/ 1024 && t2_value !== (t2_value = /*a*/ ctx[39].systemDeps.join(", ") + "")) set_data(t2, t2_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (318:8) {#each assets as a (a.id)}
+function create_each_block$5(key_1, ctx) {
+	let div3;
+	let div0;
+	let span0;
+	let t0_value = /*a*/ ctx[39].type + "";
+	let t0;
+	let span0_class_value;
+	let t1;
+	let show_if = /*isPresent*/ ctx[17](/*state*/ ctx[40]);
+	let t2;
+	let span1;
+	let t3_value = /*a*/ ctx[39].name + "";
+	let t3;
+	let t4;
+	let span2;
+	let t5;
+	let t6_value = /*a*/ ctx[39].version + "";
+	let t6;
+	let t7;
+	let t8;
+	let t9;
+	let t10;
+	let div1;
+	let t11_value = /*$t*/ ctx[12]("market.clickForDetails") + "";
+	let t11;
+	let t12;
+	let div2;
+	let button;
+
+	let t13_value = (/*busy*/ ctx[6][/*a*/ ctx[39].id]
+	? /*$t*/ ctx[12]("market.installing")
+	: /*stateLabel*/ ctx[16](/*state*/ ctx[40])) + "";
+
+	let t13;
+	let button_disabled_value;
+	let t14;
+	let mounted;
+	let dispose;
+	let if_block0 = show_if && create_if_block_18(ctx);
+	let if_block1 = /*a*/ ctx[39].description && create_if_block_17(ctx);
+	let if_block2 = /*a*/ ctx[39].reviewed === false && create_if_block_16(ctx);
+	let if_block3 = /*a*/ ctx[39].systemDeps?.length && create_if_block_15(ctx);
+
+	function click_handler_5() {
+		return /*click_handler_5*/ ctx[28](/*a*/ ctx[39]);
+	}
+
+	function click_handler_6() {
+		return /*click_handler_6*/ ctx[29](/*a*/ ctx[39]);
+	}
+
+	return {
+		key: key_1,
+		first: null,
+		c() {
+			div3 = element("div");
+			div0 = element("div");
+			span0 = element("span");
+			t0 = text(t0_value);
+			t1 = space();
+			if (if_block0) if_block0.c();
+			t2 = space();
+			span1 = element("span");
+			t3 = text(t3_value);
+			t4 = space();
+			span2 = element("span");
+			t5 = text("v");
+			t6 = text(t6_value);
+			t7 = space();
+			if (if_block1) if_block1.c();
+			t8 = space();
+			if (if_block2) if_block2.c();
+			t9 = space();
+			if (if_block3) if_block3.c();
+			t10 = space();
+			div1 = element("div");
+			t11 = text(t11_value);
+			t12 = space();
+			div2 = element("div");
+			button = element("button");
+			t13 = text(t13_value);
+			t14 = space();
+			attr(span0, "class", span0_class_value = "card-type type-" + /*a*/ ctx[39].type + " svelte-xbtpff");
+			attr(span1, "class", "card-name svelte-xbtpff");
+			attr(span2, "class", "card-version svelte-xbtpff");
+			attr(div0, "class", "card-top svelte-xbtpff");
+			attr(div1, "class", "card-hint svelte-xbtpff");
+			attr(button, "class", "card-install svelte-xbtpff");
+			button.disabled = button_disabled_value = /*busy*/ ctx[6][/*a*/ ctx[39].id] || /*state*/ ctx[40] === "installed";
+			toggle_class(button, "is-installed", /*state*/ ctx[40] === "installed");
+			attr(div2, "class", "card-actions svelte-xbtpff");
+			attr(div3, "class", "card clickable svelte-xbtpff");
+			this.first = div3;
+		},
+		m(target, anchor) {
+			insert(target, div3, anchor);
+			append(div3, div0);
+			append(div0, span0);
+			append(span0, t0);
+			append(div0, t1);
+			if (if_block0) if_block0.m(div0, null);
+			append(div0, t2);
+			append(div0, span1);
+			append(span1, t3);
+			append(div0, t4);
+			append(div0, span2);
+			append(span2, t5);
+			append(span2, t6);
+			append(div3, t7);
+			if (if_block1) if_block1.m(div3, null);
+			append(div3, t8);
+			if (if_block2) if_block2.m(div3, null);
+			append(div3, t9);
+			if (if_block3) if_block3.m(div3, null);
+			append(div3, t10);
+			append(div3, div1);
+			append(div1, t11);
+			append(div3, t12);
+			append(div3, div2);
+			append(div2, button);
+			append(button, t13);
+			append(div3, t14);
+
+			if (!mounted) {
+				dispose = [
+					listen(button, "click", stop_propagation(click_handler_5)),
+					listen(div3, "click", click_handler_6)
+				];
+
+				mounted = true;
+			}
+		},
+		p(new_ctx, dirty) {
+			ctx = new_ctx;
+			if (dirty[0] & /*assets*/ 1024 && t0_value !== (t0_value = /*a*/ ctx[39].type + "")) set_data(t0, t0_value);
+
+			if (dirty[0] & /*assets*/ 1024 && span0_class_value !== (span0_class_value = "card-type type-" + /*a*/ ctx[39].type + " svelte-xbtpff")) {
+				attr(span0, "class", span0_class_value);
+			}
+
+			if (dirty[0] & /*manifest, assets, present*/ 1048) show_if = /*isPresent*/ ctx[17](/*state*/ ctx[40]);
+
+			if (show_if) {
+				if (if_block0) {
+					if_block0.p(ctx, dirty);
+				} else {
+					if_block0 = create_if_block_18(ctx);
+					if_block0.c();
+					if_block0.m(div0, t2);
+				}
+			} else if (if_block0) {
+				if_block0.d(1);
+				if_block0 = null;
+			}
+
+			if (dirty[0] & /*assets*/ 1024 && t3_value !== (t3_value = /*a*/ ctx[39].name + "")) set_data(t3, t3_value);
+			if (dirty[0] & /*assets*/ 1024 && t6_value !== (t6_value = /*a*/ ctx[39].version + "")) set_data(t6, t6_value);
+
+			if (/*a*/ ctx[39].description) {
+				if (if_block1) {
+					if_block1.p(ctx, dirty);
+				} else {
+					if_block1 = create_if_block_17(ctx);
+					if_block1.c();
+					if_block1.m(div3, t8);
+				}
+			} else if (if_block1) {
+				if_block1.d(1);
+				if_block1 = null;
+			}
+
+			if (/*a*/ ctx[39].reviewed === false) {
+				if (if_block2) {
+					if_block2.p(ctx, dirty);
+				} else {
+					if_block2 = create_if_block_16(ctx);
+					if_block2.c();
+					if_block2.m(div3, t9);
+				}
+			} else if (if_block2) {
+				if_block2.d(1);
+				if_block2 = null;
+			}
+
+			if (/*a*/ ctx[39].systemDeps?.length) {
+				if (if_block3) {
+					if_block3.p(ctx, dirty);
+				} else {
+					if_block3 = create_if_block_15(ctx);
+					if_block3.c();
+					if_block3.m(div3, t10);
+				}
+			} else if (if_block3) {
+				if_block3.d(1);
+				if_block3 = null;
+			}
+
+			if (dirty[0] & /*$t*/ 4096 && t11_value !== (t11_value = /*$t*/ ctx[12]("market.clickForDetails") + "")) set_data(t11, t11_value);
+
+			if (dirty[0] & /*busy, assets, $t, manifest, present*/ 5208 && t13_value !== (t13_value = (/*busy*/ ctx[6][/*a*/ ctx[39].id]
+			? /*$t*/ ctx[12]("market.installing")
+			: /*stateLabel*/ ctx[16](/*state*/ ctx[40])) + "")) set_data(t13, t13_value);
+
+			if (dirty[0] & /*busy, assets, manifest, present*/ 1112 && button_disabled_value !== (button_disabled_value = /*busy*/ ctx[6][/*a*/ ctx[39].id] || /*state*/ ctx[40] === "installed")) {
+				button.disabled = button_disabled_value;
+			}
+
+			if (dirty[0] & /*manifest, assets, present*/ 1048) {
+				toggle_class(button, "is-installed", /*state*/ ctx[40] === "installed");
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(div3);
+			if (if_block0) if_block0.d();
+			if (if_block1) if_block1.d();
+			if (if_block2) if_block2.d();
+			if (if_block3) if_block3.d();
+			mounted = false;
+			run_all(dispose);
+		}
+	};
+}
+
+// (352:4) {#if !bundles.length && !assets.length}
+function create_if_block_13(ctx) {
+	let div;
+	let t_1_value = /*$t*/ ctx[12]("market.empty") + "";
+	let t_1;
+
+	return {
+		c() {
+			div = element("div");
+			t_1 = text(t_1_value);
+			attr(div, "class", "market-state svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t_1_value !== (t_1_value = /*$t*/ ctx[12]("market.empty") + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (234:8) {#if isPresent(dstate)}
+function create_if_block_11(ctx) {
+	let span;
+	let t_1;
+	let span_title_value;
+
+	return {
+		c() {
+			span = element("span");
+			t_1 = text("✓");
+			attr(span, "class", "installed-check svelte-xbtpff");
+			attr(span, "title", span_title_value = /*$t*/ ctx[12]("market.installed"));
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+			append(span, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && span_title_value !== (span_title_value = /*$t*/ ctx[12]("market.installed"))) {
+				attr(span, "title", span_title_value);
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (238:6) {#if detail.description}
+function create_if_block_10(ctx) {
+	let p;
+	let t_1_value = /*detail*/ ctx[7].description + "";
+	let t_1;
+
+	return {
+		c() {
+			p = element("p");
+			t_1 = text(t_1_value);
+			attr(p, "class", "detail-desc svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, p, anchor);
+			append(p, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*detail*/ 128 && t_1_value !== (t_1_value = /*detail*/ ctx[7].description + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(p);
+		}
+	};
+}
+
+// (239:6) {#if detail.reviewed === false}
+function create_if_block_9$1(ctx) {
+	let div;
+	let t0;
+	let t1_value = /*$t*/ ctx[12]("market.unverified") + "";
+	let t1;
+
+	return {
+		c() {
+			div = element("div");
+			t0 = text("⚠ ");
+			t1 = text(t1_value);
+			attr(div, "class", "card-meta card-sysdep svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, t0);
+			append(div, t1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t1_value !== (t1_value = /*$t*/ ctx[12]("market.unverified") + "")) set_data(t1, t1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (242:6) {#if detail.requires?.length}
+function create_if_block_8$1(ctx) {
+	let div;
+	let t0_value = /*$t*/ ctx[12]("market.requires") + "";
+	let t0;
+	let t1;
+	let t2_value = /*detail*/ ctx[7].requires.map(/*assetName*/ ctx[21]).join(", ") + "";
+	let t2;
+
+	return {
+		c() {
+			div = element("div");
+			t0 = text(t0_value);
+			t1 = text(": ");
+			t2 = text(t2_value);
+			attr(div, "class", "card-meta svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, t0);
+			append(div, t1);
+			append(div, t2);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t0_value !== (t0_value = /*$t*/ ctx[12]("market.requires") + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*detail*/ 128 && t2_value !== (t2_value = /*detail*/ ctx[7].requires.map(/*assetName*/ ctx[21]).join(", ") + "")) set_data(t2, t2_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (247:6) {#if detail.systemDeps?.length}
+function create_if_block_7$2(ctx) {
+	let div;
+	let t0_value = /*$t*/ ctx[12]("market.systemDeps") + "";
+	let t0;
+	let t1;
+	let t2_value = /*detail*/ ctx[7].systemDeps.join(", ") + "";
+	let t2;
+
+	return {
+		c() {
+			div = element("div");
+			t0 = text(t0_value);
+			t1 = text(": ");
+			t2 = text(t2_value);
+			attr(div, "class", "card-meta card-sysdep svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+			append(div, t0);
+			append(div, t1);
+			append(div, t2);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t0_value !== (t0_value = /*$t*/ ctx[12]("market.systemDeps") + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*detail*/ 128 && t2_value !== (t2_value = /*detail*/ ctx[7].systemDeps.join(", ") + "")) set_data(t2, t2_value);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+		}
+	};
+}
+
+// (259:8) {:else}
+function create_else_block$4(ctx) {
+	let p;
+	let t_1_value = /*$t*/ ctx[12]("market.noReadme") + "";
+	let t_1;
+
+	return {
+		c() {
+			p = element("p");
+			t_1 = text(t_1_value);
+			attr(p, "class", "card-meta svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, p, anchor);
+			append(p, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t_1_value !== (t_1_value = /*$t*/ ctx[12]("market.noReadme") + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(p);
+		}
+	};
+}
+
+// (257:42) 
+function create_if_block_6$2(ctx) {
+	let p;
+	let t_1_value = /*$t*/ ctx[12]("market.readmeError") + "";
+	let t_1;
+
+	return {
+		c() {
+			p = element("p");
+			t_1 = text(t_1_value);
+			attr(p, "class", "card-meta card-sysdep svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, p, anchor);
+			append(p, t_1);
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t_1_value !== (t_1_value = /*$t*/ ctx[12]("market.readmeError") + "")) set_data(t_1, t_1_value);
+		},
+		d(detaching) {
+			if (detaching) detach(p);
+		}
+	};
+}
+
+// (255:39) 
+function create_if_block_5$3(ctx) {
+	let div;
+	let renderMarkdown_action;
+	let mounted;
+	let dispose;
+
+	return {
+		c() {
+			div = element("div");
+			attr(div, "class", "markdown-rendered");
+		},
+		m(target, anchor) {
+			insert(target, div, anchor);
+
+			if (!mounted) {
+				dispose = action_destroyer(renderMarkdown_action = /*renderMarkdown*/ ctx[15].call(null, div, /*readme*/ ctx[8]));
+				mounted = true;
+			}
+		},
+		p(ctx, dirty) {
+			if (renderMarkdown_action && is_function(renderMarkdown_action.update) && dirty[0] & /*readme*/ 256) renderMarkdown_action.update.call(null, /*readme*/ ctx[8]);
+		},
+		d(detaching) {
+			if (detaching) detach(div);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+// (253:8) {#if readmeState === "loading"}
+function create_if_block_4$3(ctx) {
+	let span;
+
+	return {
+		c() {
+			span = element("span");
+			attr(span, "class", "market-spinner svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+		},
+		p: noop,
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+// (264:8) {#if dstate !== "not-installed"}
+function create_if_block_3$3(ctx) {
+	let button;
+	let t_1_value = /*$t*/ ctx[12]("market.uninstall") + "";
+	let t_1;
+	let button_disabled_value;
+	let mounted;
+	let dispose;
+
+	return {
+		c() {
+			button = element("button");
+			t_1 = text(t_1_value);
+			attr(button, "class", "detail-uninstall svelte-xbtpff");
+			button.disabled = button_disabled_value = /*busy*/ ctx[6][/*detail*/ ctx[7].id];
+		},
+		m(target, anchor) {
+			insert(target, button, anchor);
+			append(button, t_1);
+
+			if (!mounted) {
+				dispose = listen(button, "click", /*click_handler_1*/ ctx[24]);
+				mounted = true;
+			}
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t_1_value !== (t_1_value = /*$t*/ ctx[12]("market.uninstall") + "")) set_data(t_1, t_1_value);
+
+			if (dirty[0] & /*busy, detail*/ 192 && button_disabled_value !== (button_disabled_value = /*busy*/ ctx[6][/*detail*/ ctx[7].id])) {
+				button.disabled = button_disabled_value;
+			}
+		},
+		d(detaching) {
+			if (detaching) detach(button);
+			mounted = false;
+			dispose();
+		}
+	};
+}
+
+function create_fragment$c(ctx) {
+	let div2;
+	let div1;
+	let div0;
+	let span;
+	let t0_value = /*$t*/ ctx[12]("market.title") + "";
+	let t0;
+	let t1;
+	let t2;
+	let input;
+	let input_placeholder_value;
+	let input_disabled_value;
+	let t3;
+	let button;
+	let t4_value = /*$t*/ ctx[12]("market.reload") + "";
+	let t4;
+	let t5;
+	let t6;
+	let mounted;
+	let dispose;
+	let if_block0 = /*index*/ ctx[0] && create_if_block_24(ctx);
+	let if_block1 = !obsidian.Platform.isDesktop && create_if_block_23(ctx);
+
+	function select_block_type(ctx, dirty) {
+		if (/*loading*/ ctx[1]) return create_if_block$b;
+		if (/*error*/ ctx[2]) return create_if_block_1$8;
+		if (/*index*/ ctx[0] && /*detail*/ ctx[7]) return create_if_block_2$7;
+		if (/*index*/ ctx[0]) return create_if_block_12;
+	}
+
+	function select_block_ctx(ctx, type) {
+		if (type === create_if_block_2$7) return get_if_ctx(ctx);
+		return ctx;
+	}
+
+	let current_block_type = select_block_type(ctx);
+	let if_block2 = current_block_type && current_block_type(select_block_ctx(ctx, current_block_type));
+
+	return {
+		c() {
+			div2 = element("div");
+			div1 = element("div");
+			div0 = element("div");
+			span = element("span");
+			t0 = text(t0_value);
+			t1 = space();
+			if (if_block0) if_block0.c();
+			t2 = space();
+			input = element("input");
+			t3 = space();
+			button = element("button");
+			t4 = text(t4_value);
+			t5 = space();
+			if (if_block1) if_block1.c();
+			t6 = space();
+			if (if_block2) if_block2.c();
+			attr(span, "class", "market-title svelte-xbtpff");
+			attr(div0, "class", "market-heading svelte-xbtpff");
+			attr(input, "class", "market-search svelte-xbtpff");
+			attr(input, "type", "text");
+			attr(input, "placeholder", input_placeholder_value = /*$t*/ ctx[12]("market.search"));
+			input.disabled = input_disabled_value = !/*index*/ ctx[0];
+			attr(button, "class", "market-reload svelte-xbtpff");
+			button.disabled = /*loading*/ ctx[1];
+			attr(div1, "class", "market-header svelte-xbtpff");
+			attr(div2, "class", "market svelte-xbtpff");
+		},
+		m(target, anchor) {
+			insert(target, div2, anchor);
+			append(div2, div1);
+			append(div1, div0);
+			append(div0, span);
+			append(span, t0);
+			append(div0, t1);
+			if (if_block0) if_block0.m(div0, null);
+			append(div1, t2);
+			append(div1, input);
+			set_input_value(input, /*query*/ ctx[5]);
+			append(div1, t3);
+			append(div1, button);
+			append(button, t4);
+			append(div2, t5);
+			if (if_block1) if_block1.m(div2, null);
+			append(div2, t6);
+			if (if_block2) if_block2.m(div2, null);
+
+			if (!mounted) {
+				dispose = [
+					listen(input, "input", /*input_input_handler*/ ctx[22]),
+					listen(button, "click", /*load*/ ctx[13])
+				];
+
+				mounted = true;
+			}
+		},
+		p(ctx, dirty) {
+			if (dirty[0] & /*$t*/ 4096 && t0_value !== (t0_value = /*$t*/ ctx[12]("market.title") + "")) set_data(t0, t0_value);
+
+			if (/*index*/ ctx[0]) {
+				if (if_block0) {
+					if_block0.p(ctx, dirty);
+				} else {
+					if_block0 = create_if_block_24(ctx);
+					if_block0.c();
+					if_block0.m(div0, null);
+				}
+			} else if (if_block0) {
+				if_block0.d(1);
+				if_block0 = null;
+			}
+
+			if (dirty[0] & /*$t*/ 4096 && input_placeholder_value !== (input_placeholder_value = /*$t*/ ctx[12]("market.search"))) {
+				attr(input, "placeholder", input_placeholder_value);
+			}
+
+			if (dirty[0] & /*index*/ 1 && input_disabled_value !== (input_disabled_value = !/*index*/ ctx[0])) {
+				input.disabled = input_disabled_value;
+			}
+
+			if (dirty[0] & /*query*/ 32 && input.value !== /*query*/ ctx[5]) {
+				set_input_value(input, /*query*/ ctx[5]);
+			}
+
+			if (dirty[0] & /*$t*/ 4096 && t4_value !== (t4_value = /*$t*/ ctx[12]("market.reload") + "")) set_data(t4, t4_value);
+
+			if (dirty[0] & /*loading*/ 2) {
+				button.disabled = /*loading*/ ctx[1];
+			}
+
+			if (!obsidian.Platform.isDesktop) if_block1.p(ctx, dirty);
+
+			if (current_block_type === (current_block_type = select_block_type(ctx)) && if_block2) {
+				if_block2.p(select_block_ctx(ctx, current_block_type), dirty);
+			} else {
+				if (if_block2) if_block2.d(1);
+				if_block2 = current_block_type && current_block_type(select_block_ctx(ctx, current_block_type));
+
+				if (if_block2) {
+					if_block2.c();
+					if_block2.m(div2, null);
+				}
+			}
+		},
+		i: noop,
+		o: noop,
+		d(detaching) {
+			if (detaching) detach(div2);
+			if (if_block0) if_block0.d();
+			if (if_block1) if_block1.d();
+
+			if (if_block2) {
+				if_block2.d();
+			}
+
+			mounted = false;
+			run_all(dispose);
+		}
+	};
+}
+
+function instance$c($$self, $$props, $$invalidate) {
+	let bundles;
+	let assets;
+	let $t;
+	component_subscribe($$self, t, $$value => $$invalidate(12, $t = $$value));
+	const app = useApp();
+	getContext("close");
+	const refresh = getContext("refresh");
+	const installWorkflows = getContext("installWorkflows");
+	const settings = get_store_value(pluginSettings);
+	const indexUrl = (settings.pandocMarketIndexUrl || "").trim() || DEFAULT_MARKET_INDEX_URL;
+	const destFolder = (settings.pandocAssetsFolder || "").trim() || DEFAULT_ASSETS_DIR;
+	let loading = true;
+	let error = "";
+	let index = null;
+	let manifest = {};
+	let present = new Set();
+	let query = "";
+	let busy = {};
+
+	function load() {
+		var _a;
+
+		return __awaiter(this, void 0, void 0, function* () {
+			$$invalidate(1, loading = true);
+			$$invalidate(2, error = "");
+
+			try {
+				$$invalidate(0, index = yield fetchMarketIndex(indexUrl, get_store_value(locale)));
+				$$invalidate(3, manifest = yield readInstalledManifest(app, destFolder));
+				$$invalidate(4, present = yield detectPresentIds(app, index, destFolder));
+			} catch(e) {
+				$$invalidate(2, error = String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0
+				? _a
+				: e));
+			}
+
+			$$invalidate(1, loading = false);
+		});
+	}
+
+	onMount(load);
+
+	// ── Asset detail ("how to use") ─────────────────────────────────────────
+	let detail = null; // the asset/bundle whose README is shown, or null for the grid
+
+	let readme = "";
+	let readmeState = ""; // "loading" | "ok" | "none" | "error"
+
+	function openDetail(item) {
+		return __awaiter(this, void 0, void 0, function* () {
+			$$invalidate(7, detail = item);
+			$$invalidate(8, readme = "");
+
+			if (!item.readmeUrl) {
+				$$invalidate(9, readmeState = "none");
+				return;
+			}
+
+			$$invalidate(9, readmeState = "loading");
+
+			try {
+				$$invalidate(8, readme = yield fetchMarketReadme(item.readmeUrl));
+				$$invalidate(9, readmeState = "ok");
+			} catch(e) {
+				$$invalidate(9, readmeState = "error");
+			}
+		});
+	}
+
+	// Svelte action: render markdown into a node via Obsidian's renderer.
+	function renderMarkdown(node, md) {
+		const comp = new obsidian.Component();
+
+		const draw = m => {
+			node.innerHTML = "";
+			if (m) obsidian.MarkdownRenderer.renderMarkdown(m, node, "", comp);
+		};
+
+		draw(md);
+
+		return {
+			update: draw,
+			destroy: () => comp.unload()
+		};
+	}
+
+	function matches(x) {
+		var _a, _b;
+		const q = query.trim().toLowerCase();
+		if (!q) return true;
+		return `${x.name} ${(_a = x.description) !== null && _a !== void 0 ? _a : ""} ${((_b = x.tags) !== null && _b !== void 0 ? _b : []).join(" ")} ${x.id}`.toLowerCase().includes(q);
+	}
+
+	const stateLabel = s => s === "installed"
+	? $t("market.installed")
+	: s === "update-available"
+		? $t("market.update")
+		: s === "present"
+			? $t("market.reinstall")
+			: $t("market.install");
+
+	const isPresent = s => s !== "not-installed";
+
+	function installBundle(b) {
+		var _a, _b;
+
+		return __awaiter(this, void 0, void 0, function* () {
+			if (busy[b.id]) return;
+			$$invalidate(6, busy = Object.assign(Object.assign({}, busy), { [b.id]: true }));
+			const n = new obsidian.Notice($t("market.installing") + " " + b.name, 0);
+
+			try {
+				const rec = yield installMarketBundle(app, b, destFolder);
+				$$invalidate(3, manifest[rec.id] = rec, manifest);
+
+				if ((_a = b.workflows) === null || _a === void 0
+				? void 0
+				: _a.length) {
+					const added = yield installWorkflows(b.workflows);
+					if (added.length) new obsidian.Notice(`+ ${added.join(", ")}`);
+				}
+
+				refresh();
+				$$invalidate(3, manifest = Object.assign({}, manifest));
+				new obsidian.Notice($t("market.installedNotice") + " " + b.name);
+			} catch(e) {
+				new obsidian.Notice($t("market.failed") + " " + String((_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0
+					? _b
+					: e));
+			} finally {
+				n.hide();
+				$$invalidate(6, busy = Object.assign(Object.assign({}, busy), { [b.id]: false }));
+			}
+		});
+	}
+
+	function installAsset(a) {
+		var _a;
+
+		return __awaiter(this, void 0, void 0, function* () {
+			if (busy[a.id]) return;
+			$$invalidate(6, busy = Object.assign(Object.assign({}, busy), { [a.id]: true }));
+			const n = new obsidian.Notice($t("market.installing") + " " + a.name, 0);
+
+			try {
+				const recs = yield installAssetWithDeps(app, index, a.id, destFolder);
+				for (const r of recs) $$invalidate(3, manifest[r.id] = r, manifest);
+				refresh();
+				$$invalidate(3, manifest = Object.assign({}, manifest));
+				const extra = recs.length - 1;
+				new obsidian.Notice($t("market.installedNotice") + " " + a.name + (extra > 0 ? ` (+${extra})` : ""));
+			} catch(e) {
+				new obsidian.Notice($t("market.failed") + " " + String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0
+					? _a
+					: e));
+			} finally {
+				n.hide();
+				$$invalidate(6, busy = Object.assign(Object.assign({}, busy), { [a.id]: false }));
+			}
+		});
+	}
+
+	function uninstall(item) {
+		var _a, _b, _c;
+
+		return __awaiter(this, void 0, void 0, function* () {
+			if (busy[item.id]) return;
+			if (!window.confirm(translate("market.confirmUninstall", { name: item.name }))) return;
+			$$invalidate(6, busy = Object.assign(Object.assign({}, busy), { [item.id]: true }));
+			const n = new obsidian.Notice(translate("market.uninstalling") + " " + item.name, 0);
+
+			try {
+				// For a bundle we only know its listed file paths; for an asset, its files[].
+				const files = item.download
+				? (_a = item.assets) !== null && _a !== void 0 ? _a : []
+				: ((_b = item.files) !== null && _b !== void 0 ? _b : []).map(f => f.path);
+
+				yield uninstallMarketItem(app, destFolder, item.id, files);
+				delete manifest[item.id];
+				$$invalidate(3, manifest = Object.assign({}, manifest));
+				$$invalidate(4, present = new Set([...present].filter(x => x !== item.id)));
+				refresh();
+				new obsidian.Notice(translate("market.uninstalled") + " " + item.name);
+			} catch(e) {
+				new obsidian.Notice(translate("market.failed") + " " + String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0
+					? _c
+					: e));
+			} finally {
+				n.hide();
+				$$invalidate(6, busy = Object.assign(Object.assign({}, busy), { [item.id]: false }));
+			}
+		});
+	}
+
+	const assetName = id => {
+		var _a, _b;
+
+		return (_b = (_a = index === null || index === void 0
+		? void 0
+		: index.assets.find(a => a.id === id)) === null || _a === void 0
+		? void 0
+		: _a.name) !== null && _b !== void 0
+		? _b
+		: id;
+	};
+
+	function input_input_handler() {
+		query = this.value;
+		$$invalidate(5, query);
+	}
+
+	const click_handler = () => $$invalidate(7, detail = null);
+	const click_handler_1 = () => uninstall(detail);
+
+	const click_handler_2 = () => detail.download
+	? installBundle(detail)
+	: installAsset(detail);
+
+	const click_handler_3 = b => installBundle(b);
+	const click_handler_4 = b => openDetail(b);
+	const click_handler_5 = a => installAsset(a);
+	const click_handler_6 = a => openDetail(a);
+
+	$$self.$$.update = () => {
+		if ($$self.$$.dirty[0] & /*index*/ 1) {
+			// User-facing assets are recipes and CSL styles. Filters/templates/include
+			// install automatically as a recipe's dependencies, so they aren't listed; CSL
+			// is listed because recipes don't declare a csl dependency (it's injected via
+			// --csl), so a style must be installable on its own.
+			$$invalidate(11, bundles = index ? index.bundles.filter(matches) : []);
+		}
+
+		if ($$self.$$.dirty[0] & /*index*/ 1) {
+			$$invalidate(10, assets = index
+			? index.assets.filter(a => (a.type === "recipe" || a.type === "csl") && matches(a))
+			: []);
+		}
+	};
+
+	return [
+		index,
+		loading,
+		error,
+		manifest,
+		present,
+		query,
+		busy,
+		detail,
+		readme,
+		readmeState,
+		assets,
+		bundles,
+		$t,
+		load,
+		openDetail,
+		renderMarkdown,
+		stateLabel,
+		isPresent,
+		installBundle,
+		installAsset,
+		uninstall,
+		assetName,
+		input_input_handler,
+		click_handler,
+		click_handler_1,
+		click_handler_2,
+		click_handler_3,
+		click_handler_4,
+		click_handler_5,
+		click_handler_6
+	];
+}
+
+class PandocMarket extends SvelteComponent {
+	constructor(options) {
+		super();
+		init(this, options, instance$c, create_fragment$c, safe_not_equal, {}, add_css$c, [-1, -1]);
+	}
+}
+
+/**
+ * Prepare a workflow for storage as json.
+ * @param workflow The workflow to serialize.
+ * @requires serialized An array of `SerializedStep`s that can be safely saved as json.
+ */
+function serializeWorkflow(workflow) {
+    const serialized = workflow.steps.map((step) => ({
+        id: step.description.canonicalID,
+        optionValues: step.optionValues,
+    }));
+    return {
+        name: workflow.name,
+        description: workflow.description,
+        steps: serialized,
+    };
+}
+function lookupStep(id, userSteps = []) {
+    const builtIn = BUILTIN_STEPS.find((s) => s.id === id);
+    if (builtIn) {
+        return builtIn;
+    }
+    const userStep = userSteps.find((s) => s.id === id);
+    if (userStep) {
+        return userStep;
+    }
+    return PLACEHOLDER_MISSING_STEP;
+}
+/**
+ * Deserializes an array of JSON-compatible steps into one that can be run as a workflow.
+ * @param w The JSON-compatible steps to deserialize.
+ * @returns deserialized Array of `CompileStep`s to use as a workflow.
+ */
+function deserializeWorkflow(w) {
+    var _a;
+    const userSteps = (_a = get_store_value(userScriptSteps)) !== null && _a !== void 0 ? _a : [];
+    const deserialized = Object.assign(Object.assign({}, w), { steps: w.steps.map((s) => {
+            const step = lookupStep(s.id, userSteps);
+            return Object.assign(Object.assign({}, step), { optionValues: s.optionValues });
+        }) });
+    return deserialized;
+}
+
+/**
+ * The Pandoc asset marketplace: browse the external index, install bundles or
+ * individual assets (with their dependency closure) into the vault's assets root,
+ * and register them so recipes appear in the template dropdown immediately.
+ */
+class PandocMarketModal extends obsidian.Modal {
+    constructor(app, plugin) {
+        super(app);
+        this.view = null;
+        this.plugin = plugin;
+    }
+    onOpen() {
+        this.modalEl.style.width = "min(820px, 94vw)";
+        const entrypoint = this.contentEl.createDiv("longform-pandoc-market-root");
+        const context = appContext(this);
+        context.set("close", () => this.close());
+        context.set("refresh", () => refreshPandocTemplates(this.app));
+        context.set("installWorkflows", (incoming) => this.installWorkflows(incoming));
+        this.view = new PandocMarket({ target: entrypoint, context });
+    }
+    /**
+     * Inject a bundle's recommended workflows: add only ones the user doesn't have,
+     * skip any that reference a non-built-in step (marketplace workflows must not
+     * carry user scripts), then persist. Returns the names actually added.
+     */
+    installWorkflows(incoming) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const current = get_store_value(workflows);
+            const next = Object.assign({}, current);
+            const added = [];
+            for (const wf of incoming) {
+                if (wf.name in next)
+                    continue; // never overwrite the user's own
+                const unknown = wf.steps.filter((s) => !BUILTIN_STEPS.some((b) => b.id === s.id));
+                if (unknown.length > 0) {
+                    console.warn(`[PaperOut] Skipping bundle workflow "${wf.name}": unknown step id(s) ${unknown
+                        .map((s) => s.id)
+                        .join(", ")}.`);
+                    continue;
+                }
+                next[wf.name] = deserializeWorkflow(wf);
+                added.push(wf.name);
+            }
+            if (added.length > 0) {
+                workflows.set(next);
+                yield this.plugin.saveSettings();
+            }
+            return added;
+        });
+    }
+    onClose() {
+        var _a;
+        (_a = this.view) === null || _a === void 0 ? void 0 : _a.$destroy();
+        this.view = null;
+        this.contentEl.empty();
+    }
+}
+
+function statusGlyph(c) {
+    return c.ok ? "✓" : c.optional ? "⚠" : "✗";
+}
+function installHint(bin) {
+    if (obsidian.Platform.isMacOS) {
+        if (bin === "xelatex")
+            return "Install MacTeX: https://www.tug.org/mactex/ (or `brew install --cask mactex-no-gui`).";
+        return `Install with Homebrew: \`brew install ${bin}\``;
+    }
+    if (obsidian.Platform.isWin) {
+        if (bin === "xelatex")
+            return "Install MiKTeX (https://miktex.org) or TeX Live.";
+        return `Install ${bin} from https://pandoc.org/installing.html (or \`choco install ${bin}\`).`;
+    }
+    if (bin === "xelatex")
+        return "Install TeX Live: `sudo apt install texlive-xetex` (or your distro's package).";
+    return `Install ${bin} via your package manager (e.g. \`sudo apt install ${bin}\`) or https://pandoc.org/installing.html`;
+}
+class PandocSetupModal extends obsidian.Modal {
+    constructor(app, plugin) {
+        super(app);
+        this.plugin = plugin;
+    }
+    assetsFolderRel() {
+        var _a;
+        return ((_a = get_store_value(pluginSettings).pandocAssetsFolder) !== null && _a !== void 0 ? _a : "").trim() || DEFAULT_ASSETS_DIR;
+    }
+    assetsAbs() {
+        const rel = this.assetsFolderRel();
+        const adapter = this.app.vault.adapter;
+        const base = adapter.getBasePath ? adapter.getBasePath() : "";
+        return resolveUserPath(rel, base, currentPlatformEnv());
+    }
+    gatherChecks() {
+        var _a;
+        const settings = get_store_value(pluginSettings);
+        const platform = currentPlatformEnv(settings.pandocExtraBinFolders);
+        const dirs = binSearchDirs(platform);
+        const nf = translate("setup.notFound");
+        const pandoc = resolveBinary(((_a = settings.pandocBinary) !== null && _a !== void 0 ? _a : "pandoc").trim() || "pandoc", fs__namespace.existsSync, dirs, platform.isWindows);
+        const xelatex = resolveBinary("xelatex", fs__namespace.existsSync, dirs, platform.isWindows);
+        const crossref = resolveBinary("pandoc-crossref", fs__namespace.existsSync, dirs, platform.isWindows);
+        const assets = this.assetsAbs();
+        const assetsOk = fs__namespace.existsSync(path__namespace.join(assets, "defaults")) &&
+            fs__namespace.existsSync(path__namespace.join(assets, "csl"));
+        const checks = [
+            {
+                ok: !!pandoc,
+                label: "pandoc — " + (pandoc || nf),
+                detail: pandoc ? "" : installHint("pandoc"),
+            },
+            {
+                ok: !!xelatex,
+                optional: true,
+                label: `xelatex (${translate("setup.pdfEngine")}) — ` + (xelatex || nf),
+                detail: xelatex
+                    ? ""
+                    : translate("setup.optionalPdfEngine") + " " + installHint("xelatex"),
+            },
+            {
+                ok: !!crossref,
+                optional: true,
+                label: "pandoc-crossref — " + (crossref || nf),
+                detail: crossref
+                    ? ""
+                    : translate("setup.optionalCrossref") +
+                        " " +
+                        installHint("pandoc-crossref"),
+            },
+            {
+                // Not optional: `hardOk` in pandoc-export.ts refuses to run without
+                // defaults/ and csl/, so a warning here would understate a hard stop.
+                ok: assetsOk,
+                label: translate("setup.assets") + " — " + assets,
+                detail: assetsOk
+                    ? translate("setup.assetsOk")
+                    : translate("setup.assetsMissing"),
+            },
+        ];
+        return { checks, assets, dirs };
+    }
+    reportText(checks, dirs) {
+        return ("Pandoc export setup:\n\n" +
+            checks
+                .map((c) => `[${statusGlyph(c)}] ${c.label}` + (c.detail ? `\n       ${c.detail}` : ""))
+                .join("\n") +
+            // The single most useful line when a binary "isn't found" but is clearly
+            // installed: it says exactly where we looked.
+            `\n\nSearched (in order):\n${dirs.map((d) => "  " + d).join("\n")}`);
+    }
+    onOpen() {
+        this.render();
+    }
+    render() {
+        const { contentEl, titleEl } = this;
+        titleEl.setText(translate("setup.title"));
+        contentEl.empty();
+        contentEl.createEl("p", { text: translate("setup.intro") });
+        const { checks, dirs } = this.gatherChecks();
+        const list = contentEl.createEl("div", { cls: "longform-pandoc-checklist" });
+        for (const c of checks) {
+            const item = list.createDiv({ cls: "longform-pandoc-check" });
+            item.createSpan({
+                text: statusGlyph(c) + " ",
+                cls: c.ok
+                    ? "longform-check-ok"
+                    : c.optional
+                        ? "longform-check-warn"
+                        : "longform-check-bad",
+            });
+            item.createSpan({ text: c.label });
+            if (c.detail) {
+                item.createEl("div", { text: c.detail, cls: "longform-pandoc-check-detail" });
+            }
+        }
+        // Primary path: the asset marketplace (needs the plugin for its modal).
+        if (this.plugin) {
+            new obsidian.Setting(contentEl)
+                .setName(translate("setup.market.name"))
+                .setDesc(translate("setup.market.desc"))
+                .addButton((cb) => cb
+                .setButtonText(translate("setup.market.button"))
+                .setCta()
+                .onClick(() => {
+                this.close();
+                new PandocMarketModal(this.app, this.plugin).open();
+            }));
+        }
+        new obsidian.Setting(contentEl)
+            .setName(translate("setup.url.name"))
+            .setDesc(translate("setup.url.desc"))
+            .addText((cb) => {
+            cb.setPlaceholder("https://…/pandoc-assets.zip")
+                .setValue(get_store_value(pluginSettings).pandocAssetsUrl)
+                .onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocAssetsUrl: v })));
+            });
+        });
+        new obsidian.Setting(contentEl)
+            .setName(translate("setup.download.name"))
+            .setDesc(translate("setup.download.desc", { folder: this.assetsFolderRel() }))
+            .addButton((cb) => cb
+            .setButtonText(translate("setup.download.button"))
+            .onClick(() => __awaiter(this, void 0, void 0, function* () {
+            yield this.download();
+        })));
+        const buttons = contentEl.createDiv({ cls: "longform-error-modal-buttons" });
+        const recheck = buttons.createEl("button", { text: translate("setup.recheck") });
+        recheck.addEventListener("click", () => this.render());
+        const copy = buttons.createEl("button", { text: translate("setup.copyReport") });
+        copy.addEventListener("click", () => __awaiter(this, void 0, void 0, function* () {
+            yield navigator.clipboard.writeText(this.reportText(checks, dirs));
+            copy.setText(translate("setup.copied"));
+            window.setTimeout(() => copy.setText(translate("setup.copyReport")), 1500);
+        }));
+        const done = buttons.createEl("button", {
+            text: translate("setup.done"),
+            cls: "mod-cta",
+        });
+        done.addEventListener("click", () => {
+            pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocSetupDismissed: true })));
+            this.close();
+        });
+    }
+    download() {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            const url = ((_a = get_store_value(pluginSettings).pandocAssetsUrl) !== null && _a !== void 0 ? _a : "").trim();
+            const dest = DEFAULT_ASSETS_DIR;
+            const notice = new obsidian.Notice(translate("setup.downloading"), 0);
+            try {
+                const { count } = yield downloadPandocAssets(this.app, url, dest);
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocAssetsFolder: dest })));
+                refreshPandocTemplates(this.app);
+                notice.hide();
+                new obsidian.Notice(translate("setup.downloaded", { count: String(count), dest }));
+                this.render();
+            }
+            catch (e) {
+                notice.hide();
+                new obsidian.Notice(translate("setup.downloadFailed", { error: e.message }), 8000);
+            }
+        });
+    }
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
+/**
+ * The marketplace command's own id. Obsidian namespaces it as
+ * `<plugin id>:<command id>`, and this helper has no plugin handle to build that
+ * prefix from — so match on the suffix rather than hardcoding the plugin id,
+ * which would be a third literal for any future id migration to hunt down.
+ */
+const MARKET_COMMAND_SUFFIX = ":longform-open-pandoc-market";
+/**
+ * The "fix this" buttons for a compile failure, if it is one we know how to fix.
+ *
+ * Shared by every place that surfaces a compile error — the workflow commands
+ * and the compile pane each have their own status handler, and a one-off at
+ * either site would silently drift from the other.
+ */
+function recoverableActions(app, status) {
+    if (status.recoverable !== RECOVERABLE_PANDOC_SETUP) {
+        return [];
+    }
+    return [
+        {
+            text: "Set up Pandoc export",
+            // PandocSetupModal's plugin argument is optional; without it the modal
+            // still runs the ✓/✗ prerequisite checks, which is what's needed here.
+            onClick: () => new PandocSetupModal(app).open(),
+        },
+        {
+            text: "Browse asset marketplace",
+            // PandocMarketModal *requires* a plugin handle, which this helper has no
+            // business holding — go through the command instead.
+            onClick: () => {
+                var _a, _b;
+                const commands = app.commands;
+                const id = Object.keys((_a = commands === null || commands === void 0 ? void 0 : commands.commands) !== null && _a !== void 0 ? _a : {}).find((k) => k.endsWith(MARKET_COMMAND_SUFFIX));
+                if (id)
+                    (_b = commands === null || commands === void 0 ? void 0 : commands.executeCommandById) === null || _b === void 0 ? void 0 : _b.call(commands, id);
+            },
+        },
+    ];
+}
+
+/* src/view/compile/CompileView.svelte generated by Svelte v3.49.0 */
+
+function add_css$b(target) {
 	append_styles(target, "svelte-1br8pmp", ".longform-workflow-picker-container.svelte-1br8pmp.svelte-1br8pmp{padding:var(--size-4-2);background:var(--background-primary);display:flex;flex-direction:column}#longform-workflows.svelte-1br8pmp.svelte-1br8pmp{color:var(--color-accent-2)}.longform-workflow-picker.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:var(--size-4-2)}.longform-workflow-picker.svelte-1br8pmp .longform-hint.svelte-1br8pmp{font-size:1em}select.svelte-1br8pmp.svelte-1br8pmp{background-color:transparent;border:none;padding:var(--size-4-1) 0;margin:0;font-family:inherit;font-size:inherit;cursor:inherit;line-height:inherit;outline:none;box-shadow:none}.select.svelte-1br8pmp.svelte-1br8pmp{cursor:pointer}.select.svelte-1br8pmp>select.svelte-1br8pmp{color:var(--text-accent)}.select.svelte-1br8pmp>select.svelte-1br8pmp:hover{text-decoration:underline;color:var(--text-accent-hover)}.longform-compile-container.svelte-1br8pmp .longform-sortable-step-list{list-style-type:none;padding:0;margin:0}.options-button.svelte-1br8pmp.svelte-1br8pmp{background-color:var(--background-secondary-alt);color:var(--text-accent)}.options-button.svelte-1br8pmp.svelte-1br8pmp:hover{background-color:var(--background-primary);color:var(--text-accent-hover)}.add-step-container.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;align-items:center;justify-content:center}.add-step-container.svelte-1br8pmp button.svelte-1br8pmp{font-weight:bold;color:var(--text-accent)}.add-step-container.svelte-1br8pmp button.svelte-1br8pmp:hover{text-decoration:underline;color:var(--text-accent-hover)}.longform-compile-instructions.svelte-1br8pmp.svelte-1br8pmp{font-size:var(--font-smallest);padding:var(--size-4-4) var(--size-4-4) var(--size-4-1) var(--size-4-8);color:var(--text-muted)}.longform-compile-instructions.svelte-1br8pmp li.svelte-1br8pmp{margin-bottom:var(--size-4-1)\n    }.longform-compile-instructions.svelte-1br8pmp strong.svelte-1br8pmp{color:var(--color-accent-2)}.compile-button.svelte-1br8pmp.svelte-1br8pmp{font-weight:bold;background-color:var(--interactive-accent);color:var(--text-on-accent)}.compile-button.svelte-1br8pmp.svelte-1br8pmp:hover{background-color:var(--interactive-accent-hover);color:var(--text-on-accent)}.compile-button.svelte-1br8pmp.svelte-1br8pmp:disabled{background-color:var(--text-muted);color:var(--text-faint)}.longform-compile-run-container.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;align-items:center;justify-content:space-between;margin-top:var(--size-4-8)}.longform-compile-buttons.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;align-items:center;gap:var(--size-4-2)}.longform-compile-run-container.svelte-1br8pmp .compile-status.svelte-1br8pmp{color:var(--text-muted)}.compile-status-error{color:var(--text-error) !important}.compile-status-success{color:var(--interactive-success) !important}.step-ghost{background-color:var(--interactive-accent-hover);color:var(--text-on-accent)}");
 }
 
 function get_each_context$4(ctx, list, i) {
 	const child_ctx = ctx.slice();
-	child_ctx[48] = list[i];
+	child_ctx[51] = list[i];
 	return child_ctx;
 }
 
-// (235:0) {#if $selectedDraft}
-function create_if_block$b(ctx) {
+// (207:0) {#if $selectedDraft}
+function create_if_block$a(ctx) {
 	let div3;
 	let div1;
 	let div0;
@@ -28562,14 +37375,14 @@ function create_if_block$b(ctx) {
 
 	function select_block_type(ctx, dirty) {
 		if (/*workflowInputState*/ ctx[6] !== "hidden") return create_if_block_6$1;
-		return create_else_block$4;
+		return create_else_block$3;
 	}
 
 	let current_block_type = select_block_type(ctx);
 	let if_block0 = current_block_type(ctx);
 	let if_block1 = /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]] && create_if_block_5$2(ctx);
 	let if_block2 = /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]] && create_if_block_3$2(ctx);
-	let if_block3 = /*$currentWorkflow*/ ctx[2] && /*$currentWorkflow*/ ctx[2].steps.length > 0 && create_if_block_1$8(ctx);
+	let if_block3 = /*$currentWorkflow*/ ctx[4] && /*$currentWorkflow*/ ctx[4].steps.length > 0 && create_if_block_1$7(ctx);
 
 	return {
 		c() {
@@ -28674,11 +37487,11 @@ function create_if_block$b(ctx) {
 				check_outros();
 			}
 
-			if (/*$currentWorkflow*/ ctx[2] && /*$currentWorkflow*/ ctx[2].steps.length > 0) {
+			if (/*$currentWorkflow*/ ctx[4] && /*$currentWorkflow*/ ctx[4].steps.length > 0) {
 				if (if_block3) {
 					if_block3.p(ctx, dirty);
 				} else {
-					if_block3 = create_if_block_1$8(ctx);
+					if_block3 = create_if_block_1$7(ctx);
 					if_block3.c();
 					if_block3.m(div2, null);
 				}
@@ -28708,8 +37521,8 @@ function create_if_block$b(ctx) {
 	};
 }
 
-// (258:8) {:else}
-function create_else_block$4(ctx) {
+// (230:8) {:else}
+function create_else_block$3(ctx) {
 	let t0;
 	let button;
 	let mounted;
@@ -28767,7 +37580,7 @@ function create_else_block$4(ctx) {
 	};
 }
 
-// (239:8) {#if workflowInputState !== "hidden"}
+// (211:8) {#if workflowInputState !== "hidden"}
 function create_if_block_6$1(ctx) {
 	let input;
 	let input_placeholder_value;
@@ -28818,7 +37631,7 @@ function create_if_block_6$1(ctx) {
 	};
 }
 
-// (261:10) {:else}
+// (233:10) {:else}
 function create_else_block_1$1(ctx) {
 	let div;
 	let select;
@@ -28853,10 +37666,10 @@ function create_else_block_1$1(ctx) {
 				each_blocks[i].m(select, null);
 			}
 
-			select_option(select, /*$selectedDraft*/ ctx[4].workflow);
+			select_option(select, /*$selectedDraft*/ ctx[2].workflow);
 
 			if (!mounted) {
-				dispose = listen(select, "change", /*selectedWorkflow*/ ctx[15]);
+				dispose = listen(select, "change", /*selectedWorkflow*/ ctx[14]);
 				mounted = true;
 			}
 		},
@@ -28884,8 +37697,8 @@ function create_else_block_1$1(ctx) {
 				each_blocks.length = each_value.length;
 			}
 
-			if (dirty[0] & /*$selectedDraft, allWorkflowNames*/ 17 && select_value_value !== (select_value_value = /*$selectedDraft*/ ctx[4].workflow)) {
-				select_option(select, /*$selectedDraft*/ ctx[4].workflow);
+			if (dirty[0] & /*$selectedDraft, allWorkflowNames*/ 5 && select_value_value !== (select_value_value = /*$selectedDraft*/ ctx[2].workflow)) {
+				select_option(select, /*$selectedDraft*/ ctx[2].workflow);
 			}
 		},
 		d(detaching) {
@@ -28897,7 +37710,7 @@ function create_else_block_1$1(ctx) {
 	};
 }
 
-// (259:10) {#if allWorkflowNames.length == 0}
+// (231:10) {#if allWorkflowNames.length == 0}
 function create_if_block_7$1(ctx) {
 	let span;
 
@@ -28917,10 +37730,10 @@ function create_if_block_7$1(ctx) {
 	};
 }
 
-// (268:16) {#each allWorkflowNames as workflowOption}
+// (240:16) {#each allWorkflowNames as workflowOption}
 function create_each_block$4(ctx) {
 	let option;
-	let t_value = /*workflowOption*/ ctx[48] + "";
+	let t_value = /*workflowOption*/ ctx[51] + "";
 	let t;
 	let option_value_value;
 
@@ -28928,7 +37741,7 @@ function create_each_block$4(ctx) {
 		c() {
 			option = element("option");
 			t = text(t_value);
-			option.__value = option_value_value = /*workflowOption*/ ctx[48];
+			option.__value = option_value_value = /*workflowOption*/ ctx[51];
 			option.value = option.__value;
 		},
 		m(target, anchor) {
@@ -28936,9 +37749,9 @@ function create_each_block$4(ctx) {
 			append(option, t);
 		},
 		p(ctx, dirty) {
-			if (dirty[0] & /*allWorkflowNames*/ 1 && t_value !== (t_value = /*workflowOption*/ ctx[48] + "")) set_data(t, t_value);
+			if (dirty[0] & /*allWorkflowNames*/ 1 && t_value !== (t_value = /*workflowOption*/ ctx[51] + "")) set_data(t, t_value);
 
-			if (dirty[0] & /*allWorkflowNames*/ 1 && option_value_value !== (option_value_value = /*workflowOption*/ ctx[48])) {
+			if (dirty[0] & /*allWorkflowNames*/ 1 && option_value_value !== (option_value_value = /*workflowOption*/ ctx[51])) {
 				option.__value = option_value_value;
 				option.value = option.__value;
 			}
@@ -28949,7 +37762,7 @@ function create_each_block$4(ctx) {
 	};
 }
 
-// (290:6) {#if $workflows[currentWorkflowName]}
+// (262:6) {#if $workflows[currentWorkflowName]}
 function create_if_block_5$2(ctx) {
 	let autotextarea;
 	let updating_value;
@@ -29006,7 +37819,7 @@ function create_if_block_5$2(ctx) {
 	};
 }
 
-// (299:4) {#if $workflows[currentWorkflowName]}
+// (271:4) {#if $workflows[currentWorkflowName]}
 function create_if_block_3$2(ctx) {
 	let sortablelist;
 	let updating_items;
@@ -29016,17 +37829,17 @@ function create_if_block_3$2(ctx) {
 	let current;
 
 	function sortablelist_items_binding(value) {
-		/*sortablelist_items_binding*/ ctx[36](value);
+		/*sortablelist_items_binding*/ ctx[37](value);
 	}
 
 	let sortablelist_props = {
-		sortableOptions: /*sortableOptions*/ ctx[22],
+		sortableOptions: /*sortableOptions*/ ctx[21],
 		class: "longform-sortable-step-list",
 		$$slots: {
 			default: [
 				create_default_slot$1,
-				({ item }) => ({ 47: item }),
-				({ item }) => [0, item ? 65536 : 0]
+				({ item }) => ({ 50: item }),
+				({ item }) => [0, item ? 524288 : 0]
 			]
 		},
 		$$scope: { ctx }
@@ -29038,7 +37851,7 @@ function create_if_block_3$2(ctx) {
 
 	sortablelist = new SortableList({ props: sortablelist_props });
 	binding_callbacks.push(() => bind(sortablelist, 'items', sortablelist_items_binding));
-	sortablelist.$on("orderChanged", /*itemOrderChanged*/ ctx[23]);
+	sortablelist.$on("orderChanged", /*itemOrderChanged*/ ctx[22]);
 	let if_block = show_if && create_if_block_4$2(ctx);
 
 	return {
@@ -29059,7 +37872,7 @@ function create_if_block_3$2(ctx) {
 		p(ctx, dirty) {
 			const sortablelist_changes = {};
 
-			if (dirty[0] & /*$workflows, currentWorkflowName, $currentWorkflow*/ 14 | dirty[1] & /*$$scope, item*/ 1114112) {
+			if (dirty[0] & /*$workflows, currentWorkflowName, $currentWorkflow*/ 26 | dirty[1] & /*$$scope, item*/ 8912896) {
 				sortablelist_changes.$$scope = { dirty, ctx };
 			}
 
@@ -29103,25 +37916,26 @@ function create_if_block_3$2(ctx) {
 	};
 }
 
-// (300:6) <SortableList         bind:items         let:item         {sortableOptions}         on:orderChanged={itemOrderChanged}         class="longform-sortable-step-list"       >
+// (272:6) <SortableList         bind:items         let:item         {sortableOptions}         on:orderChanged={itemOrderChanged}         class="longform-sortable-step-list"       >
 function create_default_slot$1(ctx) {
 	let compilestepview;
 	let current;
 
 	function removeStep_handler() {
-		return /*removeStep_handler*/ ctx[35](/*item*/ ctx[47]);
+		return /*removeStep_handler*/ ctx[35](/*item*/ ctx[50]);
 	}
 
 	compilestepview = new CompileStepView({
 			props: {
-				ordinal: /*item*/ ctx[47].index + 1,
-				step: /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]].steps[/*item*/ ctx[47].index],
-				calculatedKind: /*kindAtIndex*/ ctx[20](/*item*/ ctx[47].index),
-				error: /*errorAtIndex*/ ctx[21](/*item*/ ctx[47].index)
+				ordinal: /*item*/ ctx[50].index + 1,
+				step: /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]].steps[/*item*/ ctx[50].index],
+				calculatedKind: /*kindAtIndex*/ ctx[19](/*item*/ ctx[50].index),
+				error: /*errorAtIndex*/ ctx[20](/*item*/ ctx[50].index)
 			}
 		});
 
 	compilestepview.$on("removeStep", removeStep_handler);
+	compilestepview.$on("optionChanged", /*optionChanged_handler*/ ctx[36]);
 
 	return {
 		c() {
@@ -29134,10 +37948,10 @@ function create_default_slot$1(ctx) {
 		p(new_ctx, dirty) {
 			ctx = new_ctx;
 			const compilestepview_changes = {};
-			if (dirty[1] & /*item*/ 65536) compilestepview_changes.ordinal = /*item*/ ctx[47].index + 1;
-			if (dirty[0] & /*$workflows, currentWorkflowName*/ 10 | dirty[1] & /*item*/ 65536) compilestepview_changes.step = /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]].steps[/*item*/ ctx[47].index];
-			if (dirty[1] & /*item*/ 65536) compilestepview_changes.calculatedKind = /*kindAtIndex*/ ctx[20](/*item*/ ctx[47].index);
-			if (dirty[1] & /*item*/ 65536) compilestepview_changes.error = /*errorAtIndex*/ ctx[21](/*item*/ ctx[47].index);
+			if (dirty[1] & /*item*/ 524288) compilestepview_changes.ordinal = /*item*/ ctx[50].index + 1;
+			if (dirty[0] & /*$workflows, currentWorkflowName*/ 10 | dirty[1] & /*item*/ 524288) compilestepview_changes.step = /*$workflows*/ ctx[3][/*currentWorkflowName*/ ctx[1]].steps[/*item*/ ctx[50].index];
+			if (dirty[1] & /*item*/ 524288) compilestepview_changes.calculatedKind = /*kindAtIndex*/ ctx[19](/*item*/ ctx[50].index);
+			if (dirty[1] & /*item*/ 524288) compilestepview_changes.error = /*errorAtIndex*/ ctx[20](/*item*/ ctx[50].index);
 			compilestepview.$set(compilestepview_changes);
 		},
 		i(local) {
@@ -29155,7 +37969,7 @@ function create_default_slot$1(ctx) {
 	};
 }
 
-// (324:8) {#if Object.keys($workflows).length > 0}
+// (301:8) {#if Object.keys($workflows).length > 0}
 function create_if_block_4$2(ctx) {
 	let button;
 	let mounted;
@@ -29171,7 +37985,7 @@ function create_if_block_4$2(ctx) {
 			insert(target, button, anchor);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*addStep*/ ctx[19]);
+				dispose = listen(button, "click", /*addStep*/ ctx[18]);
 				mounted = true;
 			}
 		},
@@ -29184,8 +37998,8 @@ function create_if_block_4$2(ctx) {
 	};
 }
 
-// (350:6) {#if $currentWorkflow && $currentWorkflow.steps.length > 0}
-function create_if_block_1$8(ctx) {
+// (327:6) {#if $currentWorkflow && $currentWorkflow.steps.length > 0}
+function create_if_block_1$7(ctx) {
 	let div;
 	let button;
 	let t0;
@@ -29202,7 +38016,7 @@ function create_if_block_1$8(ctx) {
 	let t3;
 	let mounted;
 	let dispose;
-	let if_block = /*$selectedProjectHasMultipleDrafts*/ ctx[14] && create_if_block_2$6(ctx);
+	let if_block = /*$selectedProjectHasMultipleDrafts*/ ctx[13] && create_if_block_2$6(ctx);
 
 	return {
 		c() {
@@ -29215,7 +38029,7 @@ function create_if_block_1$8(ctx) {
 			span = element("span");
 			t3 = text(t3_value);
 			attr(button, "class", "compile-button svelte-1br8pmp");
-			button.disabled = button_disabled_value = /*validation*/ ctx[11].error !== WorkflowError.Valid || /*isCompiling*/ ctx[13];
+			button.disabled = button_disabled_value = /*validation*/ ctx[11].error !== WorkflowError.Valid || isCompiling;
 			attr(button, "aria-label", button_aria_label_value = /*validation*/ ctx[11].error);
 			attr(div, "class", "longform-compile-buttons svelte-1br8pmp");
 			attr(span, "class", "compile-status svelte-1br8pmp");
@@ -29229,15 +38043,15 @@ function create_if_block_1$8(ctx) {
 			insert(target, t2, anchor);
 			insert(target, span, anchor);
 			append(span, t3);
-			/*span_binding*/ ctx[37](span);
+			/*span_binding*/ ctx[38](span);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*doCompile*/ ctx[24]);
+				dispose = listen(button, "click", /*doCompile*/ ctx[23]);
 				mounted = true;
 			}
 		},
 		p(ctx, dirty) {
-			if (dirty[0] & /*validation, isCompiling*/ 10240 && button_disabled_value !== (button_disabled_value = /*validation*/ ctx[11].error !== WorkflowError.Valid || /*isCompiling*/ ctx[13])) {
+			if (dirty[0] & /*validation*/ 2048 && button_disabled_value !== (button_disabled_value = /*validation*/ ctx[11].error !== WorkflowError.Valid || isCompiling)) {
 				button.disabled = button_disabled_value;
 			}
 
@@ -29245,7 +38059,7 @@ function create_if_block_1$8(ctx) {
 				attr(button, "aria-label", button_aria_label_value);
 			}
 
-			if (/*$selectedProjectHasMultipleDrafts*/ ctx[14]) {
+			if (/*$selectedProjectHasMultipleDrafts*/ ctx[13]) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
@@ -29267,14 +38081,14 @@ function create_if_block_1$8(ctx) {
 			if (if_block) if_block.d();
 			if (detaching) detach(t2);
 			if (detaching) detach(span);
-			/*span_binding*/ ctx[37](null);
+			/*span_binding*/ ctx[38](null);
 			mounted = false;
 			dispose();
 		}
 	};
 }
 
-// (358:10) {#if $selectedProjectHasMultipleDrafts}
+// (335:10) {#if $selectedProjectHasMultipleDrafts}
 function create_if_block_2$6(ctx) {
 	let button;
 	let t;
@@ -29284,25 +38098,21 @@ function create_if_block_2$6(ctx) {
 	return {
 		c() {
 			button = element("button");
-			t = text("Compile All Drafts");
+			t = text("Compile All Drafts…");
 			attr(button, "class", "compile-button svelte-1br8pmp");
-			button.disabled = /*isCompiling*/ ctx[13];
-			attr(button, "title", "Compile every draft in this project, each to its own file.");
+			button.disabled = isCompiling;
+			attr(button, "title", "Open the compile matrix: reorder drafts, batch-configure, and run each with live progress.");
 		},
 		m(target, anchor) {
 			insert(target, button, anchor);
 			append(button, t);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*doCompileAll*/ ctx[25]);
+				dispose = listen(button, "click", /*openCompileMatrix*/ ctx[24]);
 				mounted = true;
 			}
 		},
-		p(ctx, dirty) {
-			if (dirty[0] & /*isCompiling*/ 8192) {
-				button.disabled = /*isCompiling*/ ctx[13];
-			}
-		},
+		p: noop,
 		d(detaching) {
 			if (detaching) detach(button);
 			mounted = false;
@@ -29311,10 +38121,10 @@ function create_if_block_2$6(ctx) {
 	};
 }
 
-function create_fragment$c(ctx) {
+function create_fragment$b(ctx) {
 	let if_block_anchor;
 	let current;
-	let if_block = /*$selectedDraft*/ ctx[4] && create_if_block$b(ctx);
+	let if_block = /*$selectedDraft*/ ctx[2] && create_if_block$a(ctx);
 
 	return {
 		c() {
@@ -29327,15 +38137,15 @@ function create_fragment$c(ctx) {
 			current = true;
 		},
 		p(ctx, dirty) {
-			if (/*$selectedDraft*/ ctx[4]) {
+			if (/*$selectedDraft*/ ctx[2]) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 
-					if (dirty[0] & /*$selectedDraft*/ 16) {
+					if (dirty[0] & /*$selectedDraft*/ 4) {
 						transition_in(if_block, 1);
 					}
 				} else {
-					if_block = create_if_block$b(ctx);
+					if_block = create_if_block$a(ctx);
 					if_block.c();
 					transition_in(if_block, 1);
 					if_block.m(if_block_anchor.parentNode, if_block_anchor);
@@ -29366,24 +38176,27 @@ function create_fragment$c(ctx) {
 	};
 }
 
+let isCompiling = false;
+
 function focusOnInit(el) {
 	el.focus();
 }
 
-function instance$c($$self, $$props, $$invalidate) {
-	let $currentWorkflow;
-	let $workflows;
-	let $selectedProject;
+function instance$b($$self, $$props, $$invalidate) {
 	let $selectedDraft;
+	let $selectedProject;
+	let $workflows;
+	let $currentWorkflow;
 	let $drafts;
 	let $selectedProjectHasMultipleDrafts;
-	component_subscribe($$self, currentWorkflow, $$value => $$invalidate(2, $currentWorkflow = $$value));
+	component_subscribe($$self, selectedDraft, $$value => $$invalidate(2, $selectedDraft = $$value));
+	component_subscribe($$self, selectedProject, $$value => $$invalidate(42, $selectedProject = $$value));
 	component_subscribe($$self, workflows, $$value => $$invalidate(3, $workflows = $$value));
-	component_subscribe($$self, selectedProject, $$value => $$invalidate(40, $selectedProject = $$value));
-	component_subscribe($$self, selectedDraft, $$value => $$invalidate(4, $selectedDraft = $$value));
+	component_subscribe($$self, currentWorkflow, $$value => $$invalidate(4, $currentWorkflow = $$value));
 	component_subscribe($$self, drafts, $$value => $$invalidate(28, $drafts = $$value));
-	component_subscribe($$self, selectedProjectHasMultipleDrafts, $$value => $$invalidate(14, $selectedProjectHasMultipleDrafts = $$value));
+	component_subscribe($$self, selectedProjectHasMultipleDrafts, $$value => $$invalidate(13, $selectedProjectHasMultipleDrafts = $$value));
 	var _a;
+	const app = useApp();
 	let workflowContextButton;
 	let workflowInputState = "hidden";
 	let workflowInputValue = "";
@@ -29413,7 +38226,7 @@ function instance$c($$self, $$props, $$invalidate) {
 			$$invalidate(6, workflowInputState = "rename");
 		} else if (type == "delete") {
 			showConfirmModal(`Delete ${currentWorkflowName}?`, "Really delete this workflow? This can’t be undone.", "Delete", () => {
-				$$invalidate(27, isDeletingWorkflow = true);
+				$$invalidate(26, isDeletingWorkflow = true);
 				const toDelete = currentWorkflowName;
 				const remaining = allWorkflowNames.filter(n => n != toDelete);
 
@@ -29424,7 +38237,7 @@ function instance$c($$self, $$props, $$invalidate) {
 				}
 
 				set_store_value(workflows, $workflows = delete $workflows[toDelete] && $workflows, $workflows);
-				$$invalidate(27, isDeletingWorkflow = false);
+				$$invalidate(26, isDeletingWorkflow = false);
 			});
 		}
 	}
@@ -29469,7 +38282,17 @@ function instance$c($$self, $$props, $$invalidate) {
 	};
 
 	let validation = VALID;
+
+	// Kinds and the error position are aligned to the *displayed* (original)
+	// step list; a Join step skipped for a single-file draft gets `null`.
 	let calculatedKinds = [];
+
+	let errorStepPosition = 0;
+
+	// The workflow that will actually run — see effectiveWorkflow. Validation and
+	// compilation must both use it, or a workflow could validate here and fail on
+	// run (or vice versa).
+	let runnableWorkflow = null;
 
 	function kindAtIndex(index) {
 		return index < calculatedKinds.length
@@ -29478,7 +38301,7 @@ function instance$c($$self, $$props, $$invalidate) {
 	}
 
 	function errorAtIndex(index) {
-		if (validation.error !== WorkflowError.Valid && validation.stepPosition === index) {
+		if (validation.error !== WorkflowError.Valid && errorStepPosition === index) {
 			return validation.error;
 		}
 
@@ -29504,9 +38327,10 @@ function instance$c($$self, $$props, $$invalidate) {
 
 	function onCompileStatusChange(status) {
 		if (status.kind == "CompileStatusError") {
-			$$invalidate(9, compileStatus.innerText = `${status.error}. See dev console for more details.`, compileStatus);
+			$$invalidate(9, compileStatus.innerText = "Compile failed.", compileStatus);
 			compileStatus.classList.add("compile-status-error");
 			restoreDefaultStatusAfter(10000);
+			showErrorModal(app, "Compile failed", status.error, recoverableActions(app, status));
 		} else if (status.kind == "CompileStatusStep") {
 			$$invalidate(9, compileStatus.innerText = `Step ${status.stepIndex + 1}/${status.totalSteps} (${formatStepKind(status.stepKind)})`, compileStatus);
 		} else if (status.kind == "CompileStatusSuccess") {
@@ -29531,75 +38355,20 @@ function instance$c($$self, $$props, $$invalidate) {
 	}
 
 	const compile = getContext("compile");
-	let isCompiling = false;
 
 	function doCompile() {
 		const projectRoot = projectRootPath($selectedProject !== null && $selectedProject !== void 0
 		? $selectedProject
 		: [$selectedDraft]);
 
-		compile($selectedDraft, $currentWorkflow, calculatedKinds, onCompileStatusChange, { projectRoot });
+		const [,kinds] = calculateWorkflow(runnableWorkflow, $selectedDraft.format === "scenes");
+		compile($selectedDraft, runnableWorkflow, kinds, onCompileStatusChange, { projectRoot });
 	}
 
-	function doCompileAll() {
-		return __awaiter(this, void 0, void 0, function* () {
-			const projectDrafts = $selectedProject !== null && $selectedProject !== void 0
-			? $selectedProject
-			: [];
-
-			if (projectDrafts.length === 0) {
-				return;
-			}
-
-			const projectRoot = projectRootPath(projectDrafts);
-			$$invalidate(13, isCompiling = true);
-			let compiledCount = 0;
-
-			for (let i = 0; i < projectDrafts.length; i++) {
-				const draft = projectDrafts[i];
-				const label = `${draftTitle(draft)} (${i + 1}/${projectDrafts.length})`;
-
-				const workflow = draft.workflow
-				? $workflows[draft.workflow]
-				: $currentWorkflow;
-
-				if (!workflow) {
-					new obsidian.Notice(`Skipped ${label}: no workflow assigned.`);
-					continue;
-				}
-
-				const [validationResult, kinds] = calculateWorkflow(workflow, draft.format === "scenes");
-
-				if (validationResult.error !== WorkflowError.Valid) {
-					new obsidian.Notice(`Skipped ${label}: ${validationResult.error}`);
-					continue;
-				}
-
-				// Prefix per-step status with which draft we're on; swallow the per-draft
-				// success notice so we only announce once at the end.
-				const wrappedStatus = status => {
-					if (status.kind === "CompileStatusStep") {
-						$$invalidate(9, compileStatus.innerText = `Compiling ${label} — step ${status.stepIndex + 1}/${status.totalSteps}`, compileStatus);
-					} else if (status.kind === "CompileStatusError") {
-						onCompileStatusChange(status);
-					}
-				};
-
-				try {
-					yield compile(draft, workflow, kinds, wrappedStatus, { suppressOpenAfter: true, projectRoot });
-					compiledCount++;
-				} catch(error) {
-					console.error("[Longform]", error);
-					new obsidian.Notice(`Failed to compile ${label}. See console for details.`);
-				}
-			}
-
-			$$invalidate(13, isCompiling = false);
-			$$invalidate(9, compileStatus.innerText = `Compiled ${compiledCount} draft${compiledCount === 1 ? "" : "s"}.`, compileStatus);
-			compileStatus.classList.add("compile-status-success");
-			restoreDefaultStatusAfter();
-			new obsidian.Notice(`Compiled ${compiledCount} draft${compiledCount === 1 ? "" : "s"}.`);
-		});
+	// "Compile All Drafts" opens the Compile Matrix board (reorder, batch config,
+	// then run) rather than compiling immediately.
+	function openCompileMatrix() {
+		new CompileMatrixModal(app).open();
 	}
 
 	function input_input_handler() {
@@ -29652,9 +38421,15 @@ function instance$c($$self, $$props, $$invalidate) {
 		set_store_value(workflows, $workflows[currentWorkflowName] = newWorkflow, $workflows);
 	};
 
+	const optionChanged_handler = () => {
+		// The step object was mutated in place; reassign so the store
+		// publishes and main.ts's debounced save writes data.json.
+		workflows.set($workflows);
+	};
+
 	function sortablelist_items_binding(value) {
 		items = value;
-		($$invalidate(12, items), $$invalidate(2, $currentWorkflow));
+		($$invalidate(12, items), $$invalidate(4, $currentWorkflow));
 	}
 
 	function span_binding($$value) {
@@ -29665,14 +38440,14 @@ function instance$c($$self, $$props, $$invalidate) {
 	}
 
 	$$self.$$.update = () => {
-		if ($$self.$$.dirty[0] & /*$workflows, _a*/ 67108872) {
+		if ($$self.$$.dirty[0] & /*$workflows, _a*/ 33554440) {
 			// WORKFLOW MANAGEMENT
-			$$invalidate(0, allWorkflowNames = $$invalidate(26, _a = Object.keys($workflows).sort()) !== null && _a !== void 0
+			$$invalidate(0, allWorkflowNames = $$invalidate(25, _a = Object.keys($workflows).sort()) !== null && _a !== void 0
 			? _a
 			: []);
 		}
 
-		if ($$self.$$.dirty[0] & /*$selectedDraft, isDeletingWorkflow, currentWorkflowName, allWorkflowNames, $drafts*/ 402653203) {
+		if ($$self.$$.dirty[0] & /*$selectedDraft, isDeletingWorkflow, currentWorkflowName, allWorkflowNames, $drafts*/ 335544327) {
 			{
 				if ($selectedDraft) {
 					$$invalidate(1, currentWorkflowName = $selectedDraft.workflow);
@@ -29687,24 +38462,31 @@ function instance$c($$self, $$props, $$invalidate) {
 			}
 		}
 
-		if ($$self.$$.dirty[0] & /*$selectedDraft, $drafts*/ 268435472) {
+		if ($$self.$$.dirty[0] & /*$selectedDraft, $drafts*/ 268435460) {
 			{
 				currentDraftIndex = $selectedDraft && $drafts.findIndex(d => d.vaultPath === $selectedDraft.vaultPath);
 			}
 		}
 
-		if ($$self.$$.dirty[0] & /*$currentWorkflow, $selectedDraft*/ 20) {
+		if ($$self.$$.dirty[0] & /*$currentWorkflow, $selectedDraft, runnableWorkflow*/ 134217748) {
 			{
 				if ($currentWorkflow) {
-					$$invalidate(11, [validation, calculatedKinds] = calculateWorkflow($currentWorkflow, $selectedDraft.format === "scenes"), validation);
+					const isMultiScene = $selectedDraft.format === "scenes";
+					$$invalidate(27, runnableWorkflow = effectiveWorkflow($currentWorkflow, isMultiScene));
+					const [result, kinds] = calculateWorkflow(runnableWorkflow, isMultiScene);
+					$$invalidate(11, validation = result);
+					calculatedKinds = alignToOriginalSteps($currentWorkflow, runnableWorkflow, kinds);
+					errorStepPosition = alignStepPosition($currentWorkflow, runnableWorkflow, result.stepPosition);
 				} else {
+					$$invalidate(27, runnableWorkflow = null);
 					$$invalidate(11, validation = VALID);
 					calculatedKinds = [];
+					errorStepPosition = 0;
 				}
 			}
 		}
 
-		if ($$self.$$.dirty[0] & /*$currentWorkflow*/ 4) {
+		if ($$self.$$.dirty[0] & /*$currentWorkflow*/ 16) {
 			{
 				$$invalidate(12, items = $currentWorkflow
 				? $currentWorkflow.steps.map((step, index) => ({ id: step.id, index }))
@@ -29712,18 +38494,18 @@ function instance$c($$self, $$props, $$invalidate) {
 			}
 		}
 
-		if ($$self.$$.dirty[0] & /*$currentWorkflow*/ 4) {
+		if ($$self.$$.dirty[0] & /*runnableWorkflow*/ 134217728) {
 			// COMPILATION
-			$$invalidate(10, defaultCompileStatus = `Will run ${$currentWorkflow ? $currentWorkflow.steps.length : 0} steps.`);
+			$$invalidate(10, defaultCompileStatus = `Will run ${runnableWorkflow ? runnableWorkflow.steps.length : 0} steps.`);
 		}
 	};
 
 	return [
 		allWorkflowNames,
 		currentWorkflowName,
-		$currentWorkflow,
-		$workflows,
 		$selectedDraft,
+		$workflows,
+		$currentWorkflow,
 		workflowContextButton,
 		workflowInputState,
 		workflowInputValue,
@@ -29732,7 +38514,6 @@ function instance$c($$self, $$props, $$invalidate) {
 		defaultCompileStatus,
 		validation,
 		items,
-		isCompiling,
 		$selectedProjectHasMultipleDrafts,
 		selectedWorkflow,
 		showCompileActionsMenu,
@@ -29744,9 +38525,10 @@ function instance$c($$self, $$props, $$invalidate) {
 		sortableOptions,
 		itemOrderChanged,
 		doCompile,
-		doCompileAll,
+		openCompileMatrix,
 		_a,
 		isDeletingWorkflow,
+		runnableWorkflow,
 		$drafts,
 		input_input_handler,
 		input_binding,
@@ -29755,6 +38537,7 @@ function instance$c($$self, $$props, $$invalidate) {
 		click_handler,
 		autotextarea_value_binding,
 		removeStep_handler,
+		optionChanged_handler,
 		sortablelist_items_binding,
 		span_binding
 	];
@@ -29763,7 +38546,7 @@ function instance$c($$self, $$props, $$invalidate) {
 class CompileView extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$c, create_fragment$c, safe_not_equal, {}, add_css$c, [-1, -1]);
+		init(this, options, instance$b, create_fragment$b, safe_not_equal, {}, add_css$b, [-1, -1]);
 	}
 }
 
@@ -29823,12 +38606,12 @@ const goalProgress = derived([selectedDraft, sessions, pluginSettings, activeFil
 
 /* src/view/explorer/NewSceneField.svelte generated by Svelte v3.49.0 */
 
-function add_css$b(target) {
+function add_css$a(target) {
 	append_styles(target, "svelte-e1ncqi", ".new-scene-container.svelte-e1ncqi{margin:0;padding:var(--size-4-2) 0}#new-scene.svelte-e1ncqi{width:100%;background:var(--background-modifier-form-field);border:var(--input-border-width) solid var(--background-modifier-border);border-radius:var(--input-radius);font-size:var(--font-ui-small);padding:var(--size-4-1) var(--size-4-2)}#new-scene.invalid.svelte-e1ncqi{color:var(--text-error)}");
 }
 
 // (50:2) {#if error}
-function create_if_block$a(ctx) {
+function create_if_block$9(ctx) {
 	let p;
 	let t;
 
@@ -29850,13 +38633,13 @@ function create_if_block$a(ctx) {
 	};
 }
 
-function create_fragment$b(ctx) {
+function create_fragment$a(ctx) {
 	let div;
 	let input;
 	let t;
 	let mounted;
 	let dispose;
-	let if_block = /*error*/ ctx[2] && create_if_block$a(ctx);
+	let if_block = /*error*/ ctx[2] && create_if_block$9(ctx);
 
 	return {
 		c() {
@@ -29901,7 +38684,7 @@ function create_fragment$b(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$a(ctx);
+					if_block = create_if_block$9(ctx);
 					if_block.c();
 					if_block.m(div, null);
 				}
@@ -29922,7 +38705,7 @@ function create_fragment$b(ctx) {
 	};
 }
 
-function instance$b($$self, $$props, $$invalidate) {
+function instance$a($$self, $$props, $$invalidate) {
 	let $selectedDraft;
 	component_subscribe($$self, selectedDraft, $$value => $$invalidate(7, $selectedDraft = $$value));
 	let newSceneName = "";
@@ -29993,30 +38776,30 @@ function instance$b($$self, $$props, $$invalidate) {
 class NewSceneField extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$b, create_fragment$b, safe_not_equal, {}, add_css$b);
+		init(this, options, instance$a, create_fragment$a, safe_not_equal, {}, add_css$a);
 	}
 }
 
 /* src/view/explorer/ProjectPicker.svelte generated by Svelte v3.49.0 */
 
-function add_css$a(target) {
+function add_css$9(target) {
 	append_styles(target, "svelte-1hf8c86", "#project-picker-container.svelte-1hf8c86.svelte-1hf8c86{margin-bottom:var(--size-4-2)}select.svelte-1hf8c86.svelte-1hf8c86{background-color:transparent;border:var(--input-border-width) solid var(--background-modifier-border);border-radius:var(--input-radius);padding:var(--size-4-2) var(--size-4-3);width:100%;height:100%;font-family:inherit;font-size:var(--font-ui-large);cursor:inherit;line-height:inherit;outline:none;box-shadow:none}.select.svelte-1hf8c86>select.svelte-1hf8c86:hover{color:var(--text-normal);background-color:var(--background-modifier-hover);box-shadow:0 0 0 2px var(--background-modifier-border-focus);border-color:var(--background-modifier-border-focus);transition:box-shadow 0.15s ease-in-out,\n      border 0.15s ease-in-out}.current-draft-path.svelte-1hf8c86.svelte-1hf8c86{color:var(--text-faint);font-size:var(--font-smallest);padding:0 0 var(--size-4-1) var(--size-4-3)}.current-draft-path.svelte-1hf8c86.svelte-1hf8c86:hover{color:var(--text-accent);cursor:pointer}#select-drafts.svelte-1hf8c86.svelte-1hf8c86{margin-top:var(--size-4-1)}");
 }
 
 function get_each_context$3(ctx, list, i) {
 	const child_ctx = ctx.slice();
-	child_ctx[12] = list[i];
+	child_ctx[13] = list[i];
 	return child_ctx;
 }
 
 function get_each_context_1(ctx, list, i) {
 	const child_ctx = ctx.slice();
-	child_ctx[15] = list[i];
+	child_ctx[16] = list[i];
 	return child_ctx;
 }
 
-// (80:2) {:else}
-function create_else_block$3(ctx) {
+// (86:2) {:else}
+function create_else_block$2(ctx) {
 	let p;
 
 	return {
@@ -30037,8 +38820,8 @@ function create_else_block$3(ctx) {
 	};
 }
 
-// (49:2) {#if projectOptions.length > 0}
-function create_if_block$9(ctx) {
+// (55:2) {#if projectOptions.length > 0}
+function create_if_block$8(ctx) {
 	let div1;
 	let div0;
 	let select;
@@ -30056,7 +38839,7 @@ function create_if_block$9(ctx) {
 	}
 
 	let if_block0 = /*$selectedProjectHasMultipleDrafts*/ ctx[4] && create_if_block_2$5(ctx);
-	let if_block1 = /*$selectedDraft*/ ctx[2] && create_if_block_1$7(ctx);
+	let if_block1 = /*$selectedDraft*/ ctx[2] && create_if_block_1$6(ctx);
 
 	return {
 		c() {
@@ -30099,7 +38882,7 @@ function create_if_block$9(ctx) {
 			insert(target, if_block1_anchor, anchor);
 
 			if (!mounted) {
-				dispose = listen(select, "change", /*projectSelected*/ ctx[5]);
+				dispose = listen(select, "change", /*projectSelected*/ ctx[6]);
 				mounted = true;
 			}
 		},
@@ -30152,7 +38935,7 @@ function create_if_block$9(ctx) {
 				if (if_block1) {
 					if_block1.p(ctx, dirty);
 				} else {
-					if_block1 = create_if_block_1$7(ctx);
+					if_block1 = create_if_block_1$6(ctx);
 					if_block1.c();
 					if_block1.m(if_block1_anchor.parentNode, if_block1_anchor);
 				}
@@ -30174,10 +38957,10 @@ function create_if_block$9(ctx) {
 	};
 }
 
-// (58:10) {#each projectOptions as projectOption}
+// (64:10) {#each projectOptions as projectOption}
 function create_each_block_1(ctx) {
 	let option;
-	let t_value = /*projectOption*/ ctx[15] + "";
+	let t_value = /*projectOption*/ ctx[16] + "";
 	let t;
 	let option_value_value;
 
@@ -30186,7 +38969,7 @@ function create_each_block_1(ctx) {
 			option = element("option");
 			t = text(t_value);
 			attr(option, "class", "projectOption");
-			option.__value = option_value_value = /*projectOption*/ ctx[15];
+			option.__value = option_value_value = /*projectOption*/ ctx[16];
 			option.value = option.__value;
 		},
 		m(target, anchor) {
@@ -30194,9 +38977,9 @@ function create_each_block_1(ctx) {
 			append(option, t);
 		},
 		p(ctx, dirty) {
-			if (dirty & /*projectOptions*/ 1 && t_value !== (t_value = /*projectOption*/ ctx[15] + "")) set_data(t, t_value);
+			if (dirty & /*projectOptions*/ 1 && t_value !== (t_value = /*projectOption*/ ctx[16] + "")) set_data(t, t_value);
 
-			if (dirty & /*projectOptions*/ 1 && option_value_value !== (option_value_value = /*projectOption*/ ctx[15])) {
+			if (dirty & /*projectOptions*/ 1 && option_value_value !== (option_value_value = /*projectOption*/ ctx[16])) {
 				option.__value = option_value_value;
 				option.value = option.__value;
 			}
@@ -30207,7 +38990,7 @@ function create_each_block_1(ctx) {
 	};
 }
 
-// (65:6) {#if $selectedProjectHasMultipleDrafts}
+// (71:6) {#if $selectedProjectHasMultipleDrafts}
 function create_if_block_2$5(ctx) {
 	let div;
 	let select;
@@ -30231,7 +39014,7 @@ function create_if_block_2$5(ctx) {
 
 			attr(select, "name", "drafts");
 			attr(select, "class", "svelte-1hf8c86");
-			if (/*$selectedDraftVaultPath*/ ctx[3] === void 0) add_render_callback(() => /*select_change_handler*/ ctx[9].call(select));
+			if (/*$selectedDraftVaultPath*/ ctx[3] === void 0) add_render_callback(() => /*select_change_handler*/ ctx[10].call(select));
 			attr(div, "class", "select svelte-1hf8c86");
 			attr(div, "id", "select-drafts");
 		},
@@ -30246,7 +39029,7 @@ function create_if_block_2$5(ctx) {
 			select_option(select, /*$selectedDraftVaultPath*/ ctx[3]);
 
 			if (!mounted) {
-				dispose = listen(select, "change", /*select_change_handler*/ ctx[9]);
+				dispose = listen(select, "change", /*select_change_handler*/ ctx[10]);
 				mounted = true;
 			}
 		},
@@ -30287,10 +39070,10 @@ function create_if_block_2$5(ctx) {
 	};
 }
 
-// (68:12) {#each draftOptions as draftOption}
+// (74:12) {#each draftOptions as draftOption}
 function create_each_block$3(ctx) {
 	let option;
-	let t_value = /*draftOption*/ ctx[12].title + "";
+	let t_value = /*draftOption*/ ctx[13].title + "";
 	let t;
 	let option_value_value;
 
@@ -30298,7 +39081,7 @@ function create_each_block$3(ctx) {
 		c() {
 			option = element("option");
 			t = text(t_value);
-			option.__value = option_value_value = /*draftOption*/ ctx[12].path;
+			option.__value = option_value_value = /*draftOption*/ ctx[13].path;
 			option.value = option.__value;
 		},
 		m(target, anchor) {
@@ -30306,9 +39089,9 @@ function create_each_block$3(ctx) {
 			append(option, t);
 		},
 		p(ctx, dirty) {
-			if (dirty & /*draftOptions*/ 2 && t_value !== (t_value = /*draftOption*/ ctx[12].title + "")) set_data(t, t_value);
+			if (dirty & /*draftOptions*/ 2 && t_value !== (t_value = /*draftOption*/ ctx[13].title + "")) set_data(t, t_value);
 
-			if (dirty & /*draftOptions*/ 2 && option_value_value !== (option_value_value = /*draftOption*/ ctx[12].path)) {
+			if (dirty & /*draftOptions*/ 2 && option_value_value !== (option_value_value = /*draftOption*/ ctx[13].path)) {
 				option.__value = option_value_value;
 				option.value = option.__value;
 			}
@@ -30319,10 +39102,10 @@ function create_each_block$3(ctx) {
 	};
 }
 
-// (75:4) {#if $selectedDraft}
-function create_if_block_1$7(ctx) {
+// (81:4) {#if $selectedDraft}
+function create_if_block_1$6(ctx) {
 	let div;
-	let t_value = /*$selectedDraft*/ ctx[2].vaultPath + "";
+	let t_value = /*openablePath*/ ctx[5](/*$selectedDraft*/ ctx[2]) + "";
 	let t;
 	let mounted;
 	let dispose;
@@ -30338,12 +39121,12 @@ function create_if_block_1$7(ctx) {
 			append(div, t);
 
 			if (!mounted) {
-				dispose = listen(div, "click", /*click_handler*/ ctx[10]);
+				dispose = listen(div, "click", /*click_handler*/ ctx[11]);
 				mounted = true;
 			}
 		},
 		p(ctx, dirty) {
-			if (dirty & /*$selectedDraft*/ 4 && t_value !== (t_value = /*$selectedDraft*/ ctx[2].vaultPath + "")) set_data(t, t_value);
+			if (dirty & /*$selectedDraft*/ 4 && t_value !== (t_value = /*openablePath*/ ctx[5](/*$selectedDraft*/ ctx[2]) + "")) set_data(t, t_value);
 		},
 		d(detaching) {
 			if (detaching) detach(div);
@@ -30353,12 +39136,12 @@ function create_if_block_1$7(ctx) {
 	};
 }
 
-function create_fragment$a(ctx) {
+function create_fragment$9(ctx) {
 	let div;
 
 	function select_block_type(ctx, dirty) {
-		if (/*projectOptions*/ ctx[0].length > 0) return create_if_block$9;
-		return create_else_block$3;
+		if (/*projectOptions*/ ctx[0].length > 0) return create_if_block$8;
+		return create_else_block$2;
 	}
 
 	let current_block_type = select_block_type(ctx);
@@ -30397,7 +39180,7 @@ function create_fragment$a(ctx) {
 	};
 }
 
-function instance$a($$self, $$props, $$invalidate) {
+function instance$9($$self, $$props, $$invalidate) {
 	let $selectedDraft;
 	let $selectedDraftVaultPath;
 	let $projects;
@@ -30405,10 +39188,16 @@ function instance$a($$self, $$props, $$invalidate) {
 	let $selectedProjectHasMultipleDrafts;
 	component_subscribe($$self, selectedDraft, $$value => $$invalidate(2, $selectedDraft = $$value));
 	component_subscribe($$self, selectedDraftVaultPath, $$value => $$invalidate(3, $selectedDraftVaultPath = $$value));
-	component_subscribe($$self, projects, $$value => $$invalidate(7, $projects = $$value));
-	component_subscribe($$self, selectedProject, $$value => $$invalidate(8, $selectedProject = $$value));
+	component_subscribe($$self, projects, $$value => $$invalidate(8, $projects = $$value));
+	component_subscribe($$self, selectedProject, $$value => $$invalidate(9, $selectedProject = $$value));
 	component_subscribe($$self, selectedProjectHasMultipleDrafts, $$value => $$invalidate(4, $selectedProjectHasMultipleDrafts = $$value));
 	const openFileAtPath = getContext("onSceneClick");
+
+	// The real note to open/show for a draft — never the synthetic vaultPath of a
+	// project asset, which is not a real file on disk.
+	function openablePath(draft) {
+		return draft ? draftNotePath(draft) : null;
+	}
 
 	// Map current projects to options for select element
 	let projectOptions = [];
@@ -30435,7 +39224,7 @@ function instance$a($$self, $$props, $$invalidate) {
 			draftPath = newProject[0].vaultPath;
 
 			if (newProject[0].format === "single") {
-				openFileAtPath(draftPath, false);
+				openFileAtPath(openablePath(newProject[0]), false);
 			}
 		}
 
@@ -30443,25 +39232,25 @@ function instance$a($$self, $$props, $$invalidate) {
 	}
 
 	function onDraftClick(e) {
-		openFileAtPath($selectedDraft.vaultPath, obsidian.Keymap.isModEvent(e));
+		openFileAtPath(openablePath($selectedDraft), obsidian.Keymap.isModEvent(e));
 	}
 
 	function select_change_handler() {
 		$selectedDraftVaultPath = select_value(this);
 		selectedDraftVaultPath.set($selectedDraftVaultPath);
-		($$invalidate(1, draftOptions), $$invalidate(8, $selectedProject));
+		($$invalidate(1, draftOptions), $$invalidate(9, $selectedProject));
 	}
 
 	const click_handler = e => onDraftClick(e);
 
 	$$self.$$.update = () => {
-		if ($$self.$$.dirty & /*$projects*/ 128) {
+		if ($$self.$$.dirty & /*$projects*/ 256) {
 			{
 				$$invalidate(0, projectOptions = Object.keys($projects));
 			}
 		}
 
-		if ($$self.$$.dirty & /*$selectedProject*/ 256) {
+		if ($$self.$$.dirty & /*$selectedProject*/ 512) {
 			{
 				$$invalidate(1, draftOptions = $selectedProject
 				? $selectedProject.map(d => ({ path: d.vaultPath, title: draftTitle(d) }))
@@ -30476,6 +39265,7 @@ function instance$a($$self, $$props, $$invalidate) {
 		$selectedDraft,
 		$selectedDraftVaultPath,
 		$selectedProjectHasMultipleDrafts,
+		openablePath,
 		projectSelected,
 		onDraftClick,
 		$projects,
@@ -30488,17 +39278,17 @@ function instance$a($$self, $$props, $$invalidate) {
 class ProjectPicker extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$a, create_fragment$a, safe_not_equal, {}, add_css$a);
+		init(this, options, instance$9, create_fragment$9, safe_not_equal, {}, add_css$9);
 	}
 }
 
 /* src/view/components/Disclosure.svelte generated by Svelte v3.49.0 */
 
-function add_css$9(target) {
+function add_css$8(target) {
 	append_styles(target, "svelte-ff880f", ".right-triangle.svelte-ff880f.svelte-ff880f{transition:transform 0.3s;display:flex;align-items:center;justify-content:center;width:var(--size-4-3);color:var(--icon-color);margin-left:calc(var(--size-4-1) * -1);margin-top:calc(var(--size-4-1) * -.25)}.collapsed.svelte-ff880f .right-triangle.svelte-ff880f{transform:rotate(-90deg)}");
 }
 
-function create_fragment$9(ctx) {
+function create_fragment$8(ctx) {
 	let span;
 	let svg;
 	let path;
@@ -30554,7 +39344,7 @@ function create_fragment$9(ctx) {
 	};
 }
 
-function instance$9($$self, $$props, $$invalidate) {
+function instance$8($$self, $$props, $$invalidate) {
 	let { collapsed = false } = $$props;
 	let { class: className = "" } = $$props;
 
@@ -30573,7 +39363,7 @@ function instance$9($$self, $$props, $$invalidate) {
 class Disclosure extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$9, create_fragment$9, safe_not_equal, { collapsed: 0, class: 1 }, add_css$9);
+		init(this, options, instance$8, create_fragment$8, safe_not_equal, { collapsed: 0, class: 1 }, add_css$8);
 	}
 }
 
@@ -30659,7 +39449,7 @@ const ignoreAll = () => {
 
 /* src/view/explorer/SceneList.svelte generated by Svelte v3.49.0 */
 
-function add_css$8(target) {
+function add_css$7(target) {
 	append_styles(target, "svelte-u6nqd", ".group{margin-left:var(--size-4-2)}#scene-list.svelte-u6nqd.svelte-u6nqd{margin:var(--size-4-1) 0}#scene-list.svelte-u6nqd .sortable-scene-list{list-style-type:none;padding:0;margin:0}.scene-container.svelte-u6nqd.svelte-u6nqd{display:flex;flex-direction:row;align-items:center;border:var(--border-width) solid transparent;border-radius:var(--radius-s);cursor:pointer;color:var(--nav-item-color);font-size:var(--nav-item-size);font-weight:var(--nav-item-weight);line-height:var(--line-height-tight);padding:var(--size-4-1) var(--size-4-2);white-space:normal}.scene-container.collapsible.svelte-u6nqd.svelte-u6nqd{display:flex;flex-direction:row;align-items:center;border:var(--border-width) solid transparent;border-radius:var(--radius-s);cursor:pointer;color:var(--nav-item-color);font-size:var(--nav-item-size);font-weight:var(--nav-item-weight);line-height:var(--line-height-tight);padding:var(--size-4-1) var(--size-4-2);white-space:normal}.scene-container.hidden.svelte-u6nqd.svelte-u6nqd{display:none}.scene-container.svelte-u6nqd .svelte-u6nqd:nth-child(2){margin-left:var(--size-4-2)}.selected.svelte-u6nqd.svelte-u6nqd,.svelte-u6nqd:not(.dragging) .scene-container.svelte-u6nqd:hover{background-color:var(--background-secondary-alt);color:var(--text-normal)}.scene-container.svelte-u6nqd.svelte-u6nqd:active{background-color:inherit;color:var(--text-muted)}.longform-scene-number.svelte-u6nqd.svelte-u6nqd{color:var(--text-muted);margin-right:var(--size-4-1);font-weight:bold}.longform-scene-number.svelte-u6nqd.svelte-u6nqd::after{content:\".\"}#longform-unknown-files-wizard.svelte-u6nqd.svelte-u6nqd{border-top:var(--border-width) solid var(--text-muted);padding:var(--size-4-2) 0}.longform-unknown-inner.svelte-u6nqd.svelte-u6nqd{border-left:var(--size-2-1) solid var(--text-accent);padding:0 0 0 var(--size-4-1)}.longform-unknown-explanation.svelte-u6nqd.svelte-u6nqd{color:var(--text-muted);font-size:1em}#longform-unknown-files-wizard.svelte-u6nqd ul.svelte-u6nqd{list-style-type:none;padding:0 0 0 var(--size-4-2)}.longform-unknown-file.svelte-u6nqd.svelte-u6nqd{display:flex;flex-direction:row;justify-content:space-between}.longform-unknown-add.svelte-u6nqd.svelte-u6nqd{color:var(--text-accent);font-weight:bold}.longform-unknown-ignore.svelte-u6nqd.svelte-u6nqd{color:var(--text-muted);font-weight:bold}.scene-drag-ghost{background-color:var(--interactive-accent-hover);color:var(--text-on-accent);margin-left:var(--ghost-indent)}");
 }
 
@@ -30716,7 +39506,7 @@ function create_if_block_2$4(ctx) {
 }
 
 // (357:10) {#if $pluginSettings.numberScenes}
-function create_if_block_1$6(ctx) {
+function create_if_block_1$5(ctx) {
 	let span;
 	let t_value = /*numberLabel*/ ctx[20](/*item*/ ctx[48]) + "";
 	let t;
@@ -30768,7 +39558,7 @@ function create_default_slot(ctx) {
 	let mounted;
 	let dispose;
 	let if_block0 = /*item*/ ctx[48].collapsible && create_if_block_2$4(ctx);
-	let if_block1 = /*$pluginSettings*/ ctx[7].numberScenes && create_if_block_1$6(ctx);
+	let if_block1 = /*$pluginSettings*/ ctx[7].numberScenes && create_if_block_1$5(ctx);
 
 	function click_handler_1(...args) {
 		return /*click_handler_1*/ ctx[24](/*item*/ ctx[48], ...args);
@@ -30883,7 +39673,7 @@ function create_default_slot(ctx) {
 				if (if_block1) {
 					if_block1.p(ctx, dirty);
 				} else {
-					if_block1 = create_if_block_1$6(ctx);
+					if_block1 = create_if_block_1$5(ctx);
 					if_block1.c();
 					if_block1.m(div1, t1);
 				}
@@ -30978,7 +39768,7 @@ function create_default_slot(ctx) {
 }
 
 // (384:2) {#if $selectedDraft && $selectedDraft.format === "scenes" && $selectedDraft.unknownFiles.length > 0}
-function create_if_block$8(ctx) {
+function create_if_block$7(ctx) {
 	let div2;
 	let div1;
 	let p;
@@ -31185,7 +39975,7 @@ function create_each_block$2(ctx) {
 	};
 }
 
-function create_fragment$8(ctx) {
+function create_fragment$7(ctx) {
 	let div1;
 	let div0;
 	let sortablelist;
@@ -31219,7 +40009,7 @@ function create_fragment$8(ctx) {
 	binding_callbacks.push(() => bind(sortablelist, 'items', sortablelist_items_binding));
 	sortablelist.$on("orderChanged", /*itemOrderChanged*/ ctx[9]);
 	sortablelist.$on("indentChanged", /*itemIndentChanged*/ ctx[10]);
-	let if_block = /*$selectedDraft*/ ctx[1] && /*$selectedDraft*/ ctx[1].format === "scenes" && /*$selectedDraft*/ ctx[1].unknownFiles.length > 0 && create_if_block$8(ctx);
+	let if_block = /*$selectedDraft*/ ctx[1] && /*$selectedDraft*/ ctx[1].format === "scenes" && /*$selectedDraft*/ ctx[1].unknownFiles.length > 0 && create_if_block$7(ctx);
 
 	return {
 		c() {
@@ -31269,7 +40059,7 @@ function create_fragment$8(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$8(ctx);
+					if_block = create_if_block$7(ctx);
 					if_block.c();
 					if_block.m(div1, null);
 				}
@@ -31295,7 +40085,7 @@ function create_fragment$8(ctx) {
 	};
 }
 
-function instance$8($$self, $$props, $$invalidate) {
+function instance$7($$self, $$props, $$invalidate) {
 	let $drafts;
 	let $selectedDraft;
 	let $activeFile;
@@ -31730,18 +40520,18 @@ function instance$8($$self, $$props, $$invalidate) {
 class SceneList extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$8, create_fragment$8, safe_not_equal, {}, add_css$8, [-1, -1]);
+		init(this, options, instance$7, create_fragment$7, safe_not_equal, {}, add_css$7, [-1, -1]);
 	}
 }
 
 /* src/view/components/Icon.svelte generated by Svelte v3.49.0 */
 
-function add_css$7(target) {
+function add_css$6(target) {
 	append_styles(target, "svelte-eq2zbb", "span.svelte-eq2zbb{display:flex;align-items:center;justify-content:center}");
 }
 
 // (9:0) {#if iconName.length > 0}
-function create_if_block$7(ctx) {
+function create_if_block$6(ctx) {
 	let span;
 	let icon_action;
 	let mounted;
@@ -31771,9 +40561,9 @@ function create_if_block$7(ctx) {
 	};
 }
 
-function create_fragment$7(ctx) {
+function create_fragment$6(ctx) {
 	let if_block_anchor;
-	let if_block = /*iconName*/ ctx[0].length > 0 && create_if_block$7(ctx);
+	let if_block = /*iconName*/ ctx[0].length > 0 && create_if_block$6(ctx);
 
 	return {
 		c() {
@@ -31789,7 +40579,7 @@ function create_fragment$7(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$7(ctx);
+					if_block = create_if_block$6(ctx);
 					if_block.c();
 					if_block.m(if_block_anchor.parentNode, if_block_anchor);
 				}
@@ -31807,7 +40597,7 @@ function create_fragment$7(ctx) {
 	};
 }
 
-function instance$7($$self, $$props, $$invalidate) {
+function instance$6($$self, $$props, $$invalidate) {
 	let { iconName = "" } = $$props;
 
 	const icon = (node, icon) => {
@@ -31824,7 +40614,7 @@ function instance$7($$self, $$props, $$invalidate) {
 class Icon extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$7, create_fragment$7, safe_not_equal, { iconName: 0 }, add_css$7);
+		init(this, options, instance$6, create_fragment$6, safe_not_equal, { iconName: 0 }, add_css$6);
 	}
 }
 
@@ -33997,7 +42787,7 @@ class FolderSuggest extends TextInputSuggest {
 
 /* src/view/explorer/DraftList.svelte generated by Svelte v3.49.0 */
 
-function add_css$6(target) {
+function add_css$5(target) {
 	append_styles(target, "svelte-1ytjg2y", "#draft-list.svelte-1ytjg2y.svelte-1ytjg2y{margin:var(--size-4-1) 0}#draft-list.svelte-1ytjg2y ol.svelte-1ytjg2y{list-style-type:none;padding:0;margin:0}.draft-container.svelte-1ytjg2y.svelte-1ytjg2y{display:flex;border:var(--border-width) solid transparent;border-radius:var(--radius-s);cursor:pointer;color:var(--text-muted);font-size:var(--font-small);line-height:var(--h3-line-height);white-space:nowrap;padding:var(--size-2-1) 0}.selected.svelte-1ytjg2y.svelte-1ytjg2y,.draft-container.svelte-1ytjg2y.svelte-1ytjg2y:hover{background-color:var(--background-secondary-alt);color:var(--text-normal)}.draft-container.svelte-1ytjg2y.svelte-1ytjg2y:active{background-color:inherit;color:var(--text-muted)}");
 }
 
@@ -34008,7 +42798,7 @@ function get_each_context$1(ctx, list, i) {
 }
 
 // (52:2) {#if $selectedProject}
-function create_if_block$6(ctx) {
+function create_if_block$5(ctx) {
 	let ol;
 	let each_value = /*$selectedProject*/ ctx[1];
 	let each_blocks = [];
@@ -34145,9 +42935,9 @@ function create_each_block$1(ctx) {
 	};
 }
 
-function create_fragment$6(ctx) {
+function create_fragment$5(ctx) {
 	let div;
-	let if_block = /*$selectedProject*/ ctx[1] && create_if_block$6(ctx);
+	let if_block = /*$selectedProject*/ ctx[1] && create_if_block$5(ctx);
 
 	return {
 		c() {
@@ -34165,7 +42955,7 @@ function create_fragment$6(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$6(ctx);
+					if_block = create_if_block$5(ctx);
 					if_block.c();
 					if_block.m(div, null);
 				}
@@ -34183,7 +42973,7 @@ function create_fragment$6(ctx) {
 	};
 }
 
-function instance$6($$self, $$props, $$invalidate) {
+function instance$5($$self, $$props, $$invalidate) {
 	let $drafts;
 	let $selectedDraftVaultPath;
 	let $selectedProject;
@@ -34264,13 +43054,13 @@ function instance$6($$self, $$props, $$invalidate) {
 class DraftList extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$6, create_fragment$6, safe_not_equal, {}, add_css$6);
+		init(this, options, instance$5, create_fragment$5, safe_not_equal, {}, add_css$5);
 	}
 }
 
 /* src/view/explorer/ProjectDetails.svelte generated by Svelte v3.49.0 */
 
-function add_css$5(target) {
+function add_css$4(target) {
 	append_styles(target, "svelte-1ioudaq", ".longform-project-section.svelte-1ioudaq.svelte-1ioudaq{margin-top:var(--size-4-4);padding-bottom:var(--size-4-2);padding-left:var(--size-4-8)}.longform-project-section.svelte-1ioudaq+.longform-project-section.svelte-1ioudaq{border-top:var(--border-width) solid var(--background-modifier-border);padding-top:var(--size-4-4)}.longform-project-details-section-header.svelte-1ioudaq.svelte-1ioudaq{display:flex;flex-direction:row;justify-content:start;align-items:center;cursor:pointer;margin-left:calc(var(--size-4-6) * -1)}h4.svelte-1ioudaq.svelte-1ioudaq{font-size:var(--font-ui-medium);color:var(--text-normal);user-select:none;font-weight:inherit;margin:0 0 0 var(--size-4-4)}input.svelte-1ioudaq.svelte-1ioudaq{width:100%}label.svelte-1ioudaq.svelte-1ioudaq{display:block;font-size:var(--font-ui-smaller);color:var(--text-muted);margin-top:var(--size-4-4);line-height:var(--line-height-tight)}p.longform-project-warning.svelte-1ioudaq.svelte-1ioudaq{color:var(--text-faint);font-size:var(--font-smallest);margin:var(--size-2-1) 0 0 var(--size-2-1);line-height:normal}.word-counts.svelte-1ioudaq p.svelte-1ioudaq{margin:var(--size-4-2) 0;font-size:var(--font-smallest);color:var(--text-muted)}.word-counts.svelte-1ioudaq p strong.svelte-1ioudaq{color:var(--text-normal)}.progress.svelte-1ioudaq.svelte-1ioudaq{height:var(--size-4-6);width:100%;background-color:var(--background-secondary-alt);border-radius:var(--radius-s);position:relative;overflow:hidden;margin-top:var(--size-4-4)}.progress.svelte-1ioudaq.svelte-1ioudaq:before{content:attr(data-label);font-size:var(--font-smallest);color:var(--progress-text-color);font-weight:bold;position:absolute;text-align:center;top:0;left:0;right:0;display:flex;justify-content:center;align-items:center;align-self:center;height:100%}.progress.svelte-1ioudaq .value.svelte-1ioudaq{height:100%;background-color:var(--text-accent)}.drafts-title-container.svelte-1ioudaq.svelte-1ioudaq{display:flex;flex-direction:row;justify-content:space-between;align-items:center;margin-bottom:var(--size-4-2)}.drafts-title-container.svelte-1ioudaq h4.svelte-1ioudaq{margin-right:var(--size-4-2)}.drafts-title-container.svelte-1ioudaq button.svelte-1ioudaq{margin:0;padding:var(--size-4-2);color:var(--interactive-accent);background-color:inherit}.longform-manuscript-metadata-help.svelte-1ioudaq.svelte-1ioudaq{color:var(--text-muted);font-size:var(--font-ui-smaller);line-height:var(--line-height-tight);margin:var(--size-4-2) 0 var(--size-4-3) 0}.longform-manuscript-metadata-help.svelte-1ioudaq a.svelte-1ioudaq{color:var(--text-accent)}.longform-edit-metadata-button.svelte-1ioudaq.svelte-1ioudaq{width:100%}");
 }
 
@@ -34662,7 +43452,7 @@ function create_if_block_6(ctx) {
 }
 
 // (253:4) {#if showWordCount}
-function create_if_block_1$5(ctx) {
+function create_if_block_1$4(ctx) {
 	let div;
 	let t0;
 	let t1;
@@ -34866,7 +43656,7 @@ function create_if_block_2$3(ctx) {
 }
 
 // (298:4) {#if showDrafts}
-function create_if_block$5(ctx) {
+function create_if_block$4(ctx) {
 	let draftlist;
 	let current;
 	draftlist = new DraftList({});
@@ -34894,7 +43684,7 @@ function create_if_block$5(ctx) {
 	};
 }
 
-function create_fragment$5(ctx) {
+function create_fragment$4(ctx) {
 	let div5;
 	let t0;
 	let t1;
@@ -34926,14 +43716,14 @@ function create_fragment$5(ctx) {
 			props: { collapsed: !/*showWordCount*/ ctx[2] }
 		});
 
-	let if_block2 = /*showWordCount*/ ctx[2] && create_if_block_1$5(ctx);
+	let if_block2 = /*showWordCount*/ ctx[2] && create_if_block_1$4(ctx);
 
 	disclosure1 = new Disclosure({
 			props: { collapsed: !/*showDrafts*/ ctx[3] }
 		});
 
 	icon = new Icon({ props: { iconName: "plus-with-circle" } });
-	let if_block3 = /*showDrafts*/ ctx[3] && create_if_block$5();
+	let if_block3 = /*showDrafts*/ ctx[3] && create_if_block$4();
 
 	return {
 		c() {
@@ -35070,7 +43860,7 @@ function create_fragment$5(ctx) {
 				if (if_block2) {
 					if_block2.p(ctx, dirty);
 				} else {
-					if_block2 = create_if_block_1$5(ctx);
+					if_block2 = create_if_block_1$4(ctx);
 					if_block2.c();
 					if_block2.m(div1, null);
 				}
@@ -35095,7 +43885,7 @@ function create_fragment$5(ctx) {
 						transition_in(if_block3, 1);
 					}
 				} else {
-					if_block3 = create_if_block$5();
+					if_block3 = create_if_block$4();
 					if_block3.c();
 					transition_in(if_block3, 1);
 					if_block3.m(div4, null);
@@ -35158,7 +43948,7 @@ function pluralize(count, noun, pluralNoun = null) {
 	}
 }
 
-function instance$5($$self, $$props, $$invalidate) {
+function instance$4($$self, $$props, $$invalidate) {
 	let $pluginSettings;
 	let $goalProgress;
 	let $selectedDraft;
@@ -35192,7 +43982,7 @@ function instance$5($$self, $$props, $$invalidate) {
 				let titleInFrontmatter = true;
 
 				if (newTitle.length === 0) {
-					newTitle = lodash.exports.last(_drafts[currentDraftIndex].vaultPath.split("/")).split(".md")[0];
+					newTitle = lodash.exports.last(draftIndexPath(_drafts[currentDraftIndex]).split("/")).split(".md")[0];
 					titleInFrontmatter = false;
 				}
 
@@ -35227,7 +44017,7 @@ function instance$5($$self, $$props, $$invalidate) {
 				return;
 			}
 
-			const root = app.vault.getAbstractFileByPath($selectedDraft.vaultPath).parent.path;
+			const root = projectFolderPath($selectedDraft, app.vault);
 			const path = obsidian.normalizePath(`${root}/${newFolder}`);
 			const exists = yield app.vault.adapter.exists(path);
 
@@ -35399,7 +44189,7 @@ function instance$5($$self, $$props, $$invalidate) {
 class ProjectDetails extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$5, create_fragment$5, safe_not_equal, {}, add_css$5, [-1, -1]);
+		init(this, options, instance$4, create_fragment$4, safe_not_equal, {}, add_css$4, [-1, -1]);
 	}
 }
 
@@ -35407,6 +44197,7 @@ const LONGFORM_CURRENT_PLUGIN_DATA_VERSION = 3;
 const DEFAULT_SESSION_FILE = "longform-sessions.json";
 const DEFAULT_SETTINGS = {
     version: LONGFORM_CURRENT_PLUGIN_DATA_VERSION,
+    language: "auto",
     selectedDraftVaultPath: null,
     workflows: null,
     userScriptFolder: null,
@@ -35427,9 +44218,19 @@ const DEFAULT_SETTINGS = {
     waitForSync: false,
     fallbackWaitEnabled: true,
     fallbackWaitTime: 5,
+    pandocAssetsUrl: "",
+    pandocAssetsFolder: "",
+    pandocOutputFolder: "",
+    pandocBinary: "pandoc",
+    pandocExtraBinFolders: "",
+    pandocBibliography: "",
+    pandocGlobalBibliography: "",
+    pandocSetupDismissed: false,
+    pandocMarketIndexUrl: "",
 };
 const TRACKED_SETTINGS_PATHS = [
     "version",
+    "language",
     "projects",
     "selectedDraftVaultPath",
     "userScriptFolder",
@@ -35449,8 +44250,18 @@ const TRACKED_SETTINGS_PATHS = [
     "fallbackWaitEnabled",
     "fallbackWaitTime",
     "writeProperty",
+    "pandocAssetsUrl",
+    "pandocAssetsFolder",
+    "pandocOutputFolder",
+    "pandocBinary",
+    "pandocExtraBinFolders",
+    "pandocBibliography",
+    "pandocGlobalBibliography",
+    "pandocSetupDismissed",
+    "pandocMarketIndexUrl",
 ];
 const PASSTHROUGH_SAVE_SETTINGS_PATHS = [
+    "language",
     "sessionStorage",
     "userScriptFolder",
     "showWordCountInStatusBar",
@@ -35467,6 +44278,13 @@ const PASSTHROUGH_SAVE_SETTINGS_PATHS = [
     "fallbackWaitEnabled",
     "fallbackWaitTime",
     "writeProperty",
+    "pandocAssetsUrl",
+    "pandocAssetsFolder",
+    "pandocOutputFolder",
+    "pandocBinary",
+    "pandocBibliography",
+    "pandocSetupDismissed",
+    "pandocMarketIndexUrl",
 ];
 
 const INDEX_MIGRATION_NOTICE = "\n\nThis is a Longform 1.0 Index File, and the project it corresponded to has since been migrated. It has been marked as to-be-ignored in the new project and can be safely deleted.";
@@ -35478,7 +44296,7 @@ function migrate(settings, app) {
     var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         if (settings.version >= LONGFORM_CURRENT_PLUGIN_DATA_VERSION) {
-            console.log(`[Longform] Attempted to migrate settings with version ${settings.version} > current (${LONGFORM_CURRENT_PLUGIN_DATA_VERSION}); ignoring.`);
+            console.log(`[PaperOut] Attempted to migrate settings with version ${settings.version} > current (${LONGFORM_CURRENT_PLUGIN_DATA_VERSION}); ignoring.`);
             return;
         }
         let currentVersion = settings.version;
@@ -35491,7 +44309,7 @@ function migrate(settings, app) {
                 // projects with > 1 draft
                 const projectPaths = Object.keys(settings.projects);
                 for (const projectPath of projectPaths) {
-                    console.log(`[Longform] Migrating ${projectPath} to Projects 2.0…`);
+                    console.log(`[PaperOut] Migrating ${projectPath} to Projects 2.0…`);
                     const project = settings.projects[projectPath];
                     const normalizedProjectPath = obsidian.normalizePath(projectPath);
                     const indexPath = obsidian.normalizePath(`${projectPath}/${project.indexFile}.md`);
@@ -35516,7 +44334,7 @@ function migrate(settings, app) {
                         yield app.vault.adapter.append(indexPath, INDEX_MIGRATION_NOTICE);
                     }
                     catch (error) {
-                        console.log(`[Longform] Error appending deprecation notice to old index file`, error);
+                        console.log(`[PaperOut] Error appending deprecation notice to old index file`, error);
                     }
                     if (drafts.length === 1) {
                         const oldDraft = drafts[0];
@@ -35539,7 +44357,7 @@ function migrate(settings, app) {
                         };
                         yield insertDraftIntoFrontmatter(app, vaultPath, draft);
                         yield moveScenes(obsidian.normalizePath(`${projectPath}/${project.draftsPath}/${oldDraft.folder}/`), normalizedProjectPath);
-                        console.log(`[Longform] Wrote only draft to ${vaultPath}`);
+                        console.log(`[PaperOut] Wrote only draft to ${vaultPath}`);
                     }
                     else {
                         for (const oldDraft of drafts) {
@@ -35548,7 +44366,7 @@ function migrate(settings, app) {
                                 yield app.vault.createFolder(vaultPathParent);
                             }
                             catch (error) {
-                                console.log(`[Longform] Error creating folder during migration`, error);
+                                console.log(`[PaperOut] Error creating folder during migration`, error);
                             }
                             const vaultPath = obsidian.normalizePath(`${vaultPathParent}/${oldDraft.name}.md`);
                             const draft = {
@@ -35569,7 +44387,7 @@ function migrate(settings, app) {
                             };
                             yield insertDraftIntoFrontmatter(app, vaultPath, draft);
                             yield moveScenes(obsidian.normalizePath(`${projectPath}/${project.draftsPath}/${oldDraft.folder}/`), vaultPathParent);
-                            console.log(`[Longform] Wrote ${oldDraft.name} to ${vaultPath}`);
+                            console.log(`[PaperOut] Wrote ${oldDraft.name} to ${vaultPath}`);
                         }
                     }
                 }
@@ -35587,11 +44405,11 @@ function migrate(settings, app) {
 
 /* src/view/explorer/Tab.svelte generated by Svelte v3.49.0 */
 
-function add_css$4(target) {
+function add_css$3(target) {
 	append_styles(target, "svelte-1ohhb9z", ".tab-button.svelte-1ohhb9z{background:none;border:none;border-bottom:none;border-radius:var(--tab-radius-active);padding:0 1em 0 0.4em;box-shadow:none;margin:0;color:var(--tab-text-color-focused);font-size:var(--tab-font-size);font-weight:var(--tab-font-weight);white-space:nowrap;border-right:1px solid var(--tab-outline-color)}.tab-button.svelte-1ohhb9z:hover{color:var(--tab-text-color-focused);background-color:var(--background-modifier-hover)}.tab-button.selected.svelte-1ohhb9z{background-color:var(--tab-background-active);color:var(--tab-text-color-focused-active)}");
 }
 
-// (10:2) {#if tab == "Scenes"}
+// (16:2) {#if tab == "Scenes"}
 function create_if_block_2$2(ctx) {
 	let svg;
 	let path0;
@@ -35634,8 +44452,8 @@ function create_if_block_2$2(ctx) {
 	};
 }
 
-// (31:2) {#if tab == "Project"}
-function create_if_block_1$4(ctx) {
+// (37:2) {#if tab == "Project"}
+function create_if_block_1$3(ctx) {
 	let svg;
 	let path0;
 	let path1;
@@ -35673,8 +44491,8 @@ function create_if_block_1$4(ctx) {
 	};
 }
 
-// (48:2) {#if tab == "Compile"}
-function create_if_block$4(ctx) {
+// (54:2) {#if tab == "Compile"}
+function create_if_block$3(ctx) {
 	let svg;
 	let rect;
 	let path;
@@ -35712,17 +44530,18 @@ function create_if_block$4(ctx) {
 	};
 }
 
-function create_fragment$4(ctx) {
+function create_fragment$3(ctx) {
 	let button;
 	let t0;
 	let t1;
 	let t2;
+	let t3_value = /*$t*/ ctx[2](/*tabLabelKeys*/ ctx[3][/*tab*/ ctx[0]]) + "";
 	let t3;
 	let mounted;
 	let dispose;
 	let if_block0 = /*tab*/ ctx[0] == "Scenes" && create_if_block_2$2();
-	let if_block1 = /*tab*/ ctx[0] == "Project" && create_if_block_1$4();
-	let if_block2 = /*tab*/ ctx[0] == "Compile" && create_if_block$4();
+	let if_block1 = /*tab*/ ctx[0] == "Project" && create_if_block_1$3();
+	let if_block2 = /*tab*/ ctx[0] == "Compile" && create_if_block$3();
 
 	return {
 		c() {
@@ -35733,7 +44552,7 @@ function create_fragment$4(ctx) {
 			t1 = space();
 			if (if_block2) if_block2.c();
 			t2 = space();
-			t3 = text(/*tab*/ ctx[0]);
+			t3 = text(t3_value);
 			attr(button, "class", "tab-button svelte-1ohhb9z");
 			toggle_class(button, "selected", /*$selectedTab*/ ctx[1] === /*tab*/ ctx[0]);
 		},
@@ -35748,7 +44567,7 @@ function create_fragment$4(ctx) {
 			append(button, t3);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*click_handler*/ ctx[2]);
+				dispose = listen(button, "click", /*click_handler*/ ctx[4]);
 				mounted = true;
 			}
 		},
@@ -35766,7 +44585,7 @@ function create_fragment$4(ctx) {
 
 			if (/*tab*/ ctx[0] == "Project") {
 				if (if_block1) ; else {
-					if_block1 = create_if_block_1$4();
+					if_block1 = create_if_block_1$3();
 					if_block1.c();
 					if_block1.m(button, t1);
 				}
@@ -35777,7 +44596,7 @@ function create_fragment$4(ctx) {
 
 			if (/*tab*/ ctx[0] == "Compile") {
 				if (if_block2) ; else {
-					if_block2 = create_if_block$4();
+					if_block2 = create_if_block$3();
 					if_block2.c();
 					if_block2.m(button, t2);
 				}
@@ -35786,7 +44605,7 @@ function create_fragment$4(ctx) {
 				if_block2 = null;
 			}
 
-			if (dirty & /*tab*/ 1) set_data(t3, /*tab*/ ctx[0]);
+			if (dirty & /*$t, tab*/ 5 && t3_value !== (t3_value = /*$t*/ ctx[2](/*tabLabelKeys*/ ctx[3][/*tab*/ ctx[0]]) + "")) set_data(t3, t3_value);
 
 			if (dirty & /*$selectedTab, tab*/ 3) {
 				toggle_class(button, "selected", /*$selectedTab*/ ctx[1] === /*tab*/ ctx[0]);
@@ -35805,37 +44624,46 @@ function create_fragment$4(ctx) {
 	};
 }
 
-function instance$4($$self, $$props, $$invalidate) {
+function instance$3($$self, $$props, $$invalidate) {
 	let $selectedTab;
+	let $t;
 	component_subscribe($$self, selectedTab, $$value => $$invalidate(1, $selectedTab = $$value));
+	component_subscribe($$self, t, $$value => $$invalidate(2, $t = $$value));
 	let { tab } = $$props;
+
+	const tabLabelKeys = {
+		Scenes: "explorer.tab.scenes",
+		Project: "explorer.tab.project",
+		Compile: "explorer.tab.compile"
+	};
+
 	const click_handler = () => selectedTab.set(tab);
 
 	$$self.$$set = $$props => {
 		if ('tab' in $$props) $$invalidate(0, tab = $$props.tab);
 	};
 
-	return [tab, $selectedTab, click_handler];
+	return [tab, $selectedTab, $t, tabLabelKeys, click_handler];
 }
 
 class Tab extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$4, create_fragment$4, safe_not_equal, { tab: 0 }, add_css$4);
+		init(this, options, instance$3, create_fragment$3, safe_not_equal, { tab: 0 }, add_css$3);
 	}
 }
 
 /* src/view/explorer/ExplorerView.svelte generated by Svelte v3.49.0 */
 
-function add_css$3(target) {
+function add_css$2(target) {
 	append_styles(target, "svelte-1v1mbat", ".longform-explorer.svelte-1v1mbat{font-size:var(--longform-explorer-font-size)}.longform-migrate-button.svelte-1v1mbat{background-color:var(--interactive-accent);color:var(--text-on-accent)}.longform-migrate-button.svelte-1v1mbat:hover{background-color:var(--interactive-accent-hover)}.tab-list.svelte-1v1mbat{margin:0;font-size:0}.tab-panel-container.svelte-1v1mbat{background:var(--background-primary);padding:var(--size-4-1) var(--size-4-2)}.tab-panel-container.disconnected.svelte-1v1mbat{background:none;padding:0}.longform-sync-wait.svelte-1v1mbat{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:2rem;gap:1rem}.longform-spinner.svelte-1v1mbat{border:3px solid var(--background-modifier-border);border-top:3px solid var(--text-accent);border-radius:50%;width:24px;height:24px;animation:svelte-1v1mbat-spin 1s linear infinite}.longform-sync-message.svelte-1v1mbat{color:var(--text-muted);font-size:0.8em;text-align:center}@keyframes svelte-1v1mbat-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}");
 }
 
-// (49:0) {:else}
-function create_else_block$2(ctx) {
+// (46:0) {:else}
+function create_else_block$1(ctx) {
 	let div;
 	let projectpicker;
-	let t;
+	let t_1;
 	let current_block_type_index;
 	let if_block;
 	let current;
@@ -35855,14 +44683,14 @@ function create_else_block$2(ctx) {
 		c() {
 			div = element("div");
 			create_component(projectpicker.$$.fragment);
-			t = space();
+			t_1 = space();
 			if_block.c();
 			attr(div, "class", "longform-explorer svelte-1v1mbat");
 		},
 		m(target, anchor) {
 			insert(target, div, anchor);
 			mount_component(projectpicker, div, null);
-			append(div, t);
+			append(div, t_1);
 			if_blocks[current_block_type_index].m(div, null);
 			current = true;
 		},
@@ -35912,23 +44740,36 @@ function create_else_block$2(ctx) {
 	};
 }
 
-// (42:26) 
-function create_if_block_1$3(ctx) {
+// (39:26) 
+function create_if_block_1$2(ctx) {
 	let div2;
+	let div0;
+	let t0;
+	let div1;
+	let t1_value = /*$t*/ ctx[3]("explorer.syncWaiting") + "";
+	let t1;
 
 	return {
 		c() {
 			div2 = element("div");
-
-			div2.innerHTML = `<div class="longform-spinner svelte-1v1mbat"></div> 
-    <div class="longform-sync-message svelte-1v1mbat">Waiting for Obsidian Sync to complete...</div>`;
-
+			div0 = element("div");
+			t0 = space();
+			div1 = element("div");
+			t1 = text(t1_value);
+			attr(div0, "class", "longform-spinner svelte-1v1mbat");
+			attr(div1, "class", "longform-sync-message svelte-1v1mbat");
 			attr(div2, "class", "longform-sync-wait svelte-1v1mbat");
 		},
 		m(target, anchor) {
 			insert(target, div2, anchor);
+			append(div2, div0);
+			append(div2, t0);
+			append(div2, div1);
+			append(div1, t1);
 		},
-		p: noop,
+		p(ctx, dirty) {
+			if (dirty & /*$t*/ 8 && t1_value !== (t1_value = /*$t*/ ctx[3]("explorer.syncWaiting") + "")) set_data(t1, t1_value);
+		},
 		i: noop,
 		o: noop,
 		d(detaching) {
@@ -35937,14 +44778,24 @@ function create_if_block_1$3(ctx) {
 	};
 }
 
-// (25:0) {#if $needsMigration}
-function create_if_block$3(ctx) {
+// (26:0) {#if $needsMigration}
+function create_if_block$2(ctx) {
 	let div;
 	let p0;
+	let t0_value = /*$t*/ ctx[3]("explorer.migration.body1") + "";
+	let t0;
 	let t1;
 	let p1;
+	let t2_value = /*$t*/ ctx[3]("explorer.migration.body2Prefix") + "";
+	let t2;
+	let a;
+	let t3_value = /*$t*/ ctx[3]("explorer.migration.body2Link") + "";
+	let t3;
+	let t4;
 	let t5;
 	let button;
+	let t6_value = /*$t*/ ctx[3]("explorer.migration.button") + "";
+	let t6;
 	let mounted;
 	let dispose;
 
@@ -35952,13 +44803,17 @@ function create_if_block$3(ctx) {
 		c() {
 			div = element("div");
 			p0 = element("p");
-			p0.textContent = "Longform has been upgraded and requires a migration to a new format.\n      Deprecated index files will be deleted, and some scene files may move.\n      It’s recommended to back up your vault before migrating.";
+			t0 = text(t0_value);
 			t1 = space();
 			p1 = element("p");
-			p1.innerHTML = `You can view the docs and an explanation of what this migration does <a href="https://github.com/kevboh/longform/blob/main/docs/MIGRATING_FROM_VERSION_1_TO_2.md">here</a>.`;
+			t2 = text(t2_value);
+			a = element("a");
+			t3 = text(t3_value);
+			t4 = text(".");
 			t5 = space();
 			button = element("button");
-			button.textContent = "Migrate";
+			t6 = text(t6_value);
+			attr(a, "href", "https://github.com/kevboh/longform/blob/main/docs/MIGRATING_FROM_VERSION_1_TO_2.md");
 			attr(button, "class", "longform-migrate-button svelte-1v1mbat");
 			attr(button, "type", "button");
 			attr(div, "class", "longform-explorer svelte-1v1mbat");
@@ -35966,17 +44821,28 @@ function create_if_block$3(ctx) {
 		m(target, anchor) {
 			insert(target, div, anchor);
 			append(div, p0);
+			append(p0, t0);
 			append(div, t1);
 			append(div, p1);
+			append(p1, t2);
+			append(p1, a);
+			append(a, t3);
+			append(p1, t4);
 			append(div, t5);
 			append(div, button);
+			append(button, t6);
 
 			if (!mounted) {
-				dispose = listen(button, "click", /*doMigration*/ ctx[4]);
+				dispose = listen(button, "click", /*doMigration*/ ctx[5]);
 				mounted = true;
 			}
 		},
-		p: noop,
+		p(ctx, dirty) {
+			if (dirty & /*$t*/ 8 && t0_value !== (t0_value = /*$t*/ ctx[3]("explorer.migration.body1") + "")) set_data(t0, t0_value);
+			if (dirty & /*$t*/ 8 && t2_value !== (t2_value = /*$t*/ ctx[3]("explorer.migration.body2Prefix") + "")) set_data(t2, t2_value);
+			if (dirty & /*$t*/ 8 && t3_value !== (t3_value = /*$t*/ ctx[3]("explorer.migration.body2Link") + "")) set_data(t3, t3_value);
+			if (dirty & /*$t*/ 8 && t6_value !== (t6_value = /*$t*/ ctx[3]("explorer.migration.button") + "")) set_data(t6, t6_value);
+		},
 		i: noop,
 		o: noop,
 		d(detaching) {
@@ -35987,7 +44853,7 @@ function create_if_block$3(ctx) {
 	};
 }
 
-// (76:4) {:else}
+// (73:4) {:else}
 function create_else_block_2(ctx) {
 	let div2;
 	let div1;
@@ -36081,7 +44947,7 @@ function create_else_block_2(ctx) {
 	};
 }
 
-// (52:4) {#if $selectedDraft && $selectedDraft.format === "scenes"}
+// (49:4) {#if $selectedDraft && $selectedDraft.format === "scenes"}
 function create_if_block_2$1(ctx) {
 	let div2;
 	let div1;
@@ -36186,7 +45052,7 @@ function create_if_block_2$1(ctx) {
 	};
 }
 
-// (88:8) {:else}
+// (85:8) {:else}
 function create_else_block_3(ctx) {
 	let div;
 	let compileview;
@@ -36220,7 +45086,7 @@ function create_else_block_3(ctx) {
 	};
 }
 
-// (84:8) {#if $selectedTab === "Project"}
+// (81:8) {#if $selectedTab === "Project"}
 function create_if_block_5(ctx) {
 	let div;
 	let projectdetails;
@@ -36254,7 +45120,7 @@ function create_if_block_5(ctx) {
 	};
 }
 
-// (70:8) {:else}
+// (67:8) {:else}
 function create_else_block_1(ctx) {
 	let div;
 	let compileview;
@@ -36288,7 +45154,7 @@ function create_else_block_1(ctx) {
 	};
 }
 
-// (66:45) 
+// (63:45) 
 function create_if_block_4(ctx) {
 	let div;
 	let projectdetails;
@@ -36322,11 +45188,11 @@ function create_if_block_4(ctx) {
 	};
 }
 
-// (61:8) {#if $selectedTab === "Scenes"}
+// (58:8) {#if $selectedTab === "Scenes"}
 function create_if_block_3(ctx) {
 	let div;
 	let scenelist;
-	let t;
+	let t_1;
 	let newscenefield;
 	let current;
 	scenelist = new SceneList({});
@@ -36336,14 +45202,14 @@ function create_if_block_3(ctx) {
 		c() {
 			div = element("div");
 			create_component(scenelist.$$.fragment);
-			t = space();
+			t_1 = space();
 			create_component(newscenefield.$$.fragment);
 			attr(div, "class", "tab-panel-container svelte-1v1mbat");
 		},
 		m(target, anchor) {
 			insert(target, div, anchor);
 			mount_component(scenelist, div, null);
-			append(div, t);
+			append(div, t_1);
 			mount_component(newscenefield, div, null);
 			current = true;
 		},
@@ -36366,17 +45232,17 @@ function create_if_block_3(ctx) {
 	};
 }
 
-function create_fragment$3(ctx) {
+function create_fragment$2(ctx) {
 	let current_block_type_index;
 	let if_block;
 	let if_block_anchor;
 	let current;
-	const if_block_creators = [create_if_block$3, create_if_block_1$3, create_else_block$2];
+	const if_block_creators = [create_if_block$2, create_if_block_1$2, create_else_block$1];
 	const if_blocks = [];
 
 	function select_block_type(ctx, dirty) {
 		if (/*$needsMigration*/ ctx[2]) return 0;
-		if (/*$waitingForSync*/ ctx[3]) return 1;
+		if (/*$waitingForSync*/ ctx[4]) return 1;
 		return 2;
 	}
 
@@ -36436,15 +45302,17 @@ function create_fragment$3(ctx) {
 	};
 }
 
-function instance$3($$self, $$props, $$invalidate) {
+function instance$2($$self, $$props, $$invalidate) {
 	let $selectedTab;
 	let $selectedDraft;
 	let $needsMigration;
+	let $t;
 	let $waitingForSync;
 	component_subscribe($$self, selectedTab, $$value => $$invalidate(0, $selectedTab = $$value));
 	component_subscribe($$self, selectedDraft, $$value => $$invalidate(1, $selectedDraft = $$value));
 	component_subscribe($$self, needsMigration, $$value => $$invalidate(2, $needsMigration = $$value));
-	component_subscribe($$self, waitingForSync, $$value => $$invalidate(3, $waitingForSync = $$value));
+	component_subscribe($$self, t, $$value => $$invalidate(3, $t = $$value));
+	component_subscribe($$self, waitingForSync, $$value => $$invalidate(4, $waitingForSync = $$value));
 	const _migrate = getContext("migrate");
 
 	function doMigration() {
@@ -36461,24 +45329,31 @@ function instance$3($$self, $$props, $$invalidate) {
 		}
 	};
 
-	return [$selectedTab, $selectedDraft, $needsMigration, $waitingForSync, doMigration];
+	return [
+		$selectedTab,
+		$selectedDraft,
+		$needsMigration,
+		$t,
+		$waitingForSync,
+		doMigration
+	];
 }
 
 class ExplorerView extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$3, create_fragment$3, safe_not_equal, {}, add_css$3);
+		init(this, options, instance$2, create_fragment$2, safe_not_equal, {}, add_css$2);
 	}
 }
 
 /* src/view/project-lifecycle/new-draft-modal/NewDraftModal.svelte generated by Svelte v3.49.0 */
 
-function add_css$2(target) {
+function add_css$1(target) {
 	append_styles(target, "svelte-1kaigjd", ".draft-title-container.svelte-1kaigjd.svelte-1kaigjd{margin-bottom:var(--size-4-4)}label.svelte-1kaigjd.svelte-1kaigjd{font-weight:bold;color:var(--text-muted);display:block;font-size:var(--font-smallest)}input[type=\"text\"].svelte-1kaigjd.svelte-1kaigjd{width:100%;font-size:var(--h2-size);height:var(--size-4-12);padding:var(--size-4-2)}.source-path.svelte-1kaigjd.svelte-1kaigjd{color:var(--text-muted)}.target-path.svelte-1kaigjd.svelte-1kaigjd{color:var(--text-accent)}.draft-creation-container.svelte-1kaigjd.svelte-1kaigjd{display:flex;flex-direction:row;justify-content:end}.draft-creation-container.svelte-1kaigjd button.svelte-1kaigjd{font-weight:bold;background-color:var(--interactive-accent);color:var(--text-on-accent);margin:0}");
 }
 
 // (73:4) {#if valid && $selectedDraft}
-function create_if_block$2(ctx) {
+function create_if_block$1(ctx) {
 	let p;
 	let t0;
 	let t1;
@@ -36493,7 +45368,7 @@ function create_if_block$2(ctx) {
 	let button;
 	let mounted;
 	let dispose;
-	let if_block = /*copyScenes*/ ctx[3] && create_if_block_1$2();
+	let if_block = /*copyScenes*/ ctx[3] && create_if_block_1$1();
 
 	return {
 		c() {
@@ -36538,7 +45413,7 @@ function create_if_block$2(ctx) {
 		p(ctx, dirty) {
 			if (/*copyScenes*/ ctx[3]) {
 				if (if_block) ; else {
-					if_block = create_if_block_1$2();
+					if_block = create_if_block_1$1();
 					if_block.c();
 					if_block.m(p, t1);
 				}
@@ -36562,7 +45437,7 @@ function create_if_block$2(ctx) {
 }
 
 // (75:36) {#if copyScenes}
-function create_if_block_1$2(ctx) {
+function create_if_block_1$1(ctx) {
 	let b;
 
 	return {
@@ -36579,7 +45454,7 @@ function create_if_block_1$2(ctx) {
 	};
 }
 
-function create_fragment$2(ctx) {
+function create_fragment$1(ctx) {
 	let div3;
 	let p;
 	let t1;
@@ -36594,7 +45469,7 @@ function create_fragment$2(ctx) {
 	let div2;
 	let mounted;
 	let dispose;
-	let if_block = /*valid*/ ctx[1] && /*$selectedDraft*/ ctx[2] && create_if_block$2(ctx);
+	let if_block = /*valid*/ ctx[1] && /*$selectedDraft*/ ctx[2] && create_if_block$1(ctx);
 
 	return {
 		c() {
@@ -36659,7 +45534,7 @@ function create_fragment$2(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$2(ctx);
+					if_block = create_if_block$1(ctx);
 					if_block.c();
 					if_block.m(div2, null);
 				}
@@ -36680,9 +45555,9 @@ function create_fragment$2(ctx) {
 	};
 }
 
-const regex$1 = /[:\\\/]/;
+const regex = /[:\\\/]/;
 
-function instance$2($$self, $$props, $$invalidate) {
+function instance$1($$self, $$props, $$invalidate) {
 	let $selectedDraft;
 	component_subscribe($$self, selectedDraft, $$value => $$invalidate(2, $selectedDraft = $$value));
 	let title;
@@ -36735,7 +45610,7 @@ function instance$2($$self, $$props, $$invalidate) {
 
 		if ($$self.$$.dirty & /*title, valid, $selectedDraft*/ 7) {
 			{
-				$$invalidate(1, valid = title && !regex$1.test(title));
+				$$invalidate(1, valid = title && !regex.test(title));
 
 				if (valid && $selectedDraft) {
 					if ($selectedDraft.format === "scenes") {
@@ -36768,7 +45643,7 @@ function instance$2($$self, $$props, $$invalidate) {
 class NewDraftModal extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$2, create_fragment$2, safe_not_equal, {}, add_css$2);
+		init(this, options, instance$1, create_fragment$1, safe_not_equal, {}, add_css$1);
 	}
 }
 
@@ -36827,35 +45702,36 @@ class NewDraftModalContainer extends obsidian.Modal {
 
 /* src/view/metadata-modal/MetadataModal.svelte generated by Svelte v3.49.0 */
 
-function add_css$1(target) {
-	append_styles(target, "svelte-1k3e56", ".metadata-modal-root.svelte-1k3e56.svelte-1k3e56{display:block;width:100%;max-width:640px;margin:0 auto}.muted.svelte-1k3e56.svelte-1k3e56{color:var(--text-muted)}.small.svelte-1k3e56.svelte-1k3e56{font-size:var(--font-ui-smaller);line-height:var(--line-height-tight)}.req.svelte-1k3e56.svelte-1k3e56{color:var(--text-error);margin-left:2px}section.svelte-1k3e56.svelte-1k3e56{border-top:var(--border-width) solid var(--background-modifier-border);padding:var(--size-4-4) 0 var(--size-4-2) 0}section.svelte-1k3e56.svelte-1k3e56:first-of-type{border-top:none;padding-top:0}section.svelte-1k3e56 h3.svelte-1k3e56{margin:0 0 var(--size-4-2) 0;font-size:var(--font-ui-medium);font-weight:600;color:var(--text-normal)}.section-head.svelte-1k3e56.svelte-1k3e56{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--size-4-1)}.section-head.svelte-1k3e56 h3.svelte-1k3e56{margin:0}.field.svelte-1k3e56.svelte-1k3e56{display:flex;flex-direction:column;margin-top:var(--size-4-3)}.field.svelte-1k3e56>span.svelte-1k3e56{font-size:var(--font-ui-smaller);color:var(--text-muted);margin-bottom:var(--size-4-1)}.field.svelte-1k3e56 input.svelte-1k3e56,.field.svelte-1k3e56 textarea.svelte-1k3e56{width:100%}.field.svelte-1k3e56 textarea.svelte-1k3e56{font-family:var(--font-text);resize:vertical;min-height:6em}.row.two-col.svelte-1k3e56.svelte-1k3e56{display:grid;grid-template-columns:1fr 1fr;gap:var(--size-4-3)}.row.two-col.svelte-1k3e56 .field.svelte-1k3e56{margin-top:var(--size-4-3)}.toggles.svelte-1k3e56.svelte-1k3e56{align-items:center;margin-top:var(--size-4-3)}.toggle.svelte-1k3e56.svelte-1k3e56{display:flex;align-items:center;gap:var(--size-4-2);color:var(--text-normal);font-size:var(--font-ui-small)}.toggle.svelte-1k3e56 input.svelte-1k3e56{margin:0}.creators.svelte-1k3e56.svelte-1k3e56{display:flex;flex-direction:column;gap:var(--size-4-2);margin-top:var(--size-4-2)}.creator-row.svelte-1k3e56.svelte-1k3e56{display:flex;align-items:stretch;gap:var(--size-4-2);padding:var(--size-4-2);border:var(--border-width) solid var(--background-modifier-border);border-radius:var(--radius-s);background:var(--background-secondary)}.creator-fields.svelte-1k3e56.svelte-1k3e56{display:grid;grid-template-columns:1.2fr 1.6fr 1fr;gap:var(--size-4-2);flex:1}.creator-fields.svelte-1k3e56 input.svelte-1k3e56{width:100%}.creator-actions.svelte-1k3e56.svelte-1k3e56{display:flex;flex-direction:column;gap:2px;align-items:stretch;justify-content:center}.creator-actions.svelte-1k3e56 button.svelte-1k3e56{padding:var(--size-2-1) var(--size-4-2);line-height:1;font-size:var(--font-ui-smaller);min-width:1.8em}button.ghost.svelte-1k3e56.svelte-1k3e56{background:transparent;color:var(--text-muted);box-shadow:none;border:var(--border-width) solid var(--background-modifier-border)}button.ghost.svelte-1k3e56.svelte-1k3e56:hover:not(:disabled){color:var(--text-normal);background:var(--background-modifier-hover)}button.ghost.svelte-1k3e56.svelte-1k3e56:disabled{opacity:0.4;cursor:not-allowed}button.ghost.danger.svelte-1k3e56.svelte-1k3e56:hover:not(:disabled){color:var(--text-error);border-color:var(--text-error)}button.primary.svelte-1k3e56.svelte-1k3e56{background-color:var(--interactive-accent);color:var(--text-on-accent)}button.primary.svelte-1k3e56.svelte-1k3e56:disabled{opacity:0.5;cursor:not-allowed}footer.svelte-1k3e56.svelte-1k3e56{margin-top:var(--size-4-4);padding-top:var(--size-4-3);border-top:var(--border-width) solid var(--background-modifier-border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--size-4-2)}footer.svelte-1k3e56 .file-path.svelte-1k3e56{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}footer.svelte-1k3e56 .actions.svelte-1k3e56{display:flex;gap:var(--size-4-2)}.empty-state.svelte-1k3e56.svelte-1k3e56{display:flex;flex-direction:column;align-items:center;text-align:center;padding:var(--size-4-8) var(--size-4-4);gap:var(--size-4-3);min-height:320px;box-sizing:border-box}.empty-state.svelte-1k3e56>.svelte-1k3e56{flex-shrink:0}.empty-icon.svelte-1k3e56.svelte-1k3e56{display:flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:var(--background-modifier-hover);color:var(--text-muted)}.empty-icon.svelte-1k3e56 svg{width:26px;height:26px}.empty-title.svelte-1k3e56.svelte-1k3e56{margin:0;font-size:var(--font-ui-medium);font-weight:600;color:var(--text-normal)}.empty-message.svelte-1k3e56.svelte-1k3e56{margin:0;max-width:440px;color:var(--text-muted);line-height:var(--line-height-normal)}.empty-path.svelte-1k3e56.svelte-1k3e56{margin:0;word-break:break-all}.empty-actions.svelte-1k3e56.svelte-1k3e56{display:flex;gap:var(--size-4-2);margin-top:var(--size-4-2)}code.svelte-1k3e56.svelte-1k3e56{font-size:0.9em}");
+function add_css(target) {
+	append_styles(target, "svelte-1blte8z", ".metadata-modal-root.svelte-1blte8z.svelte-1blte8z{display:block;width:100%;max-width:640px;margin:0 auto}.muted.svelte-1blte8z.svelte-1blte8z{color:var(--text-muted)}.small.svelte-1blte8z.svelte-1blte8z{font-size:var(--font-ui-smaller);line-height:var(--line-height-tight)}.req.svelte-1blte8z.svelte-1blte8z{color:var(--text-error);margin-left:2px}section.svelte-1blte8z.svelte-1blte8z{border-top:var(--border-width) solid var(--background-modifier-border);padding:var(--size-4-4) 0 var(--size-4-2) 0}section.svelte-1blte8z.svelte-1blte8z:first-of-type{border-top:none;padding-top:0}section.svelte-1blte8z h3.svelte-1blte8z{margin:0 0 var(--size-4-2) 0;font-size:var(--font-ui-medium);font-weight:600;color:var(--text-normal)}.section-head.svelte-1blte8z.svelte-1blte8z{display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--size-4-1)}.section-head.svelte-1blte8z h3.svelte-1blte8z{margin:0}.field.svelte-1blte8z.svelte-1blte8z{display:flex;flex-direction:column;margin-top:var(--size-4-3)}.field.svelte-1blte8z>span.svelte-1blte8z{font-size:var(--font-ui-smaller);color:var(--text-muted);margin-bottom:var(--size-4-1)}.field.svelte-1blte8z input.svelte-1blte8z,.field.svelte-1blte8z textarea.svelte-1blte8z{width:100%}.field.svelte-1blte8z textarea.svelte-1blte8z{font-family:var(--font-text);resize:vertical;min-height:6em}.row.two-col.svelte-1blte8z.svelte-1blte8z{display:grid;grid-template-columns:1fr 1fr;gap:var(--size-4-3)}.row.two-col.svelte-1blte8z .field.svelte-1blte8z{margin-top:var(--size-4-3)}.row.title-row.svelte-1blte8z.svelte-1blte8z{display:grid;grid-template-columns:3fr 1fr;gap:var(--size-4-3)}.creators.svelte-1blte8z.svelte-1blte8z{display:flex;flex-direction:column;gap:var(--size-4-2);margin-top:var(--size-4-2)}.creator-row.svelte-1blte8z.svelte-1blte8z{display:flex;align-items:stretch;gap:var(--size-4-2);padding:var(--size-4-2);border:var(--border-width) solid var(--background-modifier-border);border-radius:var(--radius-s);background:var(--background-secondary)}.creator-main.svelte-1blte8z.svelte-1blte8z{display:flex;flex-direction:column;gap:var(--size-4-2);flex:1}.creator-fields.svelte-1blte8z.svelte-1blte8z{display:grid;grid-template-columns:1.2fr 1.6fr 1fr 1.4fr;gap:var(--size-4-2)}.creator-fields.svelte-1blte8z input.svelte-1blte8z{width:100%}.creator-corresponding.svelte-1blte8z.svelte-1blte8z{display:flex;align-items:center;gap:var(--size-4-1);font-size:var(--font-ui-smaller);color:var(--text-muted)}.creator-corresponding.svelte-1blte8z input.svelte-1blte8z{width:auto}.creator-actions.svelte-1blte8z.svelte-1blte8z{display:flex;flex-direction:column;gap:2px;align-items:stretch;justify-content:center}.creator-actions.svelte-1blte8z button.svelte-1blte8z{padding:var(--size-2-1) var(--size-4-2);line-height:1;font-size:var(--font-ui-smaller);min-width:1.8em}button.ghost.svelte-1blte8z.svelte-1blte8z{background:transparent;color:var(--text-muted);box-shadow:none;border:var(--border-width) solid var(--background-modifier-border)}button.ghost.svelte-1blte8z.svelte-1blte8z:hover:not(:disabled){color:var(--text-normal);background:var(--background-modifier-hover)}button.ghost.svelte-1blte8z.svelte-1blte8z:disabled{opacity:0.4;cursor:not-allowed}button.ghost.danger.svelte-1blte8z.svelte-1blte8z:hover:not(:disabled){color:var(--text-error);border-color:var(--text-error)}button.primary.svelte-1blte8z.svelte-1blte8z{background-color:var(--interactive-accent);color:var(--text-on-accent)}button.primary.svelte-1blte8z.svelte-1blte8z:disabled{opacity:0.5;cursor:not-allowed}footer.svelte-1blte8z.svelte-1blte8z{margin-top:var(--size-4-4);padding-top:var(--size-4-3);border-top:var(--border-width) solid var(--background-modifier-border);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:var(--size-4-2)}footer.svelte-1blte8z .file-path.svelte-1blte8z{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60%}footer.svelte-1blte8z .actions.svelte-1blte8z{display:flex;gap:var(--size-4-2)}.empty-state.svelte-1blte8z.svelte-1blte8z{display:flex;flex-direction:column;align-items:center;text-align:center;padding:var(--size-4-8) var(--size-4-4);gap:var(--size-4-3);min-height:320px;box-sizing:border-box}.empty-state.svelte-1blte8z>.svelte-1blte8z{flex-shrink:0}.empty-icon.svelte-1blte8z.svelte-1blte8z{display:flex;align-items:center;justify-content:center;width:56px;height:56px;border-radius:50%;background:var(--background-modifier-hover);color:var(--text-muted)}.empty-icon.svelte-1blte8z svg{width:26px;height:26px}.empty-title.svelte-1blte8z.svelte-1blte8z{margin:0;font-size:var(--font-ui-medium);font-weight:600;color:var(--text-normal)}.empty-message.svelte-1blte8z.svelte-1blte8z{margin:0;max-width:440px;color:var(--text-muted);line-height:var(--line-height-normal)}.empty-path.svelte-1blte8z.svelte-1blte8z{margin:0;word-break:break-all}.empty-actions.svelte-1blte8z.svelte-1blte8z{display:flex;gap:var(--size-4-2);margin-top:var(--size-4-2)}code.svelte-1blte8z.svelte-1blte8z{font-size:0.9em}");
 }
 
 function get_each_context(ctx, list, i) {
 	const child_ctx = ctx.slice();
-	child_ctx[37] = list[i];
-	child_ctx[38] = list;
-	child_ctx[39] = i;
+	child_ctx[35] = list[i];
+	child_ctx[36] = list;
+	child_ctx[37] = i;
 	return child_ctx;
 }
 
-// (229:2) {:else}
-function create_else_block$1(ctx) {
+// (236:2) {:else}
+function create_else_block(ctx) {
 	let form_1;
 	let section0;
 	let h30;
 	let t1;
+	let div0;
 	let label0;
 	let span1;
 	let t4;
 	let input0;
 	let t5;
-	let div0;
 	let label1;
 	let span2;
 	let t7;
 	let input1;
 	let t8;
+	let div1;
 	let label2;
 	let span3;
 	let t10;
@@ -36869,70 +45745,43 @@ function create_else_block$1(ctx) {
 	let label4;
 	let span5;
 	let t16;
-	let textarea;
+	let input4;
 	let t17;
 	let label5;
 	let span6;
 	let t19;
-	let input4;
+	let textarea;
 	let t20;
-	let section1;
-	let div1;
-	let h31;
-	let t21;
-	let t22;
-	let button0;
-	let icon;
-	let t23;
-	let p0;
-	let t29;
-	let div2;
-	let each_blocks = [];
-	let each_1_lookup = new Map();
-	let t30;
-	let section2;
-	let h32;
-	let t32;
-	let p1;
-	let t36;
-	let div3;
 	let label6;
 	let span7;
-	let t38;
+	let t22;
 	let input5;
-	let t39;
-	let label7;
-	let span8;
-	let t41;
-	let input6;
-	let t42;
-	let label8;
-	let span9;
-	let t44;
-	let input7;
-	let t45;
-	let div4;
-	let label9;
-	let input8;
-	let t46;
-	let span10;
-	let t48;
-	let label10;
-	let input9;
-	let t49;
-	let span11;
-	let t51;
+	let t23;
+	let section1;
+	let div2;
+	let h31;
+	let t24;
+	let t25;
+	let button0;
+	let icon;
+	let t26;
+	let p0;
+	let t36;
+	let div3;
+	let each_blocks = [];
+	let each_1_lookup = new Map();
+	let t37;
 	let footer;
-	let p2;
-	let t52;
+	let p1;
+	let t38;
 	let code3;
-	let t53;
-	let t54;
-	let div5;
+	let t39;
+	let t40;
+	let div4;
 	let button1;
-	let t56;
+	let t42;
 	let button2;
-	let t57;
+	let t43;
 	let button2_disabled_value;
 	let current;
 	let mounted;
@@ -36940,7 +45789,7 @@ function create_else_block$1(ctx) {
 	let if_block = !/*creatorsOk*/ ctx[3] && create_if_block_2();
 	icon = new Icon({ props: { iconName: "plus-with-circle" } });
 	let each_value = /*form*/ ctx[2].creators;
-	const get_key = ctx => /*i*/ ctx[39];
+	const get_key = ctx => /*i*/ ctx[37];
 
 	for (let i = 0; i < each_value.length; i += 1) {
 		let child_ctx = get_each_context(ctx, each_value, i);
@@ -36955,304 +45804,221 @@ function create_else_block$1(ctx) {
 			h30 = element("h3");
 			h30.textContent = "Basics";
 			t1 = space();
+			div0 = element("div");
 			label0 = element("label");
 			span1 = element("span");
-			span1.innerHTML = `Title<span class="req svelte-1k3e56">*</span>`;
+			span1.innerHTML = `Title<span class="req svelte-1blte8z">*</span>`;
 			t4 = space();
 			input0 = element("input");
 			t5 = space();
-			div0 = element("div");
 			label1 = element("label");
 			span2 = element("span");
-			span2.textContent = "Publication date";
+			span2.textContent = "Acronym";
 			t7 = space();
 			input1 = element("input");
 			t8 = space();
+			div1 = element("div");
 			label2 = element("label");
 			span3 = element("span");
-			span3.textContent = "Version";
+			span3.textContent = "Publication date";
 			t10 = space();
 			input2 = element("input");
 			t11 = space();
 			label3 = element("label");
 			span4 = element("span");
-			span4.textContent = "Journal";
+			span4.textContent = "Version";
 			t13 = space();
 			input3 = element("input");
 			t14 = space();
 			label4 = element("label");
 			span5 = element("span");
-			span5.textContent = "Abstract / description";
+			span5.textContent = "Journal";
 			t16 = space();
-			textarea = element("textarea");
+			input4 = element("input");
 			t17 = space();
 			label5 = element("label");
 			span6 = element("span");
-			span6.textContent = "Keywords";
+			span6.textContent = "Abstract / description";
 			t19 = space();
-			input4 = element("input");
+			textarea = element("textarea");
 			t20 = space();
-			section1 = element("section");
-			div1 = element("div");
-			h31 = element("h3");
-			t21 = text("Creators\n            ");
-			if (if_block) if_block.c();
+			label6 = element("label");
+			span7 = element("span");
+			span7.textContent = "Keywords";
 			t22 = space();
+			input5 = element("input");
+			t23 = space();
+			section1 = element("section");
+			div2 = element("div");
+			h31 = element("h3");
+			t24 = text("Creators\n            ");
+			if (if_block) if_block.c();
+			t25 = space();
 			button0 = element("button");
 			create_component(icon.$$.fragment);
-			t23 = space();
+			t26 = space();
 			p0 = element("p");
 
-			p0.innerHTML = `Zenodo treats <code class="svelte-1k3e56">affiliation</code> as a single string. For
+			p0.innerHTML = `Zenodo treats <code class="svelte-1blte8z">affiliation</code> as a single string. For
           multi-affiliation authors, edit
-          <code class="svelte-1k3e56">_longform.author_affiliations</code> directly in the JSON file.`;
+          <code class="svelte-1blte8z">_longform.author_affiliations</code> directly in the JSON file.
+          Check <strong>Corresponding</strong> to mark an author; their
+          <code class="svelte-1blte8z">email</code> is printed as the “Corresponding author” line.`;
 
-			t29 = space();
-			div2 = element("div");
+			t36 = space();
+			div3 = element("div");
 
 			for (let i = 0; i < each_blocks.length; i += 1) {
 				each_blocks[i].c();
 			}
 
-			t30 = space();
-			section2 = element("section");
-			h32 = element("h3");
-			h32.textContent = "Longform extras";
-			t32 = space();
-			p1 = element("p");
-
-			p1.innerHTML = `Plugin-specific keys under <code class="svelte-1k3e56">_longform</code>. Zenodo ignores
-          these on upload.`;
-
-			t36 = space();
-			div3 = element("div");
-			label6 = element("label");
-			span7 = element("span");
-			span7.textContent = "Acronym";
-			t38 = space();
-			input5 = element("input");
-			t39 = space();
-			label7 = element("label");
-			span8 = element("span");
-			span8.textContent = "CSL style";
-			t41 = space();
-			input6 = element("input");
-			t42 = space();
-			label8 = element("label");
-			span9 = element("span");
-			span9.textContent = "Pandoc template";
-			t44 = space();
-			input7 = element("input");
-			t45 = space();
-			div4 = element("div");
-			label9 = element("label");
-			input8 = element("input");
-			t46 = space();
-			span10 = element("span");
-			span10.textContent = "Line numbers";
-			t48 = space();
-			label10 = element("label");
-			input9 = element("input");
-			t49 = space();
-			span11 = element("span");
-			span11.textContent = "Figures at end";
-			t51 = space();
+			t37 = space();
 			footer = element("footer");
-			p2 = element("p");
-			t52 = text("Saving to ");
+			p1 = element("p");
+			t38 = text("Saving to ");
 			code3 = element("code");
-			t53 = text(/*filePath*/ ctx[4]);
-			t54 = space();
-			div5 = element("div");
+			t39 = text(/*filePath*/ ctx[4]);
+			t40 = space();
+			div4 = element("div");
 			button1 = element("button");
 			button1.textContent = "Cancel";
-			t56 = space();
+			t42 = space();
 			button2 = element("button");
-			t57 = text("Save");
-			attr(h30, "class", "svelte-1k3e56");
-			attr(span1, "class", "svelte-1k3e56");
+			t43 = text("Save");
+			attr(h30, "class", "svelte-1blte8z");
+			attr(span1, "class", "svelte-1blte8z");
 			attr(input0, "type", "text");
 			attr(input0, "placeholder", "Manuscript title");
-			attr(input0, "class", "svelte-1k3e56");
-			attr(label0, "class", "field svelte-1k3e56");
-			attr(span2, "class", "svelte-1k3e56");
-			attr(input1, "type", "date");
-			attr(input1, "class", "svelte-1k3e56");
-			attr(label1, "class", "field svelte-1k3e56");
-			attr(span3, "class", "svelte-1k3e56");
-			attr(input2, "type", "text");
-			attr(input2, "placeholder", "v1.0");
-			attr(input2, "class", "svelte-1k3e56");
-			attr(label2, "class", "field svelte-1k3e56");
-			attr(div0, "class", "row two-col svelte-1k3e56");
-			attr(span4, "class", "svelte-1k3e56");
+			attr(input0, "class", "svelte-1blte8z");
+			attr(label0, "class", "field svelte-1blte8z");
+			attr(span2, "class", "svelte-1blte8z");
+			attr(input1, "type", "text");
+			attr(input1, "placeholder", "MYPAPER");
+			attr(input1, "class", "svelte-1blte8z");
+			attr(label1, "class", "field svelte-1blte8z");
+			attr(div0, "class", "row title-row svelte-1blte8z");
+			attr(span3, "class", "svelte-1blte8z");
+			attr(input2, "type", "date");
+			attr(input2, "class", "svelte-1blte8z");
+			attr(label2, "class", "field svelte-1blte8z");
+			attr(span4, "class", "svelte-1blte8z");
 			attr(input3, "type", "text");
-			attr(input3, "placeholder", "Nature");
-			attr(input3, "class", "svelte-1k3e56");
-			attr(label3, "class", "field svelte-1k3e56");
-			attr(span5, "class", "svelte-1k3e56");
+			attr(input3, "placeholder", "v1.0");
+			attr(input3, "class", "svelte-1blte8z");
+			attr(label3, "class", "field svelte-1blte8z");
+			attr(div1, "class", "row two-col svelte-1blte8z");
+			attr(span5, "class", "svelte-1blte8z");
+			attr(input4, "type", "text");
+			attr(input4, "placeholder", "Nature");
+			attr(input4, "class", "svelte-1blte8z");
+			attr(label4, "class", "field svelte-1blte8z");
+			attr(span6, "class", "svelte-1blte8z");
 			attr(textarea, "rows", "5");
 			attr(textarea, "placeholder", "Manuscript abstract.");
-			attr(textarea, "class", "svelte-1k3e56");
-			attr(label4, "class", "field svelte-1k3e56");
-			attr(span6, "class", "svelte-1k3e56");
-			attr(input4, "type", "text");
-			attr(input4, "placeholder", "comma, separated, list");
-			attr(input4, "class", "svelte-1k3e56");
-			attr(label5, "class", "field svelte-1k3e56");
-			attr(section0, "class", "svelte-1k3e56");
-			attr(h31, "class", "svelte-1k3e56");
-			attr(button0, "type", "button");
-			attr(button0, "class", "ghost svelte-1k3e56");
-			attr(button0, "title", "Add creator");
-			attr(div1, "class", "section-head svelte-1k3e56");
-			attr(p0, "class", "muted small svelte-1k3e56");
-			attr(div2, "class", "creators svelte-1k3e56");
-			attr(section1, "class", "svelte-1k3e56");
-			attr(h32, "class", "svelte-1k3e56");
-			attr(p1, "class", "muted small svelte-1k3e56");
-			attr(span7, "class", "svelte-1k3e56");
+			attr(textarea, "class", "svelte-1blte8z");
+			attr(label5, "class", "field svelte-1blte8z");
+			attr(span7, "class", "svelte-1blte8z");
 			attr(input5, "type", "text");
-			attr(input5, "placeholder", "MYPAPER");
-			attr(input5, "class", "svelte-1k3e56");
-			attr(label6, "class", "field svelte-1k3e56");
-			attr(span8, "class", "svelte-1k3e56");
-			attr(input6, "type", "text");
-			attr(input6, "placeholder", "nature");
-			attr(input6, "class", "svelte-1k3e56");
-			attr(label7, "class", "field svelte-1k3e56");
-			attr(div3, "class", "row two-col svelte-1k3e56");
-			attr(span9, "class", "svelte-1k3e56");
-			attr(input7, "type", "text");
-			attr(input7, "placeholder", "default");
-			attr(input7, "class", "svelte-1k3e56");
-			attr(label8, "class", "field svelte-1k3e56");
-			attr(input8, "type", "checkbox");
-			attr(input8, "class", "svelte-1k3e56");
-			attr(label9, "class", "toggle svelte-1k3e56");
-			attr(input9, "type", "checkbox");
-			attr(input9, "class", "svelte-1k3e56");
-			attr(label10, "class", "toggle svelte-1k3e56");
-			attr(div4, "class", "row two-col toggles svelte-1k3e56");
-			attr(section2, "class", "svelte-1k3e56");
-			attr(code3, "class", "svelte-1k3e56");
-			attr(p2, "class", "muted small file-path svelte-1k3e56");
+			attr(input5, "placeholder", "comma, separated, list");
+			attr(input5, "class", "svelte-1blte8z");
+			attr(label6, "class", "field svelte-1blte8z");
+			attr(section0, "class", "svelte-1blte8z");
+			attr(h31, "class", "svelte-1blte8z");
+			attr(button0, "type", "button");
+			attr(button0, "class", "ghost svelte-1blte8z");
+			attr(button0, "title", "Add creator");
+			attr(div2, "class", "section-head svelte-1blte8z");
+			attr(p0, "class", "muted small svelte-1blte8z");
+			attr(div3, "class", "creators svelte-1blte8z");
+			attr(section1, "class", "svelte-1blte8z");
+			attr(code3, "class", "svelte-1blte8z");
+			attr(p1, "class", "muted small file-path svelte-1blte8z");
 			attr(button1, "type", "button");
-			attr(button1, "class", "ghost svelte-1k3e56");
+			attr(button1, "class", "ghost svelte-1blte8z");
 			attr(button2, "type", "submit");
-			attr(button2, "class", "primary svelte-1k3e56");
+			attr(button2, "class", "primary svelte-1blte8z");
 			button2.disabled = button2_disabled_value = !/*canSave*/ ctx[6];
-			attr(div5, "class", "actions svelte-1k3e56");
-			attr(footer, "class", "svelte-1k3e56");
+			attr(div4, "class", "actions svelte-1blte8z");
+			attr(footer, "class", "svelte-1blte8z");
 		},
 		m(target, anchor) {
 			insert(target, form_1, anchor);
 			append(form_1, section0);
 			append(section0, h30);
 			append(section0, t1);
-			append(section0, label0);
+			append(section0, div0);
+			append(div0, label0);
 			append(label0, span1);
 			append(label0, t4);
 			append(label0, input0);
 			set_input_value(input0, /*form*/ ctx[2].title);
-			append(section0, t5);
-			append(section0, div0);
+			append(div0, t5);
 			append(div0, label1);
 			append(label1, span2);
 			append(label1, t7);
 			append(label1, input1);
-			set_input_value(input1, /*form*/ ctx[2].publication_date);
-			append(div0, t8);
-			append(div0, label2);
+			set_input_value(input1, /*form*/ ctx[2].acronym);
+			append(section0, t8);
+			append(section0, div1);
+			append(div1, label2);
 			append(label2, span3);
 			append(label2, t10);
 			append(label2, input2);
-			set_input_value(input2, /*form*/ ctx[2].version);
-			append(section0, t11);
-			append(section0, label3);
+			set_input_value(input2, /*form*/ ctx[2].publication_date);
+			append(div1, t11);
+			append(div1, label3);
 			append(label3, span4);
 			append(label3, t13);
 			append(label3, input3);
-			set_input_value(input3, /*form*/ ctx[2].journal_title);
+			set_input_value(input3, /*form*/ ctx[2].version);
 			append(section0, t14);
 			append(section0, label4);
 			append(label4, span5);
 			append(label4, t16);
-			append(label4, textarea);
-			set_input_value(textarea, /*form*/ ctx[2].description);
+			append(label4, input4);
+			set_input_value(input4, /*form*/ ctx[2].journal_title);
 			append(section0, t17);
 			append(section0, label5);
 			append(label5, span6);
 			append(label5, t19);
-			append(label5, input4);
-			set_input_value(input4, /*form*/ ctx[2].keywords);
-			append(form_1, t20);
+			append(label5, textarea);
+			set_input_value(textarea, /*form*/ ctx[2].description);
+			append(section0, t20);
+			append(section0, label6);
+			append(label6, span7);
+			append(label6, t22);
+			append(label6, input5);
+			set_input_value(input5, /*form*/ ctx[2].keywords);
+			append(form_1, t23);
 			append(form_1, section1);
-			append(section1, div1);
-			append(div1, h31);
-			append(h31, t21);
-			if (if_block) if_block.m(h31, null);
-			append(div1, t22);
-			append(div1, button0);
-			mount_component(icon, button0, null);
-			append(section1, t23);
-			append(section1, p0);
-			append(section1, t29);
 			append(section1, div2);
+			append(div2, h31);
+			append(h31, t24);
+			if (if_block) if_block.m(h31, null);
+			append(div2, t25);
+			append(div2, button0);
+			mount_component(icon, button0, null);
+			append(section1, t26);
+			append(section1, p0);
+			append(section1, t36);
+			append(section1, div3);
 
 			for (let i = 0; i < each_blocks.length; i += 1) {
-				each_blocks[i].m(div2, null);
+				each_blocks[i].m(div3, null);
 			}
 
-			append(form_1, t30);
-			append(form_1, section2);
-			append(section2, h32);
-			append(section2, t32);
-			append(section2, p1);
-			append(section2, t36);
-			append(section2, div3);
-			append(div3, label6);
-			append(label6, span7);
-			append(label6, t38);
-			append(label6, input5);
-			set_input_value(input5, /*form*/ ctx[2].acronym);
-			append(div3, t39);
-			append(div3, label7);
-			append(label7, span8);
-			append(label7, t41);
-			append(label7, input6);
-			set_input_value(input6, /*form*/ ctx[2].csl);
-			append(section2, t42);
-			append(section2, label8);
-			append(label8, span9);
-			append(label8, t44);
-			append(label8, input7);
-			set_input_value(input7, /*form*/ ctx[2].template);
-			append(section2, t45);
-			append(section2, div4);
-			append(div4, label9);
-			append(label9, input8);
-			input8.checked = /*form*/ ctx[2].lineno;
-			append(label9, t46);
-			append(label9, span10);
-			append(div4, t48);
-			append(div4, label10);
-			append(label10, input9);
-			input9.checked = /*form*/ ctx[2].figuresAtEnd;
-			append(label10, t49);
-			append(label10, span11);
-			append(form_1, t51);
+			append(form_1, t37);
 			append(form_1, footer);
-			append(footer, p2);
-			append(p2, t52);
-			append(p2, code3);
-			append(code3, t53);
-			append(footer, t54);
-			append(footer, div5);
-			append(div5, button1);
-			append(div5, t56);
-			append(div5, button2);
-			append(button2, t57);
+			append(footer, p1);
+			append(p1, t38);
+			append(p1, code3);
+			append(code3, t39);
+			append(footer, t40);
+			append(footer, div4);
+			append(div4, button1);
+			append(div4, t42);
+			append(div4, button2);
+			append(button2, t43);
 			current = true;
 
 			if (!mounted) {
@@ -37261,14 +46027,10 @@ function create_else_block$1(ctx) {
 					listen(input1, "input", /*input1_input_handler*/ ctx[16]),
 					listen(input2, "input", /*input2_input_handler*/ ctx[17]),
 					listen(input3, "input", /*input3_input_handler*/ ctx[18]),
-					listen(textarea, "input", /*textarea_input_handler*/ ctx[19]),
-					listen(input4, "input", /*input4_input_handler*/ ctx[20]),
+					listen(input4, "input", /*input4_input_handler*/ ctx[19]),
+					listen(textarea, "input", /*textarea_input_handler*/ ctx[20]),
+					listen(input5, "input", /*input5_input_handler*/ ctx[21]),
 					listen(button0, "click", /*addCreator*/ ctx[8]),
-					listen(input5, "input", /*input5_input_handler*/ ctx[27]),
-					listen(input6, "input", /*input6_input_handler*/ ctx[28]),
-					listen(input7, "input", /*input7_input_handler*/ ctx[29]),
-					listen(input8, "change", /*input8_change_handler*/ ctx[30]),
-					listen(input9, "change", /*input9_change_handler*/ ctx[31]),
 					listen(button1, "click", /*close*/ ctx[7]),
 					listen(form_1, "submit", prevent_default(/*onSave*/ ctx[11]))
 				];
@@ -37281,24 +46043,28 @@ function create_else_block$1(ctx) {
 				set_input_value(input0, /*form*/ ctx[2].title);
 			}
 
+			if (dirty[0] & /*form*/ 4 && input1.value !== /*form*/ ctx[2].acronym) {
+				set_input_value(input1, /*form*/ ctx[2].acronym);
+			}
+
 			if (dirty[0] & /*form*/ 4) {
-				set_input_value(input1, /*form*/ ctx[2].publication_date);
+				set_input_value(input2, /*form*/ ctx[2].publication_date);
 			}
 
-			if (dirty[0] & /*form*/ 4 && input2.value !== /*form*/ ctx[2].version) {
-				set_input_value(input2, /*form*/ ctx[2].version);
+			if (dirty[0] & /*form*/ 4 && input3.value !== /*form*/ ctx[2].version) {
+				set_input_value(input3, /*form*/ ctx[2].version);
 			}
 
-			if (dirty[0] & /*form*/ 4 && input3.value !== /*form*/ ctx[2].journal_title) {
-				set_input_value(input3, /*form*/ ctx[2].journal_title);
+			if (dirty[0] & /*form*/ 4 && input4.value !== /*form*/ ctx[2].journal_title) {
+				set_input_value(input4, /*form*/ ctx[2].journal_title);
 			}
 
 			if (dirty[0] & /*form*/ 4) {
 				set_input_value(textarea, /*form*/ ctx[2].description);
 			}
 
-			if (dirty[0] & /*form*/ 4 && input4.value !== /*form*/ ctx[2].keywords) {
-				set_input_value(input4, /*form*/ ctx[2].keywords);
+			if (dirty[0] & /*form*/ 4 && input5.value !== /*form*/ ctx[2].keywords) {
+				set_input_value(input5, /*form*/ ctx[2].keywords);
 			}
 
 			if (!/*creatorsOk*/ ctx[3]) {
@@ -37314,30 +46080,10 @@ function create_else_block$1(ctx) {
 
 			if (dirty[0] & /*removeCreator, form, moveCreator*/ 1540) {
 				each_value = /*form*/ ctx[2].creators;
-				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value, each_1_lookup, div2, destroy_block, create_each_block, null, get_each_context);
+				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value, each_1_lookup, div3, destroy_block, create_each_block, null, get_each_context);
 			}
 
-			if (dirty[0] & /*form*/ 4 && input5.value !== /*form*/ ctx[2].acronym) {
-				set_input_value(input5, /*form*/ ctx[2].acronym);
-			}
-
-			if (dirty[0] & /*form*/ 4 && input6.value !== /*form*/ ctx[2].csl) {
-				set_input_value(input6, /*form*/ ctx[2].csl);
-			}
-
-			if (dirty[0] & /*form*/ 4 && input7.value !== /*form*/ ctx[2].template) {
-				set_input_value(input7, /*form*/ ctx[2].template);
-			}
-
-			if (dirty[0] & /*form*/ 4) {
-				input8.checked = /*form*/ ctx[2].lineno;
-			}
-
-			if (dirty[0] & /*form*/ 4) {
-				input9.checked = /*form*/ ctx[2].figuresAtEnd;
-			}
-
-			if (!current || dirty[0] & /*filePath*/ 16) set_data(t53, /*filePath*/ ctx[4]);
+			if (!current || dirty[0] & /*filePath*/ 16) set_data(t39, /*filePath*/ ctx[4]);
 
 			if (!current || dirty[0] & /*canSave*/ 64 && button2_disabled_value !== (button2_disabled_value = !/*canSave*/ ctx[6])) {
 				button2.disabled = button2_disabled_value;
@@ -37367,8 +46113,8 @@ function create_else_block$1(ctx) {
 	};
 }
 
-// (208:24) 
-function create_if_block_1$1(ctx) {
+// (215:24) 
+function create_if_block_1(ctx) {
 	let div2;
 	let div0;
 	let icon;
@@ -37403,7 +46149,7 @@ function create_if_block_1$1(ctx) {
 			t2 = space();
 			p0 = element("p");
 
-			p0.innerHTML = `This project doesn&#39;t have a <code class="svelte-1k3e56">metadata.json</code> file. Create
+			p0.innerHTML = `This project doesn&#39;t have a <code class="svelte-1blte8z">metadata.json</code> file. Create
         one to describe authors, abstract, journal, and more for the
         <em>Add Zenodo Frontmatter</em> compile step.`;
 
@@ -37420,17 +46166,17 @@ function create_if_block_1$1(ctx) {
 			t14 = space();
 			button1 = element("button");
 			button1.textContent = "Create metadata.json";
-			attr(div0, "class", "empty-icon svelte-1k3e56");
-			attr(h2, "class", "empty-title svelte-1k3e56");
-			attr(p0, "class", "empty-message svelte-1k3e56");
-			attr(code1, "class", "svelte-1k3e56");
-			attr(p1, "class", "empty-path muted small svelte-1k3e56");
+			attr(div0, "class", "empty-icon svelte-1blte8z");
+			attr(h2, "class", "empty-title svelte-1blte8z");
+			attr(p0, "class", "empty-message svelte-1blte8z");
+			attr(code1, "class", "svelte-1blte8z");
+			attr(p1, "class", "empty-path muted small svelte-1blte8z");
 			attr(button0, "type", "button");
-			attr(button0, "class", "ghost svelte-1k3e56");
+			attr(button0, "class", "ghost svelte-1blte8z");
 			attr(button1, "type", "button");
-			attr(button1, "class", "primary svelte-1k3e56");
-			attr(div1, "class", "empty-actions svelte-1k3e56");
-			attr(div2, "class", "empty-state svelte-1k3e56");
+			attr(button1, "class", "primary svelte-1blte8z");
+			attr(div1, "class", "empty-actions svelte-1blte8z");
+			attr(div2, "class", "empty-state svelte-1blte8z");
 		},
 		m(target, anchor) {
 			insert(target, div2, anchor);
@@ -37483,15 +46229,15 @@ function create_if_block_1$1(ctx) {
 	};
 }
 
-// (206:2) {#if loading}
-function create_if_block$1(ctx) {
+// (213:2) {#if loading}
+function create_if_block(ctx) {
 	let p;
 
 	return {
 		c() {
 			p = element("p");
 			p.textContent = "Loading metadata…";
-			attr(p, "class", "muted svelte-1k3e56");
+			attr(p, "class", "muted svelte-1blte8z");
 		},
 		m(target, anchor) {
 			insert(target, p, anchor);
@@ -37505,7 +46251,7 @@ function create_if_block$1(ctx) {
 	};
 }
 
-// (277:12) {#if !creatorsOk}
+// (290:12) {#if !creatorsOk}
 function create_if_block_2(ctx) {
 	let span;
 
@@ -37513,7 +46259,7 @@ function create_if_block_2(ctx) {
 		c() {
 			span = element("span");
 			span.textContent = "*";
-			attr(span, "class", "req svelte-1k3e56");
+			attr(span, "class", "req svelte-1blte8z");
 		},
 		m(target, anchor) {
 			insert(target, span, anchor);
@@ -37524,9 +46270,10 @@ function create_if_block_2(ctx) {
 	};
 }
 
-// (289:10) {#each form.creators as creator, i (i)}
+// (304:10) {#each form.creators as creator, i (i)}
 function create_each_block(key_1, ctx) {
-	let div2;
+	let div3;
+	let div1;
 	let div0;
 	let input0;
 	let t0;
@@ -37534,49 +46281,64 @@ function create_each_block(key_1, ctx) {
 	let t1;
 	let input2;
 	let t2;
-	let div1;
-	let button0;
+	let input3;
 	let t3;
-	let button0_disabled_value;
+	let label;
+	let input4;
 	let t4;
-	let button1;
 	let t5;
-	let button1_disabled_value;
+	let div2;
+	let button0;
 	let t6;
-	let button2;
+	let button0_disabled_value;
+	let t7;
+	let button1;
 	let t8;
+	let button1_disabled_value;
+	let t9;
+	let button2;
+	let t11;
 	let mounted;
 	let dispose;
 
 	function input0_input_handler_1() {
-		/*input0_input_handler_1*/ ctx[21].call(input0, /*each_value*/ ctx[38], /*i*/ ctx[39]);
+		/*input0_input_handler_1*/ ctx[22].call(input0, /*each_value*/ ctx[36], /*i*/ ctx[37]);
 	}
 
 	function input1_input_handler_1() {
-		/*input1_input_handler_1*/ ctx[22].call(input1, /*each_value*/ ctx[38], /*i*/ ctx[39]);
+		/*input1_input_handler_1*/ ctx[23].call(input1, /*each_value*/ ctx[36], /*i*/ ctx[37]);
 	}
 
 	function input2_input_handler_1() {
-		/*input2_input_handler_1*/ ctx[23].call(input2, /*each_value*/ ctx[38], /*i*/ ctx[39]);
+		/*input2_input_handler_1*/ ctx[24].call(input2, /*each_value*/ ctx[36], /*i*/ ctx[37]);
+	}
+
+	function input3_input_handler_1() {
+		/*input3_input_handler_1*/ ctx[25].call(input3, /*each_value*/ ctx[36], /*i*/ ctx[37]);
+	}
+
+	function input4_change_handler() {
+		/*input4_change_handler*/ ctx[26].call(input4, /*each_value*/ ctx[36], /*i*/ ctx[37]);
 	}
 
 	function click_handler() {
-		return /*click_handler*/ ctx[24](/*i*/ ctx[39]);
+		return /*click_handler*/ ctx[27](/*i*/ ctx[37]);
 	}
 
 	function click_handler_1() {
-		return /*click_handler_1*/ ctx[25](/*i*/ ctx[39]);
+		return /*click_handler_1*/ ctx[28](/*i*/ ctx[37]);
 	}
 
 	function click_handler_2() {
-		return /*click_handler_2*/ ctx[26](/*i*/ ctx[39]);
+		return /*click_handler_2*/ ctx[29](/*i*/ ctx[37]);
 	}
 
 	return {
 		key: key_1,
 		first: null,
 		c() {
-			div2 = element("div");
+			div3 = element("div");
+			div1 = element("div");
 			div0 = element("div");
 			input0 = element("input");
 			t0 = space();
@@ -37584,68 +46346,92 @@ function create_each_block(key_1, ctx) {
 			t1 = space();
 			input2 = element("input");
 			t2 = space();
-			div1 = element("div");
+			input3 = element("input");
+			t3 = space();
+			label = element("label");
+			input4 = element("input");
+			t4 = text("\n                  Corresponding author");
+			t5 = space();
+			div2 = element("div");
 			button0 = element("button");
-			t3 = text("▲");
-			t4 = space();
+			t6 = text("▲");
+			t7 = space();
 			button1 = element("button");
-			t5 = text("▼");
-			t6 = space();
+			t8 = text("▼");
+			t9 = space();
 			button2 = element("button");
 			button2.textContent = "✕";
-			t8 = space();
+			t11 = space();
 			attr(input0, "type", "text");
 			attr(input0, "placeholder", "Family, Given");
-			attr(input0, "class", "creator-name svelte-1k3e56");
+			attr(input0, "class", "creator-name svelte-1blte8z");
 			attr(input1, "type", "text");
 			attr(input1, "placeholder", "Affiliation");
-			attr(input1, "class", "creator-affil svelte-1k3e56");
+			attr(input1, "class", "creator-affil svelte-1blte8z");
 			attr(input2, "type", "text");
 			attr(input2, "placeholder", "0000-0000-0000-0000");
-			attr(input2, "class", "creator-orcid svelte-1k3e56");
-			attr(div0, "class", "creator-fields svelte-1k3e56");
+			attr(input2, "class", "creator-orcid svelte-1blte8z");
+			attr(input3, "type", "email");
+			attr(input3, "placeholder", "email@example.org");
+			attr(input3, "class", "creator-email svelte-1blte8z");
+			attr(div0, "class", "creator-fields svelte-1blte8z");
+			attr(input4, "type", "checkbox");
+			attr(input4, "class", "svelte-1blte8z");
+			attr(label, "class", "creator-corresponding svelte-1blte8z");
+			attr(div1, "class", "creator-main svelte-1blte8z");
 			attr(button0, "type", "button");
-			attr(button0, "class", "ghost svelte-1k3e56");
-			button0.disabled = button0_disabled_value = /*i*/ ctx[39] === 0;
+			attr(button0, "class", "ghost svelte-1blte8z");
+			button0.disabled = button0_disabled_value = /*i*/ ctx[37] === 0;
 			attr(button0, "title", "Move up");
 			attr(button1, "type", "button");
-			attr(button1, "class", "ghost svelte-1k3e56");
-			button1.disabled = button1_disabled_value = /*i*/ ctx[39] === /*form*/ ctx[2].creators.length - 1;
+			attr(button1, "class", "ghost svelte-1blte8z");
+			button1.disabled = button1_disabled_value = /*i*/ ctx[37] === /*form*/ ctx[2].creators.length - 1;
 			attr(button1, "title", "Move down");
 			attr(button2, "type", "button");
-			attr(button2, "class", "ghost danger svelte-1k3e56");
+			attr(button2, "class", "ghost danger svelte-1blte8z");
 			attr(button2, "title", "Remove creator");
-			attr(div1, "class", "creator-actions svelte-1k3e56");
-			attr(div2, "class", "creator-row svelte-1k3e56");
-			this.first = div2;
+			attr(div2, "class", "creator-actions svelte-1blte8z");
+			attr(div3, "class", "creator-row svelte-1blte8z");
+			this.first = div3;
 		},
 		m(target, anchor) {
-			insert(target, div2, anchor);
-			append(div2, div0);
+			insert(target, div3, anchor);
+			append(div3, div1);
+			append(div1, div0);
 			append(div0, input0);
-			set_input_value(input0, /*creator*/ ctx[37].name);
+			set_input_value(input0, /*creator*/ ctx[35].name);
 			append(div0, t0);
 			append(div0, input1);
-			set_input_value(input1, /*creator*/ ctx[37].affiliation);
+			set_input_value(input1, /*creator*/ ctx[35].affiliation);
 			append(div0, t1);
 			append(div0, input2);
-			set_input_value(input2, /*creator*/ ctx[37].orcid);
-			append(div2, t2);
-			append(div2, div1);
-			append(div1, button0);
-			append(button0, t3);
-			append(div1, t4);
-			append(div1, button1);
-			append(button1, t5);
-			append(div1, t6);
-			append(div1, button2);
-			append(div2, t8);
+			set_input_value(input2, /*creator*/ ctx[35].orcid);
+			append(div0, t2);
+			append(div0, input3);
+			set_input_value(input3, /*creator*/ ctx[35].email);
+			append(div1, t3);
+			append(div1, label);
+			append(label, input4);
+			input4.checked = /*creator*/ ctx[35].corresponding;
+			append(label, t4);
+			append(div3, t5);
+			append(div3, div2);
+			append(div2, button0);
+			append(button0, t6);
+			append(div2, t7);
+			append(div2, button1);
+			append(button1, t8);
+			append(div2, t9);
+			append(div2, button2);
+			append(div3, t11);
 
 			if (!mounted) {
 				dispose = [
 					listen(input0, "input", input0_input_handler_1),
 					listen(input1, "input", input1_input_handler_1),
 					listen(input2, "input", input2_input_handler_1),
+					listen(input3, "input", input3_input_handler_1),
+					listen(input4, "change", input4_change_handler),
 					listen(button0, "click", click_handler),
 					listen(button1, "click", click_handler_1),
 					listen(button2, "click", click_handler_2)
@@ -37657,40 +46443,48 @@ function create_each_block(key_1, ctx) {
 		p(new_ctx, dirty) {
 			ctx = new_ctx;
 
-			if (dirty[0] & /*form*/ 4 && input0.value !== /*creator*/ ctx[37].name) {
-				set_input_value(input0, /*creator*/ ctx[37].name);
+			if (dirty[0] & /*form*/ 4 && input0.value !== /*creator*/ ctx[35].name) {
+				set_input_value(input0, /*creator*/ ctx[35].name);
 			}
 
-			if (dirty[0] & /*form*/ 4 && input1.value !== /*creator*/ ctx[37].affiliation) {
-				set_input_value(input1, /*creator*/ ctx[37].affiliation);
+			if (dirty[0] & /*form*/ 4 && input1.value !== /*creator*/ ctx[35].affiliation) {
+				set_input_value(input1, /*creator*/ ctx[35].affiliation);
 			}
 
-			if (dirty[0] & /*form*/ 4 && input2.value !== /*creator*/ ctx[37].orcid) {
-				set_input_value(input2, /*creator*/ ctx[37].orcid);
+			if (dirty[0] & /*form*/ 4 && input2.value !== /*creator*/ ctx[35].orcid) {
+				set_input_value(input2, /*creator*/ ctx[35].orcid);
 			}
 
-			if (dirty[0] & /*form*/ 4 && button0_disabled_value !== (button0_disabled_value = /*i*/ ctx[39] === 0)) {
+			if (dirty[0] & /*form*/ 4 && input3.value !== /*creator*/ ctx[35].email) {
+				set_input_value(input3, /*creator*/ ctx[35].email);
+			}
+
+			if (dirty[0] & /*form*/ 4) {
+				input4.checked = /*creator*/ ctx[35].corresponding;
+			}
+
+			if (dirty[0] & /*form*/ 4 && button0_disabled_value !== (button0_disabled_value = /*i*/ ctx[37] === 0)) {
 				button0.disabled = button0_disabled_value;
 			}
 
-			if (dirty[0] & /*form*/ 4 && button1_disabled_value !== (button1_disabled_value = /*i*/ ctx[39] === /*form*/ ctx[2].creators.length - 1)) {
+			if (dirty[0] & /*form*/ 4 && button1_disabled_value !== (button1_disabled_value = /*i*/ ctx[37] === /*form*/ ctx[2].creators.length - 1)) {
 				button1.disabled = button1_disabled_value;
 			}
 		},
 		d(detaching) {
-			if (detaching) detach(div2);
+			if (detaching) detach(div3);
 			mounted = false;
 			run_all(dispose);
 		}
 	};
 }
 
-function create_fragment$1(ctx) {
+function create_fragment(ctx) {
 	let div;
 	let current_block_type_index;
 	let if_block;
 	let current;
-	const if_block_creators = [create_if_block$1, create_if_block_1$1, create_else_block$1];
+	const if_block_creators = [create_if_block, create_if_block_1, create_else_block];
 	const if_blocks = [];
 
 	function select_block_type(ctx, dirty) {
@@ -37706,7 +46500,7 @@ function create_fragment$1(ctx) {
 		c() {
 			div = element("div");
 			if_block.c();
-			attr(div, "class", "metadata-modal-root svelte-1k3e56");
+			attr(div, "class", "metadata-modal-root svelte-1blte8z");
 		},
 		m(target, anchor) {
 			insert(target, div, anchor);
@@ -37760,7 +46554,7 @@ function setOrDelete(obj, key, value) {
 	if (value && value.length > 0) obj[key] = value; else delete obj[key];
 }
 
-function instance$1($$self, $$props, $$invalidate) {
+function instance($$self, $$props, $$invalidate) {
 	let titleOk;
 	let creatorsOk;
 	let canSave;
@@ -37787,12 +46581,16 @@ function instance$1($$self, $$props, $$invalidate) {
 			keywords: "",
 			journal_title: "",
 			version: "",
-			creators: [{ name: "", affiliation: "", orcid: "" }],
-			acronym: "",
-			csl: "",
-			template: "",
-			lineno: false,
-			figuresAtEnd: false
+			creators: [
+				{
+					name: "",
+					affiliation: "",
+					orcid: "",
+					email: "",
+					corresponding: false
+				}
+			],
+			acronym: ""
 		};
 	}
 
@@ -37829,12 +46627,16 @@ function instance$1($$self, $$props, $$invalidate) {
 	}));
 
 	function parsedToForm(j) {
-		var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k;
+		var _a, _b, _c, _d, _e, _f, _g, _h;
 		const ext = (_a = j._longform) !== null && _a !== void 0 ? _a : {};
+
+		const correspondingSet = new Set(Array.isArray(ext.corresponding)
+			? ext.corresponding.map(n => String(n))
+			: []);
 
 		const creators = Array.isArray(j.creators)
 		? j.creators.map(c => {
-				var _a, _b, _c;
+				var _a, _b, _c, _d, _e;
 
 				return {
 					name: String((_a = c === null || c === void 0 ? void 0 : c.name) !== null && _a !== void 0
@@ -37845,10 +46647,24 @@ function instance$1($$self, $$props, $$invalidate) {
 					: ""),
 					orcid: String((_c = c === null || c === void 0 ? void 0 : c.orcid) !== null && _c !== void 0
 					? _c
-					: "")
+					: ""),
+					email: String((_d = c === null || c === void 0 ? void 0 : c.email) !== null && _d !== void 0
+					? _d
+					: ""),
+					corresponding: correspondingSet.has(String((_e = c === null || c === void 0 ? void 0 : c.name) !== null && _e !== void 0
+					? _e
+					: ""))
 				};
 			})
-		: [{ name: "", affiliation: "", orcid: "" }];
+		: [
+				{
+					name: "",
+					affiliation: "",
+					orcid: "",
+					email: "",
+					corresponding: false
+				}
+			];
 
 		const keywords = Array.isArray(j.keywords)
 		? j.keywords.map(k => String(k)).join(", ")
@@ -37871,12 +46687,16 @@ function instance$1($$self, $$props, $$invalidate) {
 			version: String((_g = j.version) !== null && _g !== void 0 ? _g : ""),
 			creators: creators.length > 0
 			? creators
-			: [{ name: "", affiliation: "", orcid: "" }],
-			acronym: String((_h = ext.acronym) !== null && _h !== void 0 ? _h : ""),
-			csl: String((_j = ext.csl) !== null && _j !== void 0 ? _j : ""),
-			template: String((_k = ext.template) !== null && _k !== void 0 ? _k : ""),
-			lineno: Boolean(ext.lineno),
-			figuresAtEnd: Boolean(ext.figures_at_end)
+			: [
+					{
+						name: "",
+						affiliation: "",
+						orcid: "",
+						email: "",
+						corresponding: false
+					}
+				],
+			acronym: String((_h = ext.acronym) !== null && _h !== void 0 ? _h : "")
 		};
 	}
 
@@ -37893,6 +46713,7 @@ function instance$1($$self, $$props, $$invalidate) {
 			const o = { name: c.name.trim() };
 			if (c.affiliation.trim()) o.affiliation = c.affiliation.trim();
 			if (c.orcid.trim()) o.orcid = c.orcid.trim();
+			if (c.email.trim()) o.email = c.email.trim();
 			return o;
 		});
 
@@ -37907,25 +46728,59 @@ function instance$1($$self, $$props, $$invalidate) {
 
 		const ext = Object.assign({}, prevExt);
 		setOrDelete(ext, "acronym", form.acronym.trim());
-		setOrDelete(ext, "csl", form.csl.trim());
-		setOrDelete(ext, "template", form.template.trim());
-		ext.lineno = form.lineno;
-		ext.figures_at_end = form.figuresAtEnd;
-		if (!form.lineno) delete ext.lineno;
-		if (!form.figuresAtEnd) delete ext.figures_at_end;
+
+		// CSL, Pandoc template, line numbers, and figures-at-end are managed by the
+		// Pandoc config (defaults/*.yaml), not per-project metadata — strip any
+		// legacy copies so metadata.json doesn't shadow the config.
+		delete ext.csl;
+
+		delete ext.template;
+		delete ext.lineno;
+		delete ext.figures_at_end;
+
+		// Corresponding authors: names of the checked creators. Their email (above)
+		// is what the Add Zenodo Frontmatter step emits as the `corresponding:` value.
+		const corresponding = form.creators.filter(c => c.corresponding && c.name.trim() !== "").map(c => c.name.trim());
+
+		if (corresponding.length > 0) ext.corresponding = corresponding; else delete ext.corresponding;
 		if (Object.keys(ext).length > 0) out._longform = ext; else delete out._longform;
 		return out;
 	}
 
 	function addCreator() {
-		$$invalidate(2, form.creators = [...form.creators, { name: "", affiliation: "", orcid: "" }], form);
+		$$invalidate(
+			2,
+			form.creators = [
+				...form.creators,
+				{
+					name: "",
+					affiliation: "",
+					orcid: "",
+					email: "",
+					corresponding: false
+				}
+			],
+			form
+		);
 	}
 
 	function removeCreator(i) {
 		$$invalidate(2, form.creators = form.creators.filter((_, idx) => idx !== i), form);
 
 		if (form.creators.length === 0) {
-			$$invalidate(2, form.creators = [{ name: "", affiliation: "", orcid: "" }], form);
+			$$invalidate(
+				2,
+				form.creators = [
+					{
+						name: "",
+						affiliation: "",
+						orcid: "",
+						email: "",
+						corresponding: false
+					}
+				],
+				form
+			);
 		}
 	}
 
@@ -37978,16 +46833,21 @@ function instance$1($$self, $$props, $$invalidate) {
 	}
 
 	function input1_input_handler() {
-		form.publication_date = this.value;
+		form.acronym = this.value;
 		$$invalidate(2, form);
 	}
 
 	function input2_input_handler() {
-		form.version = this.value;
+		form.publication_date = this.value;
 		$$invalidate(2, form);
 	}
 
 	function input3_input_handler() {
+		form.version = this.value;
+		$$invalidate(2, form);
+	}
+
+	function input4_input_handler() {
 		form.journal_title = this.value;
 		$$invalidate(2, form);
 	}
@@ -37997,7 +46857,7 @@ function instance$1($$self, $$props, $$invalidate) {
 		$$invalidate(2, form);
 	}
 
-	function input4_input_handler() {
+	function input5_input_handler() {
 		form.keywords = this.value;
 		$$invalidate(2, form);
 	}
@@ -38017,34 +46877,19 @@ function instance$1($$self, $$props, $$invalidate) {
 		$$invalidate(2, form);
 	}
 
+	function input3_input_handler_1(each_value, i) {
+		each_value[i].email = this.value;
+		$$invalidate(2, form);
+	}
+
+	function input4_change_handler(each_value, i) {
+		each_value[i].corresponding = this.checked;
+		$$invalidate(2, form);
+	}
+
 	const click_handler = i => moveCreator(i, -1);
 	const click_handler_1 = i => moveCreator(i, 1);
 	const click_handler_2 = i => removeCreator(i);
-
-	function input5_input_handler() {
-		form.acronym = this.value;
-		$$invalidate(2, form);
-	}
-
-	function input6_input_handler() {
-		form.csl = this.value;
-		$$invalidate(2, form);
-	}
-
-	function input7_input_handler() {
-		form.template = this.value;
-		$$invalidate(2, form);
-	}
-
-	function input8_change_handler() {
-		form.lineno = this.checked;
-		$$invalidate(2, form);
-	}
-
-	function input9_change_handler() {
-		form.figuresAtEnd = this.checked;
-		$$invalidate(2, form);
-	}
 
 	$$self.$$set = $$props => {
 		if ('projectPath' in $$props) $$invalidate(0, projectPath = $$props.projectPath);
@@ -38085,26 +46930,24 @@ function instance$1($$self, $$props, $$invalidate) {
 		input1_input_handler,
 		input2_input_handler,
 		input3_input_handler,
-		textarea_input_handler,
 		input4_input_handler,
+		textarea_input_handler,
+		input5_input_handler,
 		input0_input_handler_1,
 		input1_input_handler_1,
 		input2_input_handler_1,
+		input3_input_handler_1,
+		input4_change_handler,
 		click_handler,
 		click_handler_1,
-		click_handler_2,
-		input5_input_handler,
-		input6_input_handler,
-		input7_input_handler,
-		input8_change_handler,
-		input9_change_handler
+		click_handler_2
 	];
 }
 
 class MetadataModal$1 extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$1, create_fragment$1, safe_not_equal, { projectPath: 0, projectTitle: 13 }, add_css$1, [-1, -1]);
+		init(this, options, instance, create_fragment, safe_not_equal, { projectPath: 0, projectTitle: 13 }, add_css, [-1, -1]);
 	}
 }
 
@@ -38159,7 +47002,10 @@ class UndoManager {
     }
 }
 
-const VIEW_TYPE_LONGFORM_EXPLORER = "VIEW_TYPE_LONGFORM_EXPLORER";
+// Unique to this fork so it never collides with the original `longform` plugin's
+// view type (Obsidian's registerView throws on a duplicate type, which would abort
+// whichever plugin loads second). The exported name is kept for import stability.
+const VIEW_TYPE_LONGFORM_EXPLORER = "paperout-explorer";
 class ExplorerPane extends obsidian.ItemView {
     constructor(leaf) {
         super(leaf);
@@ -38169,7 +47015,7 @@ class ExplorerPane extends obsidian.ItemView {
         return VIEW_TYPE_LONGFORM_EXPLORER;
     }
     getDisplayText() {
-        return "Longform";
+        return translate("explorer.paneTitle");
     }
     getIcon() {
         return ICON_NAME;
@@ -38372,6 +47218,13 @@ class ExplorerPane extends obsidian.ItemView {
     }
 }
 
+const DISCONNECTED = {
+    connected: false,
+    config: null,
+    capabilities: [],
+};
+const paperbell = writable(Object.assign({}, DISCONNECTED));
+
 function resolveIfLongformFile(metadataCache, file) {
     const metadata = metadataCache.getFileCache(file);
     if (metadata && metadata.frontmatter && metadata.frontmatter["longform"]) {
@@ -38434,22 +47287,22 @@ class StoreVaultSync {
                         resolve();
                         return;
                     }
-                    console.log("[Longform] Waiting for active sync to complete...");
+                    console.log("[PaperOut] Waiting for active sync to complete...");
                     // Poll sync status every second
                     const interval = setInterval(() => {
                         if (!sync.syncing) {
                             clearInterval(interval);
                             clearTimeout(timeout); // Clear the timeout when sync completes
-                            console.log("[Longform] Sync complete.");
+                            console.log("[PaperOut] Sync complete.");
                             waitingForSync.set(false);
                             resolve();
                         }
-                        console.log("[Longform] Sync status:", sync.syncStatus);
+                        console.log("[PaperOut] Sync status:", sync.syncStatus);
                     }, 1000);
                     // Add a timeout just in case sync never completes
                     const timeout = setTimeout(() => {
                         clearInterval(interval);
-                        console.log("[Longform] Sync wait timed out");
+                        console.log("[PaperOut] Sync wait timed out");
                         waitingForSync.set(false);
                         resolve();
                     }, this.settlingTime);
@@ -38488,21 +47341,29 @@ class StoreVaultSync {
             const files = this.vault.getMarkdownFiles();
             const resolvedFiles = files.map((f) => resolveIfLongformFile(this.metadataCache, f));
             const draftFiles = resolvedFiles.filter((f) => f !== null);
-            const possibleDrafts = yield Promise.all(draftFiles.map((f) => this.draftFor(f)));
-            const drafts$1 = possibleDrafts.filter((d) => d !== null);
-            // Write dirty drafts back to their index files
-            const dirtyDrafts = drafts$1.filter((d) => d.dirty);
-            for (const d of dirtyDrafts) {
-                yield this.writeDraftFrontmatter(d.draft);
-            }
+            // Each file yields one draft (legacy) or many (a `format: project` index).
+            const perFile = yield Promise.all(draftFiles.map((f) => this.draftsFor(f)));
+            const drafts$1 = [].concat(...perFile);
             // Write discovered drafts to draft store
             const draftsToWrite = drafts$1.map((d) => d.draft);
+            // Write dirty drafts back to their index files — once per index file, since
+            // a project index's assets all share one file.
+            const dirtyIndexes = new Set();
+            for (const d of drafts$1) {
+                if (!d.dirty)
+                    continue;
+                const indexPath = draftIndexPath(d.draft);
+                if (dirtyIndexes.has(indexPath))
+                    continue;
+                dirtyIndexes.add(indexPath);
+                yield this.writeDraftFrontmatter(d.draft, draftsToWrite);
+            }
             this.lastKnownDraftsByPath = lodash.exports.cloneDeep(draftsToWrite.reduce((acc, d) => {
                 acc[d.vaultPath] = d;
                 return acc;
             }, {}));
             drafts.set(draftsToWrite);
-            const message = `[Longform] Loaded and watching projects. Found ${draftFiles.length} drafts in ${(new Date().getTime() - start) / 1000.0}s.`;
+            const message = `[PaperOut] Loaded and watching projects. Found ${draftFiles.length} drafts in ${(new Date().getTime() - start) / 1000.0}s.`;
             console.log(message);
             this.unsubscribeDraftsStore = drafts.subscribe(this.draftsStoreChanged.bind(this));
         });
@@ -38514,33 +47375,30 @@ class StoreVaultSync {
             if (this.pathsToIgnoreNextChange.delete(file.path)) {
                 return;
             }
-            const result = yield this.draftFor({ file, metadata: cache });
-            if (!result) {
-                const testDeletedDraft = this.lastKnownDraftsByPath[file.path];
-                if (testDeletedDraft) {
-                    // a draft's YAML was removed, remove it from drafts
-                    drafts.update((drafts) => {
-                        return drafts.filter((d) => d.vaultPath !== file.path);
-                    });
+            // One index file yields one draft (legacy) or many (a project index); we
+            // reconcile all drafts belonging to this index at once.
+            const results = yield this.draftsFor({ file, metadata: cache });
+            const newDrafts = results.map((r) => r.draft);
+            const current = get_store_value(drafts);
+            const oldForIndex = current.filter((d) => draftIndexPath(d) === file.path);
+            if (newDrafts.length === 0) {
+                if (oldForIndex.length > 0) {
+                    // this file's `longform` YAML was removed or became invalid
+                    drafts.update((drafts) => drafts.filter((d) => draftIndexPath(d) !== file.path));
                 }
                 return;
             }
-            const { draft } = result;
-            const old = this.lastKnownDraftsByPath[draft.vaultPath];
-            if (!old || !lodash.exports.isEqual(draft, old)) {
-                this.lastKnownDraftsByPath[draft.vaultPath] = draft;
-                drafts.update((drafts) => {
-                    const indexOfDraft = drafts.findIndex((d) => d.vaultPath === draft.vaultPath);
-                    if (indexOfDraft < 0) {
-                        //new draft
-                        drafts.push(draft);
-                    }
-                    else {
-                        drafts[indexOfDraft] = draft;
-                    }
-                    return drafts;
-                });
+            const byPath = (arr) => [...arr].sort((a, b) => a.vaultPath.localeCompare(b.vaultPath));
+            if (lodash.exports.isEqual(byPath(oldForIndex), byPath(newDrafts))) {
+                return;
             }
+            for (const d of newDrafts) {
+                this.lastKnownDraftsByPath[d.vaultPath] = d;
+            }
+            drafts.update((drafts) => {
+                const others = drafts.filter((d) => draftIndexPath(d) !== file.path);
+                return [...others, ...newDrafts];
+            });
         });
     }
     fileCreated(file) {
@@ -38554,8 +47412,7 @@ class StoreVaultSync {
                 if (d.format !== "scenes") {
                     return false;
                 }
-                const parentPath = this.vault.getAbstractFileByPath(d.vaultPath).parent
-                    .path;
+                const parentPath = draftIndexFolder(d);
                 const targetPath = obsidian.normalizePath(`${parentPath}/${d.sceneFolder}`);
                 return (
                 // file is in the scene folder
@@ -38582,19 +47439,14 @@ class StoreVaultSync {
             if (this.isInitializing)
                 return;
             const drafts$1 = get_store_value(drafts);
-            const draftIndex = drafts$1.findIndex((d) => d.vaultPath === file.path);
-            if (draftIndex >= 0) {
-                // index file deletion = delete draft from store
-                const newDrafts = lodash.exports.cloneDeep(drafts$1);
-                newDrafts.splice(draftIndex, 1);
+            // index file deletion = delete every draft backed by that index (all the
+            // assets of a project index, or the single legacy draft).
+            const removedPaths = new Set(drafts$1.filter((d) => draftIndexPath(d) === file.path).map((d) => d.vaultPath));
+            if (removedPaths.size > 0) {
+                const newDrafts = drafts$1.filter((d) => !removedPaths.has(d.vaultPath));
                 drafts.set(newDrafts);
-                if (get_store_value(selectedDraftVaultPath) === file.path) {
-                    if (newDrafts.length > 0) {
-                        selectedDraftVaultPath.set(newDrafts[0].vaultPath);
-                    }
-                    else {
-                        selectedDraftVaultPath.set(null);
-                    }
+                if (removedPaths.has(get_store_value(selectedDraftVaultPath))) {
+                    selectedDraftVaultPath.set(newDrafts.length > 0 ? newDrafts[0].vaultPath : null);
                 }
             }
             else {
@@ -38634,20 +47486,43 @@ class StoreVaultSync {
             if (this.isInitializing)
                 return;
             const drafts$1 = get_store_value(drafts);
-            const draftIndex = drafts$1.findIndex((d) => d.vaultPath === oldPath);
-            if (draftIndex >= 0) {
-                // index file renamed
+            const indexDrafts = drafts$1.filter((d) => draftIndexPath(d) === oldPath);
+            if (indexDrafts.length > 0) {
+                // index file renamed/moved — rekey every draft it backs. For a project
+                // index that means rebuilding each asset's synthetic vaultPath and
+                // rebasing single-asset body paths so they follow the index folder.
+                const oldFolder = draftParentFolder(oldPath);
+                const newFolder = draftParentFolder(file.path);
+                const selected = get_store_value(selectedDraftVaultPath);
+                let newSelected = selected;
                 drafts.update((_drafts) => {
-                    const d = _drafts[draftIndex];
-                    d.vaultPath = file.path;
-                    if (!d.titleInFrontmatter) {
-                        d.title = fileNameFromPath(file.path);
-                    }
-                    _drafts[draftIndex] = d;
-                    return _drafts;
+                    return _drafts.map((d) => {
+                        var _a;
+                        if (draftIndexPath(d) !== oldPath)
+                            return d;
+                        const oldVaultPath = d.vaultPath;
+                        if (d.indexPath) {
+                            // asset of a project index
+                            const updated = Object.assign(Object.assign({}, d), { indexPath: file.path, vaultPath: syntheticAssetPath(file.path, (_a = d.assetId) !== null && _a !== void 0 ? _a : "") });
+                            if (updated.format === "single" && updated.bodyPath) {
+                                updated.bodyPath = rebasePath(updated.bodyPath, oldFolder, newFolder);
+                            }
+                            if (selected === oldVaultPath)
+                                newSelected = updated.vaultPath;
+                            return updated;
+                        }
+                        // legacy single-file index
+                        const updated = Object.assign(Object.assign({}, d), { vaultPath: file.path });
+                        if (!updated.titleInFrontmatter) {
+                            updated.title = fileNameFromPath(file.path);
+                        }
+                        if (selected === oldVaultPath)
+                            newSelected = file.path;
+                        return updated;
+                    });
                 });
-                if (get_store_value(selectedDraftVaultPath) === oldPath) {
-                    selectedDraftVaultPath.set(file.path);
+                if (newSelected !== selected) {
+                    selectedDraftVaultPath.set(newSelected);
                 }
             }
             else {
@@ -38711,11 +47586,20 @@ class StoreVaultSync {
     }
     draftsStoreChanged(newValue) {
         return __awaiter(this, void 0, void 0, function* () {
+            // Write each backing index file at most once per flush: a project index's
+            // assets share one file, so N changed assets must not trigger N rewrites
+            // (and N re-parses). We ignore the next change on the *index* path, which is
+            // the file actually written — never the synthetic per-asset vaultPath.
+            const writtenIndexes = new Set();
             for (const draft of newValue) {
                 const old = this.lastKnownDraftsByPath[draft.vaultPath];
                 if (!old || !lodash.exports.isEqual(draft, old)) {
-                    this.pathsToIgnoreNextChange.add(draft.vaultPath);
-                    yield this.writeDraftFrontmatter(draft);
+                    const indexPath = draftIndexPath(draft);
+                    if (writtenIndexes.has(indexPath))
+                        continue;
+                    writtenIndexes.add(indexPath);
+                    this.pathsToIgnoreNextChange.add(indexPath);
+                    yield this.writeDraftFrontmatter(draft, newValue);
                 }
             }
             this.lastKnownDraftsByPath = lodash.exports.cloneDeep(newValue.reduce((acc, d) => {
@@ -38724,146 +47608,147 @@ class StoreVaultSync {
             }, {}));
         });
     }
-    // if dirty, draft is modified from reality of index file
-    // and should be written back to index file
-    draftFor(fileWithMetadata) {
-        var _a, _b, _c, _d, _e, _f;
+    // Expand an index file into its draft(s): one for a legacy scenes/single
+    // index, several for a `format: project` index. Each scenes draft is
+    // reconciled against its real scene folder; a scenes draft is "dirty" when the
+    // frontmatter lists scenes that no longer exist on disk and must be rewritten.
+    draftsFor(fileWithMetadata) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!fileWithMetadata.metadata.frontmatter) {
-                return null;
-            }
+            if (!fileWithMetadata.metadata.frontmatter)
+                return [];
             const longformEntry = fileWithMetadata.metadata.frontmatter["longform"];
-            if (!longformEntry) {
-                return null;
+            if (!longformEntry)
+                return [];
+            const indexPath = fileWithMetadata.file.path;
+            const fallbackTitle = fileNameFromPath(indexPath);
+            let baseDrafts = expandProjectIndex(longformEntry, indexPath, fallbackTitle);
+            if (baseDrafts.length === 0) {
+                console.log(`[PaperOut] Error loading draft at ${indexPath}: invalid longform.format. Ignoring.`);
+                return [];
             }
-            const format = longformEntry["format"];
-            const vaultPath = fileWithMetadata.file.path;
-            let title = longformEntry["title"];
-            let titleInFrontmatter = true;
-            if (!title) {
-                titleInFrontmatter = false;
-                title = fileNameFromPath(vaultPath);
-            }
-            const workflow = (_a = longformEntry["workflow"]) !== null && _a !== void 0 ? _a : null;
-            const draftTitle = (_b = longformEntry["draftTitle"]) !== null && _b !== void 0 ? _b : null;
-            if (format === "scenes") {
-                let rawScenes = (_c = longformEntry["scenes"]) !== null && _c !== void 0 ? _c : [];
-                if (rawScenes.length === 0) {
-                    // fallback for issue where the metadata cache seems to fail to recognize yaml arrays.
-                    // in this case, it reports the array as empty when it's not,
-                    // so we will parse out the yaml directly from the file contents, just in case.
-                    // discord discussion: https://discord.com/channels/686053708261228577/840286264964022302/994589562082951219
-                    // 2023-01-03: Confirmed this issue is still present; using new processFrontMatter function
-                    // seems to read correctly, though!
-                    let fm = null;
-                    try {
-                        yield this.app.fileManager.processFrontMatter(fileWithMetadata.file, (_fm) => {
-                            fm = _fm;
-                        });
-                    }
-                    catch (error) {
-                        console.error("[Longform] error manually loading frontmatter:", error);
-                    }
-                    if (fm) {
-                        rawScenes = fm["longform"]["scenes"];
-                    }
+            // Metadata-cache quirk: it sometimes reports a scenes YAML array as empty.
+            // If any scenes draft came back empty, re-read the frontmatter directly and
+            // re-expand (covers legacy `scenes` and every asset of a project index).
+            // discord: https://discord.com/channels/686053708261228577/840286264964022302/994589562082951219
+            const anyEmptyScenes = baseDrafts.some((d) => d.format === "scenes" && d.scenes.length === 0);
+            if (anyEmptyScenes) {
+                let fm = null;
+                try {
+                    yield this.app.fileManager.processFrontMatter(fileWithMetadata.file, (_fm) => {
+                        fm = _fm;
+                    });
                 }
-                // Convert to indented scenes
-                const scenes = arraysToIndentedScenes(rawScenes);
-                const sceneFolder = (_d = longformEntry["sceneFolder"]) !== null && _d !== void 0 ? _d : "/";
-                const sceneTemplate = (_e = longformEntry["sceneTemplate"]) !== null && _e !== void 0 ? _e : null;
-                const ignoredFiles = (_f = longformEntry["ignoredFiles"]) !== null && _f !== void 0 ? _f : [];
-                const normalizedSceneFolder = obsidian.normalizePath(`${fileWithMetadata.file.parent.path}/${sceneFolder}`);
-                let filenamesInSceneFolder = [];
-                if (yield this.vault.adapter.exists(normalizedSceneFolder)) {
-                    filenamesInSceneFolder = (yield this.vault.adapter.list(normalizedSceneFolder)).files
-                        .filter((f) => f !== fileWithMetadata.file.path && f.endsWith(".md"))
-                        .map((f) => { var _a; return (_a = this.vault.getAbstractFileByPath(f)) === null || _a === void 0 ? void 0 : _a.name.slice(0, -3); })
-                        .filter((maybeName) => maybeName !== null && maybeName !== undefined);
+                catch (error) {
+                    console.error("[PaperOut] error manually loading frontmatter:", error);
                 }
-                // Filter removed scenes
-                const knownScenes = scenes.filter(({ title }) => filenamesInSceneFolder.contains(title));
-                const dirty = knownScenes.length !== scenes.length;
-                const sceneTitles = new Set(scenes.map((s) => s.title));
-                const newScenes = filenamesInSceneFolder.filter((s) => !sceneTitles.has(s));
-                // ignore all new scenes that are known-to-ignore per ignoredFiles
-                const ignoredRegexes = ignoredFiles.filter(n => n).map((p) => ignoredPatternToRegex(p));
-                const unknownFiles = newScenes.filter((s) => ignoredRegexes.find((r) => r.test(s)) === undefined);
-                return {
-                    draft: {
-                        format: "scenes",
-                        title,
-                        titleInFrontmatter,
-                        draftTitle,
-                        vaultPath,
-                        sceneFolder,
-                        scenes: knownScenes,
-                        ignoredFiles,
-                        unknownFiles,
-                        sceneTemplate,
-                        workflow,
-                    },
-                    dirty,
-                };
+                if (fm && fm["longform"]) {
+                    baseDrafts = expandProjectIndex(fm["longform"], indexPath, fallbackTitle);
+                }
             }
-            else if (format === "single") {
-                return {
-                    draft: {
-                        format: "single",
-                        title,
-                        titleInFrontmatter,
-                        draftTitle,
-                        vaultPath,
-                        workflow,
-                    },
-                    dirty: false,
-                };
+            const results = [];
+            for (const base of baseDrafts) {
+                if (base.format === "scenes") {
+                    results.push(yield this.reconcileScenesDraft(base, indexPath));
+                }
+                else {
+                    results.push({ draft: base, dirty: false });
+                }
             }
-            else {
-                console.log(`[Longform] Error loading draft at ${fileWithMetadata.file.path}: invalid longform.format. Ignoring.`);
-                return null;
-            }
+            return results;
         });
     }
-    writeDraftFrontmatter(draft) {
+    // Reconcile a scenes draft's frontmatter scene list against the files that
+    // actually exist in its scene folder: drop removed scenes (marking the draft
+    // dirty so it is rewritten) and collect not-yet-tracked `.md` files as unknown.
+    reconcileScenesDraft(base, indexPath) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
-            const file = this.app.vault.getAbstractFileByPath(draft.vaultPath);
+            const indexFolder = draftParentFolder(indexPath);
+            const normalizedSceneFolder = obsidian.normalizePath(`${indexFolder}/${base.sceneFolder}`);
+            let filenamesInSceneFolder = [];
+            if (yield this.vault.adapter.exists(normalizedSceneFolder)) {
+                filenamesInSceneFolder = (yield this.vault.adapter.list(normalizedSceneFolder)).files
+                    .filter((f) => f !== indexPath && f.endsWith(".md"))
+                    .map((f) => { var _a; return (_a = this.vault.getAbstractFileByPath(f)) === null || _a === void 0 ? void 0 : _a.name.slice(0, -3); })
+                    .filter((maybeName) => maybeName !== null && maybeName !== undefined);
+            }
+            const knownScenes = base.scenes.filter(({ title }) => filenamesInSceneFolder.contains(title));
+            const dirty = knownScenes.length !== base.scenes.length;
+            const sceneTitles = new Set(base.scenes.map((s) => s.title));
+            const newScenes = filenamesInSceneFolder.filter((s) => !sceneTitles.has(s));
+            const ignoredRegexes = ((_a = base.ignoredFiles) !== null && _a !== void 0 ? _a : [])
+                .filter((n) => n)
+                .map((p) => ignoredPatternToRegex(p));
+            const unknownFiles = newScenes.filter((s) => ignoredRegexes.find((r) => r.test(s)) === undefined);
+            return {
+                draft: Object.assign(Object.assign({}, base), { scenes: knownScenes, unknownFiles }),
+                dirty,
+            };
+        });
+    }
+    // Write a draft's frontmatter back to its index file. For a project asset this
+    // writes the WHOLE `longform.assets` array (all siblings) once; for a legacy
+    // draft it writes that draft's own `longform` entry. `allDrafts` supplies the
+    // sibling set (the live store, or the freshly-discovered list during startup).
+    writeDraftFrontmatter(draft, allDrafts = get_store_value(drafts)) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const indexPath = draftIndexPath(draft);
+            const file = this.app.vault.getAbstractFileByPath(indexPath);
             if (!file || !(file instanceof obsidian.TFile)) {
                 return;
             }
-            yield this.app.fileManager.processFrontMatter(file, (fm) => {
-                setDraftOnFrontmatterObject(fm, draft);
-            });
-            // for multi-scene projects, optionally set a property on each scene that holds its order within the project
+            let scenesToNumber = [];
+            if (draft.indexPath) {
+                const siblings = allDrafts.filter((d) => draftIndexPath(d) === indexPath);
+                const assets = siblings.length > 0 ? siblings : [draft];
+                const title = assets[0].title;
+                yield this.app.fileManager.processFrontMatter(file, (fm) => {
+                    setProjectAssetsOnFrontmatterObject(fm, title, assets);
+                });
+                scenesToNumber = assets.filter((d) => d.format === "scenes");
+            }
+            else {
+                yield this.app.fileManager.processFrontMatter(file, (fm) => {
+                    setDraftOnFrontmatterObject(fm, draft);
+                });
+                if (draft.format === "scenes")
+                    scenesToNumber = [draft];
+            }
+            // for multi-scene projects, optionally set a property on each scene that
+            // holds its order within the project
             if (get_store_value(pluginSettings).writeProperty) {
-                if (draft.format === "scenes") {
-                    const writes = [];
-                    const multiDraft = draft;
-                    const sceneNumbers = numberScenes(scenesForCompileNumbering(this.app, multiDraft));
-                    const includedTitles = new Set(sceneNumbers.map((s) => s.title));
-                    sceneNumbers.forEach((numberedScene, index) => {
-                        const sceneFilePath = scenePath(numberedScene.title, multiDraft, this.app.vault);
-                        const sceneFile = this.app.vault.getAbstractFileByPath(sceneFilePath);
-                        // false if a folder, or not found
-                        if (!(sceneFile instanceof obsidian.TFile)) {
-                            return;
-                        }
-                        writes.push(writeSceneNumbers(this.app, sceneFile, index, numberedScene.numbering));
-                    });
-                    for (const scene of multiDraft.scenes) {
-                        if (includedTitles.has(scene.title)) {
-                            continue;
-                        }
-                        const sceneFilePath = scenePath(scene.title, multiDraft, this.app.vault);
-                        const sceneFile = this.app.vault.getAbstractFileByPath(sceneFilePath);
-                        if (!(sceneFile instanceof obsidian.TFile)) {
-                            continue;
-                        }
-                        writes.push(clearSceneNumbers(this.app, sceneFile));
-                    }
-                    yield Promise.all(writes);
+                for (const multiDraft of scenesToNumber) {
+                    yield this.writeSceneNumbersFor(multiDraft);
                 }
             }
+        });
+    }
+    writeSceneNumbersFor(multiDraft) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const writes = [];
+            const sceneNumbers = numberScenes(scenesForCompileNumbering(this.app, multiDraft));
+            const includedTitles = new Set(sceneNumbers.map((s) => s.title));
+            sceneNumbers.forEach((numberedScene, index) => {
+                const sceneFilePath = scenePath(numberedScene.title, multiDraft, this.app.vault);
+                const sceneFile = this.app.vault.getAbstractFileByPath(sceneFilePath);
+                // false if a folder, or not found
+                if (!(sceneFile instanceof obsidian.TFile)) {
+                    return;
+                }
+                writes.push(writeSceneNumbers(this.app, sceneFile, index, numberedScene.numbering));
+            });
+            for (const scene of multiDraft.scenes) {
+                if (includedTitles.has(scene.title)) {
+                    continue;
+                }
+                const sceneFilePath = scenePath(scene.title, multiDraft, this.app.vault);
+                const sceneFile = this.app.vault.getAbstractFileByPath(sceneFilePath);
+                if (!(sceneFile instanceof obsidian.TFile)) {
+                    continue;
+                }
+                writes.push(clearSceneNumbers(this.app, sceneFile));
+            }
+            yield Promise.all(writes);
         });
     }
 }
@@ -38911,6 +47796,20 @@ function writeSceneNumbers(app, file, index, numbering) {
         fm["longform-number"] = formatSceneNumber(numbering);
     });
 }
+/** Move a path from under `oldFolder` to under `newFolder`, if it lies within. */
+function rebasePath(path, oldFolder, newFolder) {
+    if (oldFolder === newFolder)
+        return path;
+    if (oldFolder && path.startsWith(`${oldFolder}/`)) {
+        const rest = path.slice(oldFolder.length + 1);
+        return newFolder ? `${newFolder}/${rest}` : rest;
+    }
+    if (!oldFolder) {
+        // index was at the vault root
+        return newFolder ? `${newFolder}/${path}` : path;
+    }
+    return path;
+}
 const ESCAPED_CHARACTERS = new Set("/&$^+.()=!|[]{},".split(""));
 function ignoredPatternToRegex(pattern) {
     let regex = "";
@@ -38932,31 +47831,151 @@ function ignoredPatternToRegex(pattern) {
     return new RegExp(`^${regex}$`);
 }
 
+/**
+ * A collection of store subscriptions that can be torn down exactly once.
+ *
+ * Svelte 3's writable unsubscriber is **not** idempotent: calling it a second
+ * time, once the store has no other subscribers, dereferences an already-nulled
+ * `stop` and throws `TypeError: stop is not a function`. The settings tab used
+ * to keep three `Unsubscriber` fields and call them from both `hide()` and
+ * `display()` without clearing them, so every hide→display cycle double-called
+ * the same functions. The throw escaped `display()`, and since Obsidian's
+ * `openTab` empties the tab container *before* calling `hide()`/`renderTab()`
+ * and wraps neither in a try/catch, the settings pane went permanently blank —
+ * only a plugin reload recovered it.
+ *
+ * Hence the two invariants below: clear before calling (so a throw can never
+ * leave a stale reference behind), and isolate each call (so one bad
+ * subscription cannot block the rest of the cleanup).
+ */
+class SubscriptionSet {
+    constructor() {
+        this.subs = [];
+    }
+    add(unsubscribe) {
+        this.subs.push(unsubscribe);
+    }
+    /**
+     * Unsubscribe everything. Safe to call any number of times, in any order,
+     * and safe even if an individual unsubscriber throws.
+     */
+    teardown() {
+        // Detach first: if a call below throws, the set is already empty, so the
+        // next teardown() cannot call the same unsubscriber twice.
+        const subs = this.subs;
+        this.subs = [];
+        for (const unsubscribe of subs) {
+            try {
+                unsubscribe();
+            }
+            catch (e) {
+                console.error("[PaperOut] Failed to unsubscribe a store:", e);
+            }
+        }
+    }
+}
+
 class LongformSettingsTab extends obsidian.PluginSettingTab {
     constructor(app, plugin) {
         super(app, plugin);
+        // One set rather than three fields: an unsubscriber must never be called
+        // twice (svelte 3 throws), and both display() and hide() tear down. See
+        // src/utils/subscription-set.ts.
+        this.subs = new SubscriptionSet();
+        this.pendingRerender = null;
         this.plugin = plugin;
     }
     display() {
-        const settings = get_store_value(pluginSettings);
+        var _a;
         const { containerEl } = this;
-        containerEl.empty();
-        new obsidian.Setting(containerEl).setName("Composition").setHeading();
-        new obsidian.Setting(containerEl).setName("New scene template").addSearch((cb) => {
+        // NOTHING here may throw out of display(): Obsidian's openTab() empties the
+        // tab container before calling renderTab(), and wraps neither that nor
+        // hide() in a try/catch — so an escaping error leaves the pane blank with no
+        // way back. Hence the whole body, teardown and subscribe included, is
+        // guarded (the previous version guarded only renderSettings, and the real
+        // throw was in the teardown above it).
+        try {
+            // display() can be re-invoked (locale change, PaperBell refresh); tear down
+            // any subscriptions from the previous render before rebuilding.
+            this.teardown();
+            // Never deref a null store (defensive: settings are loaded at onload, but a
+            // re-entrant display() must not blow up on a transient null).
+            const settings = (_a = get_store_value(pluginSettings)) !== null && _a !== void 0 ? _a : DEFAULT_SETTINGS;
+            containerEl.empty();
+            // Re-render in the new language whenever the resolved locale changes. Skip
+            // the immediate emission svelte stores send on subscribe (we're rendering
+            // now). Subscribed BEFORE the render so a throw mid-render can't leak it.
+            let firstLocaleEmission = true;
+            this.subs.add(locale.subscribe(() => {
+                if (firstLocaleEmission) {
+                    firstLocaleEmission = false;
+                    return;
+                }
+                // Deferred, never synchronous: a PaperBell refresh updates `paperbell`
+                // → the derived effective locale → `locale`, all inside the awaited
+                // fetch, which would otherwise re-enter display() mid-flush and leave
+                // the outer call rebuilding a container the inner one already replaced.
+                // Cancelled by teardown(), so the refresh button's own re-render
+                // supersedes this one instead of the pane rebuilding twice — and so a
+                // hidden tab never re-renders into a detached container.
+                this.pendingRerender = window.setTimeout(() => {
+                    this.pendingRerender = null;
+                    this.display();
+                }, 0);
+            }));
+            this.renderSettings(settings, containerEl);
+        }
+        catch (e) {
+            console.error("[PaperOut] Failed to render settings:", e);
+            try {
+                containerEl.empty();
+                containerEl.createEl("p", { cls: "setting-item-description" }, (el) => {
+                    el.setText(translate("settings.renderError"));
+                });
+            }
+            catch (nested) {
+                console.error("[PaperOut] Could not render the settings error:", nested);
+            }
+        }
+    }
+    renderSettings(settings, containerEl) {
+        var _a;
+        // ── Language ──────────────────────────────────────────────────────────
+        new obsidian.Setting(containerEl).setName(translate("settings.language.heading")).setHeading();
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.language.name"))
+            .setDesc(translate("settings.language.desc"))
+            .addDropdown((cb) => {
+            var _a;
+            cb.addOption("auto", translate("settings.language.auto"));
+            cb.addOption("en", translate("settings.language.en"));
+            cb.addOption("zh", translate("settings.language.zh"));
+            cb.setValue((_a = settings.language) !== null && _a !== void 0 ? _a : "auto");
+            cb.onChange((value) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { language: value })));
+            });
+        });
+        // ── Composition ───────────────────────────────────────────────────────
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.composition.heading"))
+            .setHeading();
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.sceneTemplate.name"))
+            .addSearch((cb) => {
+            var _a;
             new FileSuggest(this.app, cb.inputEl);
             cb.setPlaceholder("templates/Scene.md")
-                .setValue(settings.sceneTemplate)
+                .setValue((_a = settings.sceneTemplate) !== null && _a !== void 0 ? _a : "")
                 .onChange((v) => {
                 pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { sceneTemplate: v })));
             });
         });
         containerEl.createEl("p", { cls: "setting-item-description" }, (el) => {
-            el.innerHTML =
-                "This file will be used as a template when creating new scenes via the New Scene… field. If you use a templating plugin (Templater or the core plugin) it will be used to process this template. This setting applies to all projects and can be overridden per-project in the Project > Project Metadata settings in the Longform pane.";
+            el.setText(translate("settings.sceneTemplate.desc"));
         });
         new obsidian.Setting(containerEl)
-            .setName("Show scene numbers in Scenes tab")
-            .setDesc("If on, shows numbers for scenes with subscenes separated by periods, e.g. 1.1.2. Create subscenes by dragging a scene to an indent under an existing scene, or us an indent command.")
+            .setName(translate("settings.numberScenes.name"))
+            .setDesc(translate("settings.numberScenes.desc"))
             .addToggle((cb) => {
             cb.setValue(settings.numberScenes);
             cb.onChange((value) => {
@@ -38964,25 +47983,134 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Write scene index to frontmatter")
-            .setDesc("If enabled, will add a scene index, and scene number, to the frontmatter of scene files.")
+            .setName(translate("settings.writeProperty.name"))
+            .setDesc(translate("settings.writeProperty.desc"))
             .addToggle((toggle) => {
             toggle.setValue(settings.writeProperty);
             toggle.onChange((value) => {
-                pluginSettings.update((settings) => (Object.assign(Object.assign({}, settings), { writeProperty: value })));
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { writeProperty: value })));
                 if (value) {
                     syncSceneIndices(this.app);
                 }
             });
         });
-        new obsidian.Setting(containerEl).setName("Compile").setHeading();
+        // ── Compile ───────────────────────────────────────────────────────────
+        new obsidian.Setting(containerEl).setName(translate("settings.compile.heading")).setHeading();
         new obsidian.Setting(containerEl)
-            .setName("User script step folder")
-            .setDesc(".js files in this folder will be available as User Script Steps in the Compile panel.")
+            .setName(translate("settings.pandocExport.name"))
+            .setDesc(translate("settings.pandocExport.desc"))
+            .addButton((cb) => {
+            cb.setButtonText(translate("settings.pandocExport.button"))
+                .setCta()
+                .onClick(() => new PandocSetupModal(this.app, this.plugin).open());
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.market.name"))
+            .setDesc(translate("settings.market.desc"))
+            .addButton((cb) => {
+            cb.setButtonText(translate("settings.market.button"))
+                .setCta()
+                .onClick(() => new PandocMarketModal(this.app, this.plugin).open());
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.market.url.name"))
+            .setDesc(translate("settings.market.url.desc"))
+            .addText((cb) => {
+            var _a;
+            cb.setPlaceholder(DEFAULT_MARKET_INDEX_URL)
+                .setValue((_a = settings.pandocMarketIndexUrl) !== null && _a !== void 0 ? _a : "")
+                .onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocMarketIndexUrl: v })));
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.pandocUrl.name"))
+            .setDesc(translate("settings.pandocUrl.desc"))
+            .addText((cb) => {
+            var _a;
+            cb.setPlaceholder("https://…/pandoc-assets.zip")
+                .setValue((_a = settings.pandocAssetsUrl) !== null && _a !== void 0 ? _a : "")
+                .onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocAssetsUrl: v })));
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.pandocFolder.name"))
+            .setDesc(translate("settings.pandocFolder.desc"))
             .addSearch((cb) => {
+            var _a;
+            new FolderSuggest(this.app, cb.inputEl);
+            cb.setPlaceholder("PaperBell/pandoc")
+                .setValue((_a = settings.pandocAssetsFolder) !== null && _a !== void 0 ? _a : "")
+                .onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocAssetsFolder: v })));
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.pandocOutput.name"))
+            .setDesc(translate("settings.pandocOutput.desc"))
+            .addSearch((cb) => {
+            var _a;
+            new FolderSuggest(this.app, cb.inputEl);
+            cb.setPlaceholder("(next to manuscript, or e.g. ~/Papers)")
+                .setValue((_a = settings.pandocOutputFolder) !== null && _a !== void 0 ? _a : "")
+                .onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocOutputFolder: v })));
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.bibliography.name"))
+            .setDesc(translate("settings.bibliography.desc"))
+            .addSearch((cb) => {
+            var _a;
+            new FileSuggest(this.app, cb.inputEl);
+            cb.setPlaceholder("(auto-detect)")
+                .setValue((_a = settings.pandocBibliography) !== null && _a !== void 0 ? _a : "")
+                .onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocBibliography: v })));
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.globalBibliography.name"))
+            .setDesc(translate("settings.globalBibliography.desc"))
+            .addTextArea((cb) => {
+            var _a;
+            cb.setPlaceholder("Library/global.bib\nLibrary/methods-refs.bib")
+                .setValue((_a = settings.pandocGlobalBibliography) !== null && _a !== void 0 ? _a : "")
+                .onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocGlobalBibliography: v })));
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.pandocBinary.name"))
+            .setDesc(translate("settings.pandocBinary.desc"))
+            .addText((cb) => {
+            var _a;
+            cb.setPlaceholder("pandoc")
+                .setValue((_a = settings.pandocBinary) !== null && _a !== void 0 ? _a : "")
+                .onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocBinary: v })));
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.extraBinFolders.name"))
+            .setDesc(translate("settings.extraBinFolders.desc"))
+            .addTextArea((cb) => {
+            var _a;
+            cb.setPlaceholder("C:\\Tools\\pandoc\n/opt/local/bin")
+                .setValue((_a = settings.pandocExtraBinFolders) !== null && _a !== void 0 ? _a : "")
+                .onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocExtraBinFolders: v })));
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.userScriptFolder.name"))
+            .setDesc(translate("settings.userScriptFolder.desc"))
+            .addSearch((cb) => {
+            var _a;
             new FolderSuggest(this.app, cb.inputEl);
             cb.setPlaceholder("my/script/steps/")
-                .setValue(settings.userScriptFolder)
+                .setValue((_a = settings.userScriptFolder) !== null && _a !== void 0 ? _a : "")
                 .onChange((v) => {
                 pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { userScriptFolder: v })));
             });
@@ -38991,12 +48119,15 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
         this.stepsList = containerEl.createEl("ul", {
             cls: "longform-settings-user-steps",
         });
-        this.unsubscribeUserScripts = userScriptSteps.subscribe((steps) => {
+        this.subs.add(userScriptSteps.subscribe((steps) => {
             if (steps && steps.length > 0) {
-                this.stepsSummary.innerText = `Loaded ${steps.length} step${steps.length !== 1 ? "s" : ""}:`;
+                this.stepsSummary.innerText = translate("settings.userSteps.loaded", {
+                    count: steps.length,
+                    plural: steps.length !== 1 ? "s" : "",
+                });
             }
             else {
-                this.stepsSummary.innerText = "No steps loaded.";
+                this.stepsSummary.innerText = translate("settings.userSteps.none");
             }
             if (this.stepsList) {
                 this.stepsList.empty();
@@ -39014,15 +48145,17 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
                     });
                 }
             }
-        });
+        }));
         containerEl.createEl("p", { cls: "setting-item-description" }, (el) => {
-            el.innerHTML =
-                "User Script Steps are automatically loaded from this folder. Changes to .js files in this folder are synced with Longform after a slight delay. If your script does not appear here or in the Compile tab, you may have an error in your script—check the dev console for it.";
+            el.setText(translate("settings.userSteps.desc"));
         });
-        new obsidian.Setting(containerEl).setName("Word Counts & Sessions").setHeading();
+        // ── Word Counts & Sessions ────────────────────────────────────────────
         new obsidian.Setting(containerEl)
-            .setName("Show word counts in status bar")
-            .setDesc("Click the status item to show the focused note’s project.")
+            .setName(translate("settings.wordCounts.heading"))
+            .setHeading();
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.showWordCount.name"))
+            .setDesc(translate("settings.showWordCount.desc"))
             .addToggle((cb) => {
             cb.setValue(settings.showWordCountInStatusBar);
             cb.onChange((value) => {
@@ -39030,8 +48163,8 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Start new writing sessions each day")
-            .setDesc("You can always manually start a new session by running the Longform: Start New Writing Session command. Turning this off will cause writing sessions to carry over across multiple days until you manually start a new one.")
+            .setName(translate("settings.newSessionDaily.name"))
+            .setDesc(translate("settings.newSessionDaily.desc"))
             .addToggle((cb) => {
             cb.setValue(settings.startNewSessionEachDay);
             cb.onChange((value) => {
@@ -39039,10 +48172,11 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Session word count goal")
-            .setDesc("A number of words to target for a given writing session.")
+            .setName(translate("settings.sessionGoal.name"))
+            .setDesc(translate("settings.sessionGoal.desc"))
             .addText((cb) => {
-            cb.setValue(settings.sessionGoal.toString());
+            var _a;
+            cb.setValue(String((_a = settings.sessionGoal) !== null && _a !== void 0 ? _a : DEFAULT_SETTINGS.sessionGoal));
             cb.onChange((value) => {
                 const numberValue = +value;
                 if (numberValue && numberValue > 0) {
@@ -39051,19 +48185,19 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Goal applies to")
-            .setDesc("You can set your word count goal to target all Longform writing, or you can make each project or scene have its own discrete goal.")
+            .setName(translate("settings.goalAppliesTo.name"))
+            .setDesc(translate("settings.goalAppliesTo.desc"))
             .addDropdown((cb) => {
-            cb.addOption("all", "words written across all projects");
-            cb.addOption("project", "each project individually");
-            cb.addOption("note", "each scene or single-scene project");
+            cb.addOption("all", translate("settings.goalAppliesTo.all"));
+            cb.addOption("project", translate("settings.goalAppliesTo.project"));
+            cb.addOption("note", translate("settings.goalAppliesTo.note"));
             cb.setValue(settings.applyGoalTo);
             cb.onChange((value) => {
                 pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { applyGoalTo: value })));
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Notify on goal reached")
+            .setName(translate("settings.notifyOnGoal.name"))
             .addToggle((cb) => {
             cb.setValue(settings.notifyOnGoal);
             cb.onChange((value) => {
@@ -39071,8 +48205,8 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Count deletions against goal")
-            .setDesc("If on, deleting words will count as negative words written. You cannot go below zero for a session.")
+            .setName(translate("settings.countDeletions.name"))
+            .setDesc(translate("settings.countDeletions.desc"))
             .addToggle((cb) => {
             cb.setValue(settings.countDeletionsForGoal);
             cb.onChange((value) => {
@@ -39080,10 +48214,11 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Sessions to keep")
-            .setDesc("Number of sessions to store locally.")
+            .setName(translate("settings.sessionsToKeep.name"))
+            .setDesc(translate("settings.sessionsToKeep.desc"))
             .addText((cb) => {
-            cb.setValue(settings.keepSessionCount.toString());
+            var _a;
+            cb.setValue(String((_a = settings.keepSessionCount) !== null && _a !== void 0 ? _a : DEFAULT_SETTINGS.keepSessionCount));
             cb.onChange((value) => {
                 const numberValue = +value;
                 if (numberValue && numberValue > 0) {
@@ -39092,12 +48227,12 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Store session data")
-            .setDesc("Where your writing session data is stored. By default, data is stored alongside other Longform settings in the plugin’s data.json file. You may instead store it in a separate .json file in the plugin folder, or in a file in your vault. You may want to do this for selective sync or git reasons.")
+            .setName(translate("settings.storeSession.name"))
+            .setDesc(translate("settings.storeSession.desc"))
             .addDropdown((cb) => {
-            cb.addOption("data", "with Longform settings");
-            cb.addOption("plugin-folder", "as a .json file in the longform/ plugin folder");
-            cb.addOption("file", "as a file in your vault");
+            cb.addOption("data", translate("settings.storeSession.data"));
+            cb.addOption("plugin-folder", translate("settings.storeSession.pluginFolder"));
+            cb.addOption("file", translate("settings.storeSession.file"));
             cb.setValue(settings.sessionStorage);
             cb.onChange((value) => {
                 pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { sessionStorage: value })));
@@ -39116,8 +48251,8 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { sessionFile: fileName })));
         }, 1000);
         const sessionFileStorageSettings = new obsidian.Setting(containerEl)
-            .setName("Session storage file")
-            .setDesc("Location in your vault to store session JSON. Created if does not exist, overwritten if it does.")
+            .setName(translate("settings.sessionFile.name"))
+            .setDesc(translate("settings.sessionFile.desc"))
             .addText((cb) => {
             var _a;
             cb.setPlaceholder(DEFAULT_SESSION_FILE);
@@ -39125,14 +48260,17 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             cb.onChange(updateSessionFile);
         });
         sessionFileStorageSettings.settingEl.style.display = "none";
-        this.unsubscribeSettings = pluginSettings.subscribe((settings) => {
+        this.subs.add(pluginSettings.subscribe((settings) => {
             sessionFileStorageSettings.settingEl.style.display =
                 settings.sessionStorage === "file" ? "flex" : "none";
-        });
-        new obsidian.Setting(containerEl).setName("Troubleshooting").setHeading();
+        }));
+        // ── Troubleshooting ───────────────────────────────────────────────────
         new obsidian.Setting(containerEl)
-            .setName("Wait for Obsidian Sync")
-            .setDesc("Prevent Longform from running until Obsidian Sync completes its first sync. If you are using Sync, you may want to enable this if you experience issues with scenes disappearing or falsely being shown as new.")
+            .setName(translate("settings.troubleshooting.heading"))
+            .setHeading();
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.waitForSync.name"))
+            .setDesc(translate("settings.waitForSync.desc"))
             .addToggle((cb) => {
             cb.setValue(settings.waitForSync);
             cb.onChange((value) => {
@@ -39140,8 +48278,8 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Enable fallback wait")
-            .setDesc("If sync status cannot be detected, wait for the time specified below before looking for scenes.")
+            .setName(translate("settings.fallbackWait.name"))
+            .setDesc(translate("settings.fallbackWait.desc"))
             .addToggle((cb) => {
             cb.setValue(settings.fallbackWaitEnabled);
             cb.onChange((value) => {
@@ -39149,10 +48287,11 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
             });
         });
         new obsidian.Setting(containerEl)
-            .setName("Fallback wait time")
-            .setDesc("Time to wait in seconds if sync status cannot be detected.")
+            .setName(translate("settings.fallbackWaitTime.name"))
+            .setDesc(translate("settings.fallbackWaitTime.desc"))
             .addText((cb) => {
-            cb.setValue(settings.fallbackWaitTime.toString());
+            var _a;
+            cb.setValue(String((_a = settings.fallbackWaitTime) !== null && _a !== void 0 ? _a : DEFAULT_SETTINGS.fallbackWaitTime));
             cb.onChange((value) => {
                 const numberValue = parseInt(value);
                 if (!isNaN(numberValue) && numberValue > 0) {
@@ -39160,66 +48299,100 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
                 }
             });
         });
-        new obsidian.Setting(containerEl).setName("Credits").setHeading();
+        // ── PaperBell host integration (optional; standalone-safe) ────────────
+        new obsidian.Setting(containerEl).setName(translate("settings.paperbell.heading")).setHeading();
+        const pb = get_store_value(paperbell);
+        if (pb.connected) {
+            const account = (_a = pb.config) === null || _a === void 0 ? void 0 : _a.account;
+            const status = (account === null || account === void 0 ? void 0 : account.displayName)
+                ? translate("settings.paperbell.connectedWithName", {
+                    name: account.displayName,
+                    plan: account.plan ? ` (${account.plan})` : "",
+                })
+                : translate("settings.paperbell.connected");
+            containerEl.createEl("p", { cls: "setting-item-description" }, (el) => {
+                el.setText(status);
+            });
+            new obsidian.Setting(containerEl)
+                .setName(translate("settings.paperbell.account.name"))
+                .setDesc(translate("settings.paperbell.account.desc"))
+                .addButton((b) => b
+                .setButtonText(pb.config
+                ? translate("settings.paperbell.button.refresh")
+                : translate("settings.paperbell.button.connect"))
+                .onClick(() => __awaiter(this, void 0, void 0, function* () {
+                var _b;
+                // The contract says this resolves to null when the scope is
+                // denied (docs/PAPERBELL_INTEGRATION.md, "Failing safe"), but the
+                // host is a separate plugin we don't control: an unhandled
+                // rejection here would leave the button silently doing nothing.
+                try {
+                    yield this.plugin.paperBell.fetchSharedConfig();
+                }
+                catch (e) {
+                    console.error("[PaperOut] PaperBell refresh failed:", e);
+                    new obsidian.Notice(translate("settings.paperbell.refreshFailed", {
+                        error: (_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0 ? _b : String(e),
+                    }));
+                }
+                this.display();
+            })));
+            if (pb.capabilities.includes("llm-invoke")) {
+                containerEl.createEl("p", { cls: "setting-item-description" }, (el) => {
+                    el.setText(translate("settings.paperbell.aiAvailable"));
+                });
+            }
+        }
+        else {
+            containerEl.createEl("p", { cls: "setting-item-description" }, (el) => {
+                el.setText(translate("settings.paperbell.notConnected"));
+            });
+        }
+        // ── Credits ───────────────────────────────────────────────────────────
+        new obsidian.Setting(containerEl).setName(translate("settings.credits.heading")).setHeading();
         containerEl.createEl("p", {}, (el) => {
-            el.innerHTML =
-                'Longform written and maintained by <a href="https://kevinbarrett.org">Kevin Barrett</a>.';
+            el.innerHTML = translate("settings.credits.body");
         });
         containerEl.createEl("p", {}, (el) => {
-            el.innerHTML =
-                'Read the source code and report issues at <a href="https://github.com/kevboh/longform">https://github.com/kevboh/longform</a>.';
+            el.innerHTML = translate("settings.credits.source");
         });
         containerEl.createEl("p", {}, (el) => {
-            el.innerHTML =
-                'Icon made by <a href="https://www.flaticon.com/authors/zlatko-najdenovski" title="Zlatko Najdenovski">Zlatko Najdenovski</a> from <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a>.';
+            el.innerHTML = translate("settings.credits.icon");
         });
     }
     hide() {
-        this.unsubscribeUserScripts();
-        this.unsubscribeSettings();
+        // Obsidian calls hide() on tab switch and on closing the settings modal,
+        // then display() on the way back in. teardown() is idempotent so that pair
+        // cannot double-call the same unsubscriber.
+        this.teardown();
+    }
+    /** Drop every subscription and any queued re-render. Idempotent. */
+    teardown() {
+        if (this.pendingRerender !== null) {
+            window.clearTimeout(this.pendingRerender);
+            this.pendingRerender = null;
+        }
+        this.subs.teardown();
     }
 }
 
 /**
- * Prepare a workflow for storage as json.
- * @param workflow The workflow to serialize.
- * @requires serialized An array of `SerializedStep`s that can be safely saved as json.
+ * Merge `incoming` workflows into `existing`, adding only keys that are missing —
+ * never overwriting a workflow the user already has (possibly customized).
+ * Idempotent. Shared by two callers: back-filling `DEFAULT_WORKFLOWS` on load
+ * (`src/main.ts`) and injecting a marketplace bundle's recommended workflows on
+ * install. Returns the merged map plus the names that were added (for logging/UI).
  */
-function serializeWorkflow(workflow) {
-    const serialized = workflow.steps.map((step) => ({
-        id: step.description.canonicalID,
-        optionValues: step.optionValues,
-    }));
-    return {
-        name: workflow.name,
-        description: workflow.description,
-        steps: serialized,
-    };
-}
-function lookupStep(id, userSteps = []) {
-    const builtIn = BUILTIN_STEPS.find((s) => s.id === id);
-    if (builtIn) {
-        return builtIn;
+function mergeMissingWorkflows(existing, incoming) {
+    const added = Object.keys(incoming).filter((key) => !(key in existing));
+    if (added.length === 0) {
+        return { workflows: existing, added };
     }
-    const userStep = userSteps.find((s) => s.id === id);
-    if (userStep) {
-        return userStep;
+    const workflows = Object.assign({}, existing);
+    for (const key of added) {
+        workflows[key] = incoming[key];
     }
-    return PLACEHOLDER_MISSING_STEP;
-}
-/**
- * Deserializes an array of JSON-compatible steps into one that can be run as a workflow.
- * @param w The JSON-compatible steps to deserialize.
- * @returns deserialized Array of `CompileStep`s to use as a workflow.
- */
-function deserializeWorkflow(w) {
-    var _a;
-    const userSteps = (_a = get_store_value(userScriptSteps)) !== null && _a !== void 0 ? _a : [];
-    const deserialized = Object.assign(Object.assign({}, w), { steps: w.steps.map((s) => {
-            const step = lookupStep(s.id, userSteps);
-            return Object.assign(Object.assign({}, step), { optionValues: s.optionValues });
-        }) });
-    return deserialized;
+    return { workflows, added };
 }
 
 const DEBOUNCE_SCRIPT_LOAD_DELAY_MS = 10000;
@@ -39228,22 +48401,23 @@ const DEBOUNCE_SCRIPT_LOAD_DELAY_MS = 10000;
  */
 class UserScriptObserver {
     constructor(vault, userScriptFolder) {
+        // A set rather than a bare Unsubscriber: destroy() and beginObserving() both
+        // tear down, and a svelte 3 unsubscriber throws when called twice.
+        this.subs = new SubscriptionSet();
         this.initializedSteps = false;
         this.vault = vault;
         this.userScriptFolder = userScriptFolder;
         this.onScriptModify = debounce_1(() => {
-            console.log(`[Longform] File in user script folder modified, reloading scripts…`);
+            console.log(`[PaperOut] File in user script folder modified, reloading scripts…`);
             this.loadUserSteps();
         }, DEBOUNCE_SCRIPT_LOAD_DELAY_MS);
     }
     destroy() {
-        this.unsubscribeScriptFolder();
+        this.subs.teardown();
     }
     beginObserving() {
-        if (this.unsubscribeScriptFolder) {
-            this.unsubscribeScriptFolder();
-        }
-        this.unsubscribeScriptFolder = pluginSettings.subscribe((s) => __awaiter(this, void 0, void 0, function* () {
+        this.subs.teardown();
+        this.subs.add(pluginSettings.subscribe((s) => __awaiter(this, void 0, void 0, function* () {
             if (this.initializedSteps &&
                 s.userScriptFolder === this.userScriptFolder) {
                 return;
@@ -39261,9 +48435,9 @@ class UserScriptObserver {
             }
             else {
                 userScriptSteps.set(null);
-                console.log("[Longform] Cleared user script steps.");
+                console.log("[PaperOut] Cleared user script steps.");
             }
-        }));
+        })));
     }
     loadUserSteps() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -39284,10 +48458,10 @@ class UserScriptObserver {
                     userSteps.push(step);
                 }
                 catch (e) {
-                    console.error(`[Longform] skipping user script ${file} due to error:`, e);
+                    console.error(`[PaperOut] skipping user script ${file} due to error:`, e);
                 }
             }
-            console.log(`[Longform] Loaded ${userSteps.length} user script steps.`);
+            console.log(`[PaperOut] Loaded ${userSteps.length} user script steps.`);
             userScriptSteps.set(userSteps);
             this.initializedSteps = true;
             // if workflows have loaded, merge in user steps to get updated values
@@ -39335,7 +48509,7 @@ class UserScriptObserver {
             evaluateScript(_require, module, exports);
             const loadedStep = exports["default"] || module.exports;
             if (!loadedStep) {
-                console.error(`[Longform] Failed to load user script ${path}. No exports detected.`);
+                console.error(`[PaperOut] Failed to load user script ${path}. No exports detected.`);
                 throw new Error(`Failed to load user script ${path}. No exports detected.`);
             }
             const step = makeBuiltinStep(Object.assign(Object.assign({}, loadedStep), { id: path, description: Object.assign(Object.assign({}, loadedStep.description), { availableKinds: loadedStep.description.availableKinds.map((v) => CompileStepKind[v]), options: loadedStep.description.options
@@ -39395,9 +48569,246 @@ class JumpModal extends obsidian.FuzzySuggestModal {
     }
 }
 
+/** Is this a note a workflow can be run against? */
+function isExportableNote(file) {
+    return !!file && file.extension === "md";
+}
+/**
+ * Every draft the given note belongs to.
+ *
+ * Returns *all* matches, unlike `draftForPath`: the assets of a
+ * `format: project` index share one index file, so an active index note maps to
+ * several drafts and taking the first would silently compile the wrong asset.
+ */
+function draftsForNote(path, allDrafts) {
+    const direct = allDrafts.filter((d) => d.vaultPath === path ||
+        draftIndexPath(d) === path ||
+        (d.format === "single" && d.bodyPath === path));
+    if (direct.length > 0) {
+        return direct;
+    }
+    const scene = findScene(path, allDrafts);
+    return scene ? [scene.draft] : [];
+}
+/**
+ * The candidates this workflow can actually compile.
+ *
+ * A workflow that cannot start on a scene list — Quick Export and Cover Letter,
+ * whose lone step is Manuscript-only — has no valid multi-scene target, and
+ * `draftsForNote` resolves any scene of a project to that project's scenes
+ * draft. Dropping those candidates lets the caller fall back to the ephemeral
+ * single-file draft: "export the note you have open" is Quick Export's whole
+ * premise, and it now holds inside a project as well as outside one.
+ *
+ * The verdict comes from `calculateWorkflow` rather than a copy of its first-step
+ * rule, so a workflow that fails validation for some *other* reason (an unloaded
+ * step, say) is left alone and reports its own error.
+ *
+ * Only scenes drafts are dropped: a single-file draft runs such a workflow fine
+ * and keeps its project context (metadata.json, references.bib, title).
+ */
+function draftsRunnableBy(candidates, workflow) {
+    // A multi-scene draft never has Join steps stripped, so the workflow is its
+    // own `effectiveWorkflow` here.
+    const [validation] = calculateWorkflow(workflow, true);
+    return validation.error === WorkflowError.BadFirstStep
+        ? candidates.filter((d) => d.format !== "scenes")
+        : candidates;
+}
+/**
+ * The Obsidian command id for the "run this workflow" command of a workflow.
+ *
+ * The name is percent-encoded rather than slugified or used verbatim, for two
+ * reasons:
+ *
+ *  - **No colons.** Obsidian registers the command as
+ *    `<plugin id>:<command id>` and splits on the colon to find the owning
+ *    plugin, so a colon inside the command id makes ids collide.
+ *  - **No lossy collapsing.** Slugifying would map "PaperBell Manuscript",
+ *    "PaperBell-Manuscript", and "paperbell manuscript" onto one id, silently
+ *    making all but one of them unreachable. Percent-encoding is injective.
+ *
+ * The id is not user-facing — the command palette and hotkeys page show the
+ * command's *name* — so readability here costs nothing.
+ *
+ * Because the id is derived from the name, renaming a workflow loses any hotkey
+ * bound to it; `Workflow` has no stable id to key off of.
+ */
+function workflowCommandId(name) {
+    // encodeURIComponent leaves !'()* alone; escape them too so nothing but
+    // [A-Za-z0-9-_.~%] survives.
+    const encoded = encodeURIComponent(name).replace(/[!'()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+    return `run-workflow-${encoded}`;
+}
+/** `true` if `folder` is `ancestor` or lives inside it. Segment-wise, so that
+ * `Papers/Foo` is not treated as an ancestor of `Papers/Foobar`. */
+function isAncestorFolder(ancestor, folder) {
+    const a = ancestor.split("/").filter((s) => s.length > 0);
+    const f = folder.split("/").filter((s) => s.length > 0);
+    return a.length <= f.length && a.every((s, i) => s === f[i]);
+}
+/**
+ * The project root to use when compiling a note that is not itself a draft: the
+ * root of the innermost project the note happens to sit inside, or `undefined`
+ * when it sits inside none.
+ *
+ * `undefined` — never `""` — is the fallback, because steps resolve shared
+ * resources with `context.projectRoot ?? context.projectPath` and `??` does not
+ * catch the empty string. An empty root makes `projectResourceCandidatePaths`
+ * walk all the way to the vault root, so a loose note in `Inbox/` would pick up
+ * an unrelated `metadata.json` or `references.bib` and quietly stamp another
+ * paper's authors and DOI onto the export. Returning `undefined` restricts the
+ * search to the note's own folder, which is the documented conservative default.
+ */
+function resolveEphemeralProjectRoot(notePath, drafts) {
+    const noteFolder = draftParentFolder(notePath);
+    let best = null;
+    let bestDepth = -1;
+    for (const draft of drafts) {
+        const folder = draftIndexFolder(draft);
+        if (!isAncestorFolder(folder, noteFolder)) {
+            continue;
+        }
+        const depth = folder.split("/").filter((s) => s.length > 0).length;
+        if (depth > bestDepth) {
+            best = draft;
+            bestDepth = depth;
+        }
+    }
+    if (!best) {
+        return undefined;
+    }
+    const root = projectRootPath(drafts.filter((d) => d.title === best.title));
+    // A project whose drafts share no common folder yields "" (the vault root),
+    // which is exactly the over-broad search this function exists to avoid.
+    return root === "" ? undefined : root;
+}
+/**
+ * An ephemeral single-file draft wrapping an arbitrary note, so a plain markdown
+ * file can be compiled without first being turned into a Longform project. Not
+ * added to any store — it exists only for the duration of one compile.
+ */
+function ephemeralDraftForNote(notePath, workflowName) {
+    var _a;
+    const basename = ((_a = notePath.split("/").pop()) !== null && _a !== void 0 ? _a : notePath).replace(/\.md$/, "");
+    return {
+        format: "single",
+        title: basename,
+        titleInFrontmatter: false,
+        draftTitle: null,
+        vaultPath: notePath,
+        workflow: workflowName,
+        indexPath: null,
+        // `vaultPath` is itself the body; compile() reads `bodyPath ?? vaultPath`.
+        bodyPath: null,
+        assetId: null,
+    };
+}
+
+/**
+ * The status callback shared by every compile entry point: a Notice on success,
+ * a modal with the step's error on failure.
+ */
+function compileStatusHandler(app) {
+    return (status) => {
+        if (status.kind === "CompileStatusSuccess") {
+            new obsidian.Notice("Compile complete.");
+        }
+        else if (status.kind === "CompileStatusError") {
+            showErrorModal(app, "Compile failed", status.error, recoverableActions(app, status));
+        }
+    };
+}
+/**
+ * Run a compile workflow against the currently open note.
+ *
+ * If the note belongs to a Longform draft, that draft is compiled. Otherwise the
+ * note is wrapped in an ephemeral single-file draft, so a plain markdown file
+ * can be compiled and exported without first being made into a project.
+ *
+ * A workflow that starts on a Manuscript step always takes the second path, even
+ * for a note that belongs to a project — see `draftsRunnableBy`.
+ */
+function runWorkflowOnActiveNote(plugin, workflowName) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const workflow = get_store_value(workflows)[workflowName];
+        if (!workflow) {
+            new obsidian.Notice(translate("notice.workflowMissing", { name: workflowName }));
+            return;
+        }
+        const file = plugin.app.workspace.getActiveFile();
+        if (!isExportableNote(file)) {
+            new obsidian.Notice(translate("notice.noActiveNote"));
+            return;
+        }
+        // compile() reads the file from disk, not from the editor buffer. Without
+        // this, a hotkey pressed mid-sentence would export the last saved version.
+        const view = plugin.app.workspace.getActiveViewOfType(obsidian.MarkdownView);
+        if (view) {
+            yield view.save();
+        }
+        const candidates = draftsForNote(file.path, get_store_value(drafts));
+        // A Manuscript-first workflow (Quick Export, Cover Letter) cannot compile a
+        // scenes draft, so it exports the open note on its own instead of failing.
+        const runnable = draftsRunnableBy(candidates, workflow);
+        if (candidates.length > 0 && runnable.length === 0) {
+            // Every draft this note belongs to was dropped; the tail of this function
+            // exports the note on its own, which is worth saying out loud.
+            new obsidian.Notice(translate("notice.exportedOpenNoteOnly"));
+        }
+        if (runnable.length > 1) {
+            // An index note shared by several assets. Prefer the asset that already
+            // names this workflow; otherwise ask.
+            const preferred = runnable.filter((d) => d.workflow === workflowName);
+            if (preferred.length === 1) {
+                compileDraft(plugin, preferred[0], workflow, file);
+                return;
+            }
+            const choices = preferred.length > 0 ? preferred : runnable;
+            const opts = new Map();
+            choices.forEach((d) => opts.set(draftTitle(d), d));
+            new JumpModal(plugin.app, opts, [
+                { command: "↑↓", purpose: "to navigate" },
+                { command: "↵", purpose: "to compile" },
+                { command: "esc", purpose: "to dismiss" },
+            ], (draft) => compileDraft(plugin, draft, workflow, file)).open();
+            return;
+        }
+        const draft = runnable[0];
+        if (draft) {
+            compileDraft(plugin, draft, workflow, file);
+        }
+        else {
+            compileDraft(plugin, ephemeralDraftForNote(file.path, workflowName), workflow, file, true);
+        }
+    });
+}
+function compileDraft(plugin, draft, workflow, file, ephemeral = false) {
+    var _a;
+    // `projectFolderPath` dereferences `.parent` without a null check, so make
+    // sure the draft's index file is really in the vault before compiling.
+    const indexPath = draftIndexPath(draft);
+    const indexFile = plugin.app.vault.getAbstractFileByPath(indexPath);
+    if (!indexFile || !indexFile.parent) {
+        showErrorModal(plugin.app, "Compile failed", `Could not locate "${indexPath}" in the vault.`);
+        return;
+    }
+    const isMultiScene = draft.format === "scenes";
+    const effective = effectiveWorkflow(workflow, isMultiScene);
+    const [validation, calculatedKinds] = calculateWorkflow(effective, isMultiScene);
+    if (validation.error !== WorkflowError.Valid) {
+        new obsidian.Notice(validation.error);
+        return;
+    }
+    const projectRoot = ephemeral
+        ? resolveEphemeralProjectRoot(file.path, get_store_value(drafts))
+        : projectRootPath((_a = get_store_value(projects)[draft.title]) !== null && _a !== void 0 ? _a : [draft]);
+    compile(plugin.app, draft, effective, calculatedKinds, compileStatusHandler(plugin.app), { projectRoot });
+}
+
 const compileCurrent = (plugin) => ({
     id: "longform-compile-current",
-    name: "Compile current project with current workflow",
+    name: translate("cmd.compileCurrent"),
     checkCallback: (checking) => {
         var _a;
         const draft = get_store_value(selectedDraft);
@@ -39408,23 +48819,20 @@ const compileCurrent = (plugin) => ({
         if (!draft || !workflow) {
             return;
         }
-        const [validation, calculatedKinds] = calculateWorkflow(workflow, draft.format === "scenes");
+        const isMultiScene = draft.format === "scenes";
+        const effective = effectiveWorkflow(workflow, isMultiScene);
+        const [validation, calculatedKinds] = calculateWorkflow(effective, isMultiScene);
         if (validation.error !== WorkflowError.Valid) {
             new obsidian.Notice(validation.error);
             return;
         }
-        function onCompileStatusChange(status) {
-            if (status.kind == "CompileStatusSuccess") {
-                new obsidian.Notice("Compile complete.");
-            }
-        }
         const projectRoot = projectRootPath((_a = get_store_value(projects)[draft.title]) !== null && _a !== void 0 ? _a : [draft]);
-        compile(plugin.app, draft, workflow, calculatedKinds, onCompileStatusChange, { projectRoot });
+        compile(plugin.app, draft, effective, calculatedKinds, compileStatusHandler(plugin.app), { projectRoot });
     },
 });
 const compileSelection = (plugin) => ({
     id: "longform-compile-selection",
-    name: "Compile project…",
+    name: translate("cmd.compileProject"),
     checkCallback: (checking) => {
         const allProjects = get_store_value(projects);
         const projectTitles = Object.keys(allProjects);
@@ -39491,17 +48899,14 @@ const compileSelection = (plugin) => ({
                     },
                 ], (workflow) => {
                     // Compile
-                    const [validation, calculatedKinds] = calculateWorkflow(workflow, draft.format === "scenes");
+                    const isMultiScene = draft.format === "scenes";
+                    const effective = effectiveWorkflow(workflow, isMultiScene);
+                    const [validation, calculatedKinds] = calculateWorkflow(effective, isMultiScene);
                     if (validation.error !== WorkflowError.Valid) {
                         new obsidian.Notice(validation.error);
                         return;
                     }
-                    function onCompileStatusChange(status) {
-                        if (status.kind == "CompileStatusSuccess") {
-                            new obsidian.Notice("Compile complete.");
-                        }
-                    }
-                    compile(plugin.app, draft, workflow, calculatedKinds, onCompileStatusChange, { projectRoot: projectRootPath(project) });
+                    compile(plugin.app, draft, effective, calculatedKinds, compileStatusHandler(plugin.app), { projectRoot: projectRootPath(project) });
                 }).open();
             }).open();
         }).open();
@@ -39519,7 +48924,7 @@ const checkForLocation = (checking, location, app) => {
 };
 const previousScene = (plugin) => ({
     id: "longform-previous-scene",
-    name: "Previous scene",
+    name: translate("cmd.previousScene"),
     editorCheckCallback: (checking) => checkForLocation(checking, {
         position: "previous",
         maintainIndent: false,
@@ -39527,7 +48932,7 @@ const previousScene = (plugin) => ({
 });
 const previousSceneAtIndent = (plugin) => ({
     id: "longform-previous-scene-at-level",
-    name: "Previous scene at indent level",
+    name: translate("cmd.previousSceneAtIndent"),
     editorCheckCallback: (checking) => checkForLocation(checking, {
         position: "previous",
         maintainIndent: true,
@@ -39535,7 +48940,7 @@ const previousSceneAtIndent = (plugin) => ({
 });
 const nextScene = (plugin) => ({
     id: "longform-next-scene",
-    name: "Next scene",
+    name: translate("cmd.nextScene"),
     editorCheckCallback: (checking) => checkForLocation(checking, {
         position: "next",
         maintainIndent: false,
@@ -39543,7 +48948,7 @@ const nextScene = (plugin) => ({
 });
 const nextSceneAtIndent = (plugin) => ({
     id: "longform-next-scene-at-level",
-    name: "Next scene at indent level",
+    name: translate("cmd.nextSceneAtIndent"),
     editorCheckCallback: (checking) => checkForLocation(checking, {
         position: "next",
         maintainIndent: true,
@@ -39551,7 +48956,7 @@ const nextSceneAtIndent = (plugin) => ({
 });
 const focusCurrentDraft = () => ({
     id: "longform-focus-current-draft",
-    name: "Open current note’s project",
+    name: translate("cmd.openCurrentProject"),
     editorCheckCallback(checking) {
         const path = get_store_value(activeFile).path;
         const drafts$1 = get_store_value(drafts);
@@ -39589,14 +48994,14 @@ const showLeaf = (plugin) => {
 };
 const showLongform = (plugin) => ({
     id: "longform-show-view",
-    name: "Open Longform pane",
+    name: translate("cmd.openPane"),
     callback: () => {
         showLeaf(plugin);
     },
 });
 const jumpToProject = (plugin) => ({
     id: "longform-jump-to-project",
-    name: "Jump to project",
+    name: translate("cmd.jumpToProject"),
     callback: () => {
         const projectCallback = (project) => {
             if (project && project.length > 0) {
@@ -39604,7 +49009,7 @@ const jumpToProject = (plugin) => ({
                     const draft = project[0];
                     selectedDraftVaultPath.set(draft.vaultPath);
                     showLeaf(plugin);
-                    plugin.app.workspace.openLinkText(draft.vaultPath, "/", false);
+                    plugin.app.workspace.openLinkText(draftNotePath(draft), "/", false);
                 }
                 else {
                     const items = new Map();
@@ -39653,7 +49058,7 @@ const jumpToProject = (plugin) => ({
 });
 const jumpToScene = (plugin) => ({
     id: "longform-jump-to-scene",
-    name: "Jump to scene in current project",
+    name: translate("cmd.jumpToScene"),
     checkCallback(checking) {
         const currentDraft = get_store_value(selectedDraft);
         if (!currentDraft ||
@@ -39695,7 +49100,7 @@ const jumpToScene = (plugin) => ({
 });
 const revealProjectFolder = (plugin) => ({
     id: "longform-reveal-project-folder",
-    name: "Reveal current project in navigation",
+    name: translate("cmd.revealProject"),
     checkCallback(checking) {
         const path = get_store_value(selectedDraftVaultPath);
         if (checking) {
@@ -39710,13 +49115,13 @@ const revealProjectFolder = (plugin) => ({
             plugin.app.internalPlugins.plugins["file-explorer"].instance.revealInFolder(parent);
         }
         catch (error) {
-            console.error("[Longform] Error calling file-explorer.revealInFolder:", error);
+            console.error("[PaperOut] Error calling file-explorer.revealInFolder:", error);
         }
     },
 });
 const focusNewSceneField = (plugin) => ({
     id: "longform-focus-new-scene-field",
-    name: "Focus new scene field",
+    name: translate("cmd.focusNewScene"),
     checkCallback(checking) {
         const draft = get_store_value(selectedDraft);
         if (checking) {
@@ -39755,12 +49160,12 @@ const checkIndent = (checking, action) => {
 };
 const indentScene = (_plugin) => ({
     id: "longform-indent-scene",
-    name: "Indent scene",
+    name: translate("cmd.indentScene"),
     editorCheckCallback: (checking) => checkIndent(checking, "indent"),
 });
 const unindentScene = (_plugin) => ({
     id: "longform-unindent-scene",
-    name: "Unindent scene",
+    name: translate("cmd.unindentScene"),
     editorCheckCallback: (checking) => checkIndent(checking, "unindent"),
 });
 
@@ -39772,7 +49177,7 @@ const callbackForFormat = (format, checking, _editor, view) => {
         return false;
     }
     else if (draft) {
-        console.log(`[Longform] Attempted to insert frontmatter into existing draft at ${file.path}; ignoring.`);
+        console.log(`[PaperOut] Attempted to insert frontmatter into existing draft at ${file.path}; ignoring.`);
     }
     else if (checking) {
         return true;
@@ -39813,7 +49218,7 @@ const callbackForFormat = (format, checking, _editor, view) => {
 };
 const insertMultiSceneTemplate = (_plugin) => ({
     id: "longform-insert-multi-scene",
-    name: "Insert multi-scene frontmatter",
+    name: translate("cmd.insertMultiScene"),
     editorCheckCallback(checking, editor, view) {
         const result = callbackForFormat("scenes", checking, editor, view);
         return result;
@@ -39821,7 +49226,7 @@ const insertMultiSceneTemplate = (_plugin) => ({
 });
 const insertSingleSceneTemplate = (_plugin) => ({
     id: "longform-insert-single-scene",
-    name: "Insert single-scene frontmatter",
+    name: translate("cmd.insertSingleScene"),
     editorCheckCallback(checking, editor, view) {
         return callbackForFormat("single", checking, editor, view);
     },
@@ -39829,15 +49234,1847 @@ const insertSingleSceneTemplate = (_plugin) => ({
 
 const startNewSession = (plugin) => ({
     id: "longform-start-new-session",
-    name: "Start new writing session",
+    name: translate("cmd.startSession"),
     callback: () => {
         plugin.writingSessionTracker.startNewSession();
+    },
+});
+
+const setupPandocExport = (plugin) => ({
+    id: "longform-setup-pandoc-export",
+    name: translate("cmd.setupPandoc"),
+    callback: () => {
+        new PandocSetupModal(plugin.app, plugin).open();
+    },
+});
+
+/**
+ * Pure logic for the manuscript-reference authoring commands (the TS
+ * reimplementation of the QuickAdd `mark-manuscript-span` / `insert-manuscript-ref`
+ * scripts). Side-effect free and unit-tested; the command file wires it to the
+ * Obsidian editor + a fuzzy picker. See 回复信手稿引用规范 §2.1, §6.
+ */
+/** Scene basename → span-id prefix. Falls back to the first letters of the name. */
+const SECTION_PREFIX = {
+    introduction: "intro",
+    intro: "intro",
+    background: "bg",
+    results: "res",
+    result: "res",
+    methods: "meth",
+    method: "meth",
+    discussion: "disc",
+    conclusion: "concl",
+    abstract: "abs",
+    "odd+": "odd",
+    odd: "odd",
+};
+const STOPWORDS = new Set([
+    "the", "a", "an", "of", "and", "or", "to", "in", "on", "for", "with", "that", "this",
+    "is", "are", "was", "were", "be", "by", "as", "at", "from", "it", "we", "our", "their",
+]);
+function sectionPrefix(sceneName) {
+    const key = sceneName.trim().toLowerCase();
+    if (SECTION_PREFIX[key])
+        return SECTION_PREFIX[key];
+    const letters = key.replace(/[^a-z0-9]/g, "");
+    return letters ? letters.slice(0, 4) : "ms";
+}
+/** A short semantic slug from selected text: drop citations/stopwords, first few words. */
+function slugFromText(text) {
+    const cleaned = text
+        .replace(/\[@[^\]]*\]/g, " ") // drop [@cite]
+        .replace(/[^\p{L}\p{N}\s-]/gu, " ") // keep letters/numbers/space/hyphen
+        .toLowerCase();
+    const words = cleaned
+        .split(/\s+/)
+        .filter((w) => w.length > 0 && !STOPWORDS.has(w));
+    const slug = words.slice(0, 4).join("-").slice(0, 40).replace(/-+$/g, "");
+    return slug || "span";
+}
+/** A unique span id `prefix-slug`, disambiguated with `-2`, `-3`… against `existing`. */
+function generateSpanId(sceneName, selection, existing) {
+    const taken = new Set(existing);
+    const base = `${sectionPrefix(sceneName)}-${slugFromText(selection)}`;
+    if (!taken.has(base))
+        return base;
+    for (let n = 2;; n++) {
+        const candidate = `${base}-${n}`;
+        if (!taken.has(candidate))
+            return candidate;
+    }
+}
+function wrapSelection(selection, id) {
+    return `<!--ms:${id}-->${selection}<!--/ms:${id}-->`;
+}
+function insertRefText(id) {
+    return "```manuscript\n@" + id + "\n```\n";
+}
+/**
+ * Extract `<!--ms:id-->body<!--/ms:id-->` spans from a set of source files.
+ * `preview` is the whitespace-collapsed body. Ids are `[\w-]` (hyphens survive).
+ */
+function scanSpans(files) {
+    const spans = [];
+    const re = /<!--ms:([\w-]+)-->([\s\S]*?)<!--\/ms:\1-->/g;
+    for (const f of files) {
+        let m;
+        re.lastIndex = 0;
+        while ((m = re.exec(f.content)) !== null) {
+            spans.push({
+                id: m[1],
+                preview: m[2].replace(/\s+/g, " ").trim(),
+                file: f.name,
+            });
+        }
+    }
+    spans.sort((a, b) => a.id.localeCompare(b.id));
+    return spans;
+}
+/** All existing span ids across the given files (for uniqueness checks). */
+function existingSpanIds(files) {
+    return new Set(scanSpans(files).map((s) => s.id));
+}
+/** Display string for the fuzzy picker: `id — preview…`. */
+function spanDisplay(span) {
+    const preview = span.preview.slice(0, 60);
+    return `${span.id} — ${preview}${span.preview.length > 60 ? "…" : ""}`;
+}
+
+/** The project's scene files: the active scene's sibling `.md` files. */
+function projectMarkdownFiles(app, activeFile) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const parent = activeFile.parent;
+        if (!parent)
+            return [];
+        const out = [];
+        for (const child of parent.children) {
+            if (child instanceof obsidian.TFile && child.extension === "md") {
+                out.push({
+                    name: child.basename,
+                    content: yield app.vault.cachedRead(child),
+                });
+            }
+        }
+        return out;
+    });
+}
+/** Fuzzy picker over marked `<!--ms:id-->` spans. */
+class SpanSuggestModal extends obsidian.FuzzySuggestModal {
+    constructor(app, spans, onPick) {
+        super(app);
+        this.spans = spans;
+        this.onPick = onPick;
+        this.setPlaceholder("Pick a marked manuscript span to cite…");
+    }
+    getItems() {
+        return this.spans;
+    }
+    getItemText(span) {
+        return spanDisplay(span);
+    }
+    onChooseItem(span) {
+        this.onPick(span);
+    }
+}
+/** Wrap the editor selection in a unique `<!--ms:id-->…<!--/ms:id-->` marker. */
+const markManuscriptSpan = (plugin) => ({
+    id: "longform-mark-manuscript-span",
+    name: translate("cmd.markManuscriptSpan"),
+    editorCallback: (editor) => {
+        void (() => __awaiter(void 0, void 0, void 0, function* () {
+            const selection = editor.getSelection();
+            if (!selection || !selection.trim()) {
+                new obsidian.Notice("Select the manuscript text to mark first.");
+                return;
+            }
+            const activeFile = plugin.app.workspace.getActiveFile();
+            if (!activeFile)
+                return;
+            const files = yield projectMarkdownFiles(plugin.app, activeFile);
+            const id = generateSpanId(activeFile.basename, selection, existingSpanIds(files));
+            editor.replaceSelection(wrapSelection(selection, id));
+            new obsidian.Notice(`Marked manuscript span \`${id}\`.`);
+        }))();
+    },
+});
+/** Insert a ```manuscript / @id fence citing a marked span (fuzzy-picked). */
+const insertManuscriptRef = (plugin) => ({
+    id: "longform-insert-manuscript-ref",
+    name: translate("cmd.insertManuscriptRef"),
+    editorCallback: (editor) => {
+        void (() => __awaiter(void 0, void 0, void 0, function* () {
+            const activeFile = plugin.app.workspace.getActiveFile();
+            if (!activeFile)
+                return;
+            const files = yield projectMarkdownFiles(plugin.app, activeFile);
+            const spans = scanSpans(files);
+            if (spans.length === 0) {
+                new obsidian.Notice("No <!--ms:--> spans in this project yet — mark one in the manuscript first.");
+                return;
+            }
+            new SpanSuggestModal(plugin.app, spans, (span) => {
+                editor.replaceSelection(insertRefText(span.id));
+            }).open();
+        }))();
+    },
+});
+
+/**
+ * Base64-encoded binary starter assets for the PaperBell paper scaffold, so a new
+ * project can compile out of the box: a placeholder figure for `![…](figs/…)` and a
+ * one-sheet workbook for the ```xlsx-table``` blocks. Decoded to bytes on write.
+ * Mirrors test-longform-vault/paperbell-minimal/figs/*.
+ */
+/** A small placeholder figure (PNG) referenced as figs/example_figure.png. */
+const EXAMPLE_FIGURE_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAUAAAADICAIAAAAWZq/8AAAHFElEQVR42u3dT0iU6x7A8WdmTIncBCeoRVzCMIeKQIIgGEs3uohCkiLuxnZGGFEXSqQWQRGT/VkkbQOJoEW4KNAoIoViIEoQlVYRBkkcg7DS0HzPYmBulNnpdG/2jp/PavzTjL319ff4zvg+iSiKAhBPSYcABAwIGBAwCBgQMCBgQMAgYEDAgIBBwICAAQEDAgYBAwIGBAwIGIpDyUI9cCaTcfQhr7+/3wQGEzgm33igOPzkUtQEhuAkFiBgIEY/A8Mi1/HnnyGEXDq9ZWREwBAbuXT66zd/NGNLaPAzMPAT4/e77xcwmMBAcBYaFqt//TsXQgjVV288af76oz96EkvA8GvTNYEh1um+uLYlhBDCSPjsrJXngSEu6f7Xf/74I/zEb/UIGBYmXUtoWLzpChhinK6AIcbpChhinK6AIcbpChhinK6AIcbpChhinK6AIcbpChhinK6AIcbpChhinK6AIcbpChhinK6ACYvzQpCf/+p8fNMVMIv6Eup7qq/GOl0BQ4zTFTCL+hLqN540/7PLUAXXhQYEDMGF3SG4hLqAoZgvoS5giPEl1AUMC/lqqmLqVsB4IaSAQboCBukKGOkKGKQrYJCugJGudAWMdAUM0hUwSFfASBcBI10Bg3QFjHQRMNIVMEhXwCBdASNdBIx0BQzSFTDSRcBIV8AgXQEjXQSMdBEw4X+zre7nGxpIV8DEbEfs/Jt7qq9KV8DEnnQFTGzGb8GNJ81FuTlY3CUdAhAwwb7YCJgFSzdf7xcnq0JRb67rZ2CK8EndXNpRETBxWy0XTi/nh+2czwMjYH7fdK2ZBYyXQCJgfvnIRcBIFwFjtYyAdStdASNdBIzVMgLGyEXA0kXAWC0jYIxcBCxdBIzVMgLGyEXA0pUuArZaRsAYuQgY6SJgq2UQsJGLgAnh29dwlC4Cjt9efltGRqyWEXAxrJmlS7C1Suz28sunq14EHOyjCwK2lx8Cxl5+BCex7OUHAraXHwLGXn4I2OuWQcBetwwCli4CtloGARu5IGDpwuIO2GoZARu5IGDpgoCtlhGwkQsCli4I2GoZij9gIxcBSxcEbLUMAjZyoagCli7EMmCrZYhfwEYu/NYB59LpDulC7AK2lx8U2xLaXn4Qfv+tVezlB8W5N5J0weZmIOD/m2/tP2JfEjCBITgL/SuGsL38IMZPI20ZGclkMiGEfv8CYAkNAgYEDCySl1LmfxIGTGBYdBJRFDkKYAIDAgYEDAIGBAwIGBAwCBgQMCBgvu/FixfXrl17//69QyFgfjsNDQ3zf0J7e3tZWdno6Gh3d7fDFfw2EvEyPj7e1NQUQqiqqnI0BMyPmZiYuHTp0vj4+MzMzMGDB9PpdHt7e0NDQyaTyWazmzZtqqysPHfu3Lt373bs2LFnz578UN22bdvAwMC+ffsGBwcHBwebmpoKH9q5c+fQ0FAikWhvb1+1atW3HiX//u7u7g8fPrS2tmaz2cbGxp6enjdv3mSz2YmJiZUrV+ZyuVu3buXvtqenpzDS87cbGhpqamoqKyvr6+vnvHMWUsQvcfbs2aGhoSiKxsbGmpuboyh6/fr1/v37h4eHjx49GkVRR0fHwMDA27dvd+3alf8jtbW1Q0NDY2NjmUxmeHj41atXhQ/V1dXdvXs3iqLe3t62trYoiurr6+d8lIL8JxRunDp1qre3N4qivr6+2traLz7n89t1dXW5XG7+O2ehmMC/SC6Xe/nyZf721NTU7OzsihUr6uvr29rarly5EkI4cODAvXv3Hj58WDjPlEwmq6qqkslkSUnJunXrksnk1NRU/kOJRKKmpiaEUFtb29nZOc+jJJNzn+Z4+vTp8ePHQwhbt25NpVJzfmcvfBmbN2/+oTvHErrYfPr06fz586WlpbOzs4ODg/n/+pOTk6lUanJyMoRw4sSJ7du3NzU1FU4ylZSU5D+ttLT0i1QSiUShuiVLlsz/KHOamZnJ35idnS20Wrjx7t276enp/O1UKpW/n79/5wRnoYvMxo0b+/r68nOsq6srhDA6Ovr48eNsNnvhwoUoip49e1ZXV/fx48dCOfN/O3j06FEI4f79+9XV1fM8yrds2LChv78/hNDX11fodtmyZc+fPw8h3LlzJ5FIfPevgAm8WBw6dCibzXZ3d6dSqWPHjoUQOjo6WlpaKioq1qxZc/v27cbGxpaWlrVr15aXl09PT38+V79WWlr64MGD69evl5eX51fCq1ev7urq+vpRvqW1tfX06dM3b95cv3790qVL8+88fPjwyZMnly9fnk6nv/4C/v6dE1xShzDvs76F08X/zJkzZ/bu3VtRUTEyMtLZ2Xn58mVH1QQmNnbv3n3x4sWysrLp6ekjR444ICYwEJzEAgQMAgYEDAgYEDAIGBAwIGAQMCBgQMCAgEHAgIABAQMChvj7C7k4uRnjAvxHAAAAAElFTkSuQmCC";
+/** A one-sheet "Data" workbook (XLSX) referenced by the xlsx-table blocks. */
+const EXAMPLE_DATA_XLSX_BASE64 = "UEsDBBQAAAAIABFv4VxGx01IlQAAAM0AAAAQAAAAZG9jUHJvcHMvYXBwLnhtbE3PTQvCMAwG4L9SdreZih6kDkQ9ip68zy51hbYpbYT67+0EP255ecgboi6JIia2mEXxLuRtMzLHDUDWI/o+y8qhiqHke64x3YGMsRoPpB8eA8OibdeAhTEMOMzit7Dp1C5GZ3XPlkJ3sjpRJsPiWDQ6sScfq9wcChDneiU+ixNLOZcrBf+LU8sVU57mym/8ZAW/B7oXUEsDBBQAAAAIABFv4Vy3J6Nr7gAAACsCAAARAAAAZG9jUHJvcHMvY29yZS54bWzNksFKxDAQhl9Fcm+nadkKoZuL4klBcEHxFpLZ3WDThmSk3bc3jbtdRB/AY2b+fPMNTKe90GPA5zB6DGQx3syuH6LQfsuORF4ARH1Ep2KZEkNq7sfgFKVnOIBX+kMdEOqqasEhKaNIwQIs/EpksjNa6ICKxnDGG73i/WfoM8xowB4dDhSBlxyYXCb609x3cAUsMMLg4ncBzUrM1T+xuQPsnJyjXVPTNJVTk3NpBw5vT48ved3CDpHUoDH9ilbQyeOWXSa/Nnf3uwcm66pui+q2qPiOc7FpRbN5X1x/+F2F3Wjs3v5j44ug7ODXXcgvUEsDBBQAAAAIABFv4VyZXJwjEAYAAJwnAAATAAAAeGwvdGhlbWUvdGhlbWUxLnhtbO1aW3PaOBR+76/QeGf2bQvGNoG2tBNzaXbbtJmE7U4fhRFYjWx5ZJGEf79HNhDLlg3tkk26mzwELOn7zkVH5+g4efPuLmLohoiU8nhg2S/b1ru3L97gVzIkEUEwGaev8MAKpUxetVppAMM4fckTEsPcgosIS3gUy9Zc4FsaLyPW6rTb3VaEaWyhGEdkYH1eLGhA0FRRWm9fILTlHzP4FctUjWWjARNXQSa5iLTy+WzF/NrePmXP6TodMoFuMBtYIH/Ob6fkTlqI4VTCxMBqZz9Wa8fR0kiAgsl9lAW6Sfaj0xUIMg07Op1YznZ89sTtn4zK2nQ0bRrg4/F4OLbL0otwHATgUbuewp30bL+kQQm0o2nQZNj22q6RpqqNU0/T933f65tonAqNW0/Ta3fd046Jxq3QeA2+8U+Hw66JxqvQdOtpJif9rmuk6RZoQkbj63oSFbXlQNMgAFhwdtbM0gOWXin6dZQa2R273UFc8FjuOYkR/sbFBNZp0hmWNEZynZAFDgA3xNFMUHyvQbaK4MKS0lyQ1s8ptVAaCJrIgfVHgiHF3K/99Ze7yaQzep19Os5rlH9pqwGn7bubz5P8c+jkn6eT101CznC8LAnx+yNbYYcnbjsTcjocZ0J8z/b2kaUlMs/v+QrrTjxnH1aWsF3Pz+SejHIju932WH32T0duI9epwLMi15RGJEWfyC265BE4tUkNMhM/CJ2GmGpQHAKkCTGWoYb4tMasEeATfbe+CMjfjYj3q2+aPVehWEnahPgQRhrinHPmc9Fs+welRtH2Vbzco5dYFQGXGN80qjUsxdZ4lcDxrZw8HRMSzZQLBkGGlyQmEqk5fk1IE/4rpdr+nNNA8JQvJPpKkY9psyOndCbN6DMawUavG3WHaNI8ev4F+Zw1ChyRGx0CZxuzRiGEabvwHq8kjpqtwhErQj5iGTYacrUWgbZxqYRgWhLG0XhO0rQR/FmsNZM+YMjszZF1ztaRDhGSXjdCPmLOi5ARvx6GOEqa7aJxWAT9nl7DScHogstm/bh+htUzbCyO90fUF0rkDyanP+kyNAejmlkJvYRWap+qhzQ+qB4yCgXxuR4+5Xp4CjeWxrxQroJ7Af/R2jfCq/iCwDl/Ln3Ppe+59D2h0rc3I31nwdOLW95GblvE+64x2tc0LihjV3LNyMdUr5Mp2DmfwOz9aD6e8e362SSEr5pZLSMWkEuBs0EkuPyLyvAqxAnoZFslCctU02U3ihKeQhtu6VP1SpXX5a+5KLg8W+Tpr6F0PizP+Txf57TNCzNDt3JL6raUvrUmOEr0scxwTh7LDDtnPJIdtnegHTX79l125COlMFOXQ7gaQr4Dbbqd3Do4npiRuQrTUpBvw/npxXga4jnZBLl9mFdt59jR0fvnwVGwo+88lh3HiPKiIe6hhpjPw0OHeXtfmGeVxlA0FG1srCQsRrdguNfxLBTgZGAtoAeDr1EC8lJVYDFbxgMrkKJ8TIxF6HDnl1xf49GS49umZbVuryl3GW0iUjnCaZgTZ6vK3mWxwVUdz1Vb8rC+aj20FU7P/lmtyJ8MEU4WCxJIY5QXpkqi8xlTvucrScRVOL9FM7YSlxi84+bHcU5TuBJ2tg8CMrm7Oal6ZTFnpvLfLQwJLFuIWRLiTV3t1eebnK56Inb6l3fBYPL9cMlHD+U751/0XUOufvbd4/pukztITJx5xREBdEUCI5UcBhYXMuRQ7pKQBhMBzZTJRPACgmSmHICY+gu98gy5KRXOrT45f0Usg4ZOXtIlEhSKsAwFIRdy4+/vk2p3jNf6LIFthFQyZNUXykOJwT0zckPYVCXzrtomC4Xb4lTNuxq+JmBLw3punS0n/9te1D20Fz1G86OZ4B6zh3OberjCRaz/WNYe+TLfOXDbOt4DXuYTLEOkfsF9ioqAEativrqvT/klnDu0e/GBIJv81tuk9t3gDHzUq1qlZCsRP0sHfB+SBmOMW/Q0X48UYq2msa3G2jEMeYBY8wyhZjjfh0WaGjPVi6w5jQpvQdVA5T/b1A1o9g00HJEFXjGZtjaj5E4KPNz+7w2wwsSO4e2LvwFQSwMEFAAAAAgAEW/hXD3eV96jAQAAFgQAABgAAAB4bC93b3Jrc2hlZXRzL3NoZWV0MS54bWx9lN9vozAMx/8VlPdraMtu0wRIW6vp7mGnatW25xRMiZofLHHL3X9/MW0Rm2BP2I79zcchTtpad/A1AEZ/tTI+YzVic8+5L2rQws9sAyasVNZpgcF1e+4bB6LsirTiizj+ybWQhuVpF9u4PLVHVNLAxkX+qLVw/x5B2TZjc3YNvMh9jRTgedqIPWwBX5uNCx7vVUqpwXhpTeSgytjD/H6VUH6X8Cah9QM7ok521h7I+V1mLCYgUFAgKYjwOcEKlCKhgPFx0WT9llQ4tK/qT13voZed8LCy6l2WWGfsjkUlVOKo8MW2v+DSz00PuBYo8tTZNnLUZ54WZNDeIU8aOp8tuhCXYSPMnwGdLFKOAYEivLhUPE5VvAl1hJGC1VTBq5H4OZ8HvJ5x0TMuJgT+jOGdk+n3n/JkkfLTEGVKyQvdKPDf0Cx7muXkiQkzBrQcAC1n8+QL0pTcj29gkh4mmajersdQkgFKPLu7/YIyJTaKwge3iibmWbi9ND5SUAWReHZ7wyJ3voVnB23TTdzOIlrdmXUYXHCUENYra/Hq0BD0T0H+H1BLAwQUAAAACAARb+FcfPOj3FECAAD2CQAADQAAAHhsL3N0eWxlcy54bWzdVtuK2zAQ/RXhD6iTmDVxSfJQQ2ChLQu7D31VYjkR6OLK8pL06zsjOXazq1kofatN8MwcnbkbZ9P7qxLPZyE8u2hl+m129r77nOf98Sw07z/ZThhAWus096C6U953TvCmR5JW+WqxKHPNpcl2GzPovfY9O9rB+G22yPLdprVmtiyzaICjXAv2ytU2q7mSByfDWa6lukbzCg1Hq6xjHlIRSAZL/yvCy6hhlqMfLY11aMxjhPDowalUakpglUXDbtNx74Uze1ACJxjfQWyUX64dZHBy/LpcPWQzITwgyMG6Rri7OqNpt1Gi9UBw8nTGp7ddjqD3VoPQSH6yhoccboxRALdHodQzjuhHe+f70rLY68cG28yw1JsICY1idBMV9P+nt+j7n92yTr5a/2WAakzQfw7WiycnWnkJ+qW9jz+FDoncRZ+sDJdjm33HnVOzC3YYpPLSjNpZNo0w72oD954fYKnv/MP5RrR8UP5lArfZLH8TjRx0NZ16wrLGU7P8FWe4LKfNhFjSNOIimnpU3ekQRAYCRB0vJLxF9uFKIxQnYmkEMSoOlQHFiSwqzv9Uz5qsJ2JUbusksiY5a5ITWSmkDjcVJ82p4EpXWlVFUZZUR+s6mUFN9a0s8Zf2RuWGDCoORvq7XtPTpjfk4z2gZvrRhlCV0ptIVUr3GpF035BRVelpU3GQQU2B2h2Mn46DO5XmFAVOlcqNeoNppKooBHcxvaNlSXSnxDs9H+otKYqqSiOIpTMoCgrBt5FGqAwwBwopivAdfPM9ym/fqXz+p7f7DVBLAwQUAAAACAARb+Fcl4q7HMAAAAATAgAACwAAAF9yZWxzLy5yZWxznZK5bsMwDEB/xdCeMAfQIYgzZfEWBPkBVqIP2BIFikWdv6/apXGQCxl5PTwS3B5pQO04pLaLqRj9EFJpWtW4AUi2JY9pzpFCrtQsHjWH0kBE22NDsFosPkAuGWa3vWQWp3OkV4hc152lPdsvT0FvgK86THFCaUhLMw7wzdJ/MvfzDDVF5UojlVsaeNPl/nbgSdGhIlgWmkXJ06IdpX8dx/aQ0+mvYyK0elvo+XFoVAqO3GMljHFitP41gskP7H4AUEsDBBQAAAAIABFv4Vw6ag4EMQEAACECAAAPAAAAeGwvd29ya2Jvb2sueG1sjVHRSsNAEPyVcB9gUtGCpemLRS2IFit9vySbZundbdjbtNqvd5MQLPji097OLMPM3PJMfCyIjsmXdyHmphFpF2kaywa8jTfUQlCmJvZWdOVDGlsGW8UGQLxLb7NsnnqLwayWk9aW0+uFBEpBCgr2wB7hHH/5fk1OGLFAh/Kdm+HtwCQeA3q8QJWbzCSxofMLMV4oiHW7ksm53MxGYg8sWP6Bd73JT1vEARFbfFg1kpt5poI1cpThYtC36vEEejxundATOgFeW4Fnpq7FcOhlNEV6FWPoYZpjiQv+T41U11jCmsrOQ5CxRwbXGwyxwTaaJFgPuVEDto+j+ptqjCbq6aooXqASvKlGd5OlCmoMUL2pSlRc6ym3nPRj0Lm9u589aA2dc4+KvYdXstWUcPqd1Q9QSwMEFAAAAAgAEW/hXCQem6KtAAAA+AEAABoAAAB4bC9fcmVscy93b3JrYm9vay54bWwucmVsc7WRPQ6DMAyFrxLlADVQqUMFTF1YKy4QBfMjEhLFrgq3L4UBkDp0YbKeLX/vyU6faBR3bqC28yRGawbKZMvs7wCkW7SKLs7jME9qF6ziWYYGvNK9ahCSKLpB2DNknu6Zopw8/kN0dd1pfDj9sjjwDzC8XeipRWQpShUa5EzCaLY2wVLiy0yWoqgyGYoqlnBaIOLJIG1pVn2wT06053kXN/dFrs3jCa7fDHB4dP4BUEsDBBQAAAAIABFv4VxlkHmSGQEAAM8DAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbK2TTU7DMBCFrxJlWyUuLFigphtgC11wAWNPGqv+k2da0tszTtpKoBIVhU2seN68z56XrN6PEbDonfXYlB1RfBQCVQdOYh0ieK60ITlJ/Jq2Ikq1k1sQ98vlg1DBE3iqKHuU69UztHJvqXjpeRtN8E2ZwGJZPI3CzGpKGaM1ShLXxcHrH5TqRKi5c9BgZyIuWFCKq4Rc+R1w6ns7QEpGQ7GRiV6lY5XorUA6WsB62uLKGUPbGgU6qL3jlhpjAqmxAyBn69F0MU0mnjCMz7vZ/MFmCsjKTQoRObEEf8edI8ndVWQjSGSmr3ghsvXs+0FOW4O+kc3j/QxpN+SBYljmz/h7xhf/G87xEcLuvz+xvNZOGn/mi+E/Xn8BUEsBAhQDFAAAAAgAEW/hXEbHTUiVAAAAzQAAABAAAAAAAAAAAAAAAIABAAAAAGRvY1Byb3BzL2FwcC54bWxQSwECFAMUAAAACAARb+Fctyeja+4AAAArAgAAEQAAAAAAAAAAAAAAgAHDAAAAZG9jUHJvcHMvY29yZS54bWxQSwECFAMUAAAACAARb+FcmVycIxAGAACcJwAAEwAAAAAAAAAAAAAAgAHgAQAAeGwvdGhlbWUvdGhlbWUxLnhtbFBLAQIUAxQAAAAIABFv4Vw93lfeowEAABYEAAAYAAAAAAAAAAAAAACAgSEIAAB4bC93b3Jrc2hlZXRzL3NoZWV0MS54bWxQSwECFAMUAAAACAARb+FcfPOj3FECAAD2CQAADQAAAAAAAAAAAAAAgAH6CQAAeGwvc3R5bGVzLnhtbFBLAQIUAxQAAAAIABFv4VyXirscwAAAABMCAAALAAAAAAAAAAAAAACAAXYMAABfcmVscy8ucmVsc1BLAQIUAxQAAAAIABFv4Vw6ag4EMQEAACECAAAPAAAAAAAAAAAAAACAAV8NAAB4bC93b3JrYm9vay54bWxQSwECFAMUAAAACAARb+FcJB6boq0AAAD4AQAAGgAAAAAAAAAAAAAAgAG9DgAAeGwvX3JlbHMvd29ya2Jvb2sueG1sLnJlbHNQSwECFAMUAAAACAARb+FcZZB5khkBAADPAwAAEwAAAAAAAAAAAAAAgAGiDwAAW0NvbnRlbnRfVHlwZXNdLnhtbFBLBQYAAAAACQAJAD4CAADsEAAAAAA=";
+
+/** JSON.stringify with the 2-space, trailing-newline shape the fixtures use. */
+function json(value) {
+    return JSON.stringify(value, null, 2) + "\n";
+}
+/** Characters safe to write bare in YAML — no quoting, no escaping, no ambiguity. */
+const PLAIN_YAML_SCALAR = /^[A-Za-z0-9][A-Za-z0-9 ._-]*$/;
+/**
+ * Bare words YAML resolves to something other than a string. Left unquoted, an
+ * acronym like `2024` would come back as a number and `no` as a boolean, so a
+ * sibling reading `project:` would not get the string it was written.
+ */
+const YAML_NON_STRING = /^(-?\d+(\.\d+)?|true|false|yes|no|on|off|null|~)$/i;
+/**
+ * Render a string as a YAML scalar, quoting it whenever writing it bare would be
+ * ambiguous, invalid, or read back as a non-string.
+ *
+ * Project acronyms are usually plain (`ColMemo`), but this value can be typed by
+ * hand — a colon, a leading `[`, or CJK punctuation would otherwise produce
+ * frontmatter Obsidian cannot parse. JSON's string syntax is a subset of YAML's
+ * double-quoted style, so `JSON.stringify` is a correct escaper here.
+ */
+function yamlScalar(value) {
+    const bare = PLAIN_YAML_SCALAR.test(value) && !YAML_NON_STRING.test(value);
+    return bare ? value : JSON.stringify(value);
+}
+/**
+ * The top-level `project:` line for an index note, or "" when unset.
+ *
+ * Includes its own trailing newline so callers can interpolate it directly before
+ * the frontmatter's closing `---` without leaving a blank line behind.
+ */
+function projectLine(ctx) {
+    var _a;
+    const project = (_a = ctx.project) === null || _a === void 0 ? void 0 : _a.trim();
+    return project ? `project: ${yamlScalar(project)}\n` : "";
+}
+// ── Body text ───────────────────────────────────────────────────────────────
+const INTRODUCTION_MD = `# Introduction
+
+Open with the background and the gap your paper addresses. You can use *italic*, **bold**, and ==highlight== for emphasis, and Markdown footnotes for asides.[^note]
+
+Cite prior work with bracketed keys that resolve against \`references.bib\`: a single citation [@doe2020] or several [@doe2020; @roe2021]. Values from \`metadata.json\` render live in reading mode and at compile time — this is *{{title}}* (acronym {{_longform.acronym}}, version {{version}}).
+
+Wrap the one sentence you will quote in your response letter in a manuscript span so the response letter can pull its live text and line number: <!--ms:intro-gap-->state here, in one sentence, the specific gap this paper closes.<!--/ms:intro-gap-->
+
+[^note]: Footnotes render in the compiled PDF.
+`;
+const METHODS_MD = `# Methods
+
+Describe your approach. Inline math like $E = mc^2$ and display math both work:
+
+$$\\bar{x} = \\frac{1}{n}\\sum_{i=1}^{n} x_i.$$
+
+Blackboard symbols such as $\\mathbb{R}$ come from \`amssymb\`, which the template loads.
+
+Values below are injected at compile time from \`results.json\` (they are not in \`metadata.json\`, so they stay as raw placeholders in the live preview and are substituted only by the compile step): we analysed {{ summary.n }} {{ summary.unit }} with a mean of {{ summary.mean }}, the first identified as {{ samples[0].id }}. Computed on {{ computed_date }}.
+`;
+/**
+ * The Results scene. Without the example assets the figure and xlsx-table blocks
+ * are dropped entirely rather than left pointing at absent files — a dangling
+ * `figs/example_figure.png` fails the LaTeX build, and `xlsx_table.lua` errors
+ * on a missing workbook.
+ */
+function resultsMd(examples) {
+    if (!examples) {
+        return `# Results
+
+State the primary outcome here.
+
+Add a figure with a label so you can cross-reference it:
+\`![Your caption. {#fig:key width=70%}](figs/your-figure.png)\`, then cite it as
+Figure \\ref{fig:key}. Tables can be generated from a spreadsheet at compile time
+with an \`xlsx-table\` block.
+
+Defer extended analyses to the supplementary results.
+`;
+    }
+    return `# Results
+
+State the primary outcome and point to Figure \\ref{fig:demo}.
+
+![Replace with your figure caption. {#fig:demo width=70%}](figs/example_figure.png)
+
+Report tabular results in Table \\ref{tbl:demo}, generated from a spreadsheet at compile time by the pipeline's \`xlsx_table.lua\`:
+
+\`\`\`xlsx-table
+file: figs/example_data.xlsx
+sheet: Data
+caption: Replace with your table caption.
+label: tbl:demo
+skip_n: 0
+\`\`\`
+
+Defer extended analyses to the supplementary results.
+`;
+}
+function supplementaryResultsMd(examples) {
+    const head = `# Supplementary Results
+
+Because this draft's workflow includes the **Supplementary Information** step, figures and tables here are numbered with an S prefix automatically — Figure \\ref{fig:supp_demo} becomes "Figure S1" and Table \\ref{tbl:supp_demo} becomes "Table S1".
+`;
+    if (!examples) {
+        return `${head}
+Add supplementary figures and tables the same way you would in the manuscript;
+paths are relative to this folder, so a shared figure lives at \`../figs/…\`.
+`;
+    }
+    return `${head}
+![A supplementary figure caption. {#fig:supp_demo width=60%}](../figs/example_figure.png)
+
+\`\`\`xlsx-table
+file: ../figs/example_data.xlsx
+sheet: Data
+caption: A supplementary table caption.
+label: tbl:supp_demo
+skip_n: 0
+\`\`\`
+`;
+}
+/**
+ * The Response Letter scene. The ```manuscript fences resolve against spans and
+ * figure labels defined in the manuscript, so each is emitted only when its
+ * target exists: `@intro-gap` needs the Main Manuscript, `@fig:demo` needs the
+ * example figure inside it too.
+ */
+function responseMd(ctx) {
+    const hasMain = ctx.present.has("main");
+    const head = `# Response to Reviewer 1
+
+> [!RC] Reviewer 1, Comment 1
+> Paraphrase the reviewer's comment here.
+
+Write your reply.`;
+    if (!hasMain) {
+        return `${head} Once this project has a Main Manuscript, you can quote its *current* text by wrapping a manuscript span (\`<!--ms:some-id-->…<!--/ms:some-id-->\`) in the manuscript and fencing \`@some-id\` in a \`\`\`manuscript\`\`\` block here — the quote and its Page/Line stay in sync automatically.
+`;
+    }
+    const figureSection = ctx.examples
+        ? `
+To show a manuscript figure with its manuscript number:
+
+\`\`\`manuscript
+@fig:demo
+\`\`\`
+
+You can also refer to it inline as Figure \\ref{fig:demo}.
+`
+        : `
+Fencing a figure label the same way (\`@fig:your-key\`) renders that figure with its manuscript number.
+`;
+    return `${head} To quote the manuscript's *current* text (kept in sync automatically), fence a manuscript reference — it renders as a gray box with the live Page/Line:
+
+\`\`\`manuscript
+@intro-gap
+\`\`\`
+${figureSection}`;
+}
+// ── Index notes (legacy form) ───────────────────────────────────────────────
+function mainIndex(ctx) {
+    const title = ctx.title;
+    return `---
+longform:
+  format: scenes
+  title: ${title}
+  draftTitle: Main Manuscript
+  workflow: PaperBell Manuscript
+  sceneFolder: manuscript
+  scenes:
+    - introduction
+    - methods
+    - results
+  ignoredFiles: []
+${projectLine(ctx)}---
+
+Main manuscript of **${title}**. Shared publication metadata lives in \`metadata.json\` in this folder; compile it with the **PaperBell Manuscript** workflow.
+`;
+}
+function responseIndex(ctx) {
+    const title = ctx.title;
+    return `---
+longform:
+  format: scenes
+  title: ${title}
+  draftTitle: Response Letter
+  workflow: PaperBell Response Letter
+  sceneFolder: response
+  scenes:
+    - response
+  ignoredFiles: []
+${projectLine(ctx)}---
+
+Response-letter draft of **${title}**. Compile the **Main Manuscript** first (it harvests \`manuscript-lines.json\` / \`figure-numbers.json\`), then compile this with **PaperBell Response Letter**: the \`\`\`manuscript\`\`\` fences pull the manuscript's current text into a Page/Line box, and figure labels resolve to the manuscript's figure numbers.
+`;
+}
+function supplementaryIndex(ctx) {
+    const title = ctx.title;
+    return `---
+longform:
+  format: scenes
+  title: ${title}
+  draftTitle: Supplementary
+  workflow: PaperBell Supplementary
+  sceneFolder: /
+  scenes:
+    - supplementary results
+  ignoredFiles: []
+${projectLine(ctx)}---
+
+Supplementary draft of **${title}**. Its own \`metadata.json\` in this folder (found before the shared one at the project root) adds \`supplementary: true\`, so figures and tables are numbered S1, S2, …
+`;
+}
+/**
+ * The cover letter's own note. It is a single-file draft: the cover_letter
+ * template reads to/date/manuscript/corresponding straight from this
+ * frontmatter, so its workflow exports the note as-is.
+ *
+ * In project form the note is an asset's body and carries no `longform:` block:
+ * a stray one would register it as a second, competing draft. That is exactly
+ * what the convert command's `stripLongform` removes.
+ */
+function coverLetter(ctx, form) {
+    const longform = form === "legacy"
+        ? `longform:
+  format: single
+  title: ${ctx.title}
+  draftTitle: Cover Letter
+  workflow: PaperBell Cover Letter
+`
+        : "";
+    return `---
+${longform}title: Cover letter
+manuscript: ${ctx.title}
+acronym: ${ctx.acronym}
+${projectLine(ctx)}date:
+to: Dear Editor,
+corresponding: ${ctx.author} (you@example.com)
+---
+
+We are pleased to submit our manuscript, *{{manuscript}}*, for consideration for publication in *{{JournalName}}*.
+
+State in one or two sentences what the paper shows and why it matters to this journal's readers.
+
+State the key advance over prior work, and why this venue is the right fit.
+
+We confirm that this manuscript is original, has not been published elsewhere, and is not under consideration by another journal. All authors have approved the submission and declare no competing interests.
+
+Thank you for your consideration; we look forward to your response.
+`;
+}
+function supplementaryMetadata(ctx) {
+    return json({
+        title: `${ctx.title} — Supplementary Information`,
+        publication_date: "",
+        upload_type: "publication",
+        publication_type: "article",
+        description: "Supplementary information for the paper. Shares the main manuscript's metadata but adds supplementary: true so figures and tables receive an S prefix.",
+        creators: [
+            {
+                name: ctx.author,
+                affiliation: "Your Institution",
+                orcid: "0000-0000-0000-0000",
+                email: "you@example.com",
+            },
+        ],
+        keywords: ["keyword-one", "keyword-two"],
+        journal_title: "Target Journal",
+        version: "v1.0",
+        _longform: {
+            acronym: ctx.acronym,
+            csl: "nature",
+            template: "paperbell",
+            corresponding: [ctx.author],
+            extra_yaml: "supplementary: true\nnumbersections: true\n",
+        },
+    });
+}
+// ── The parts ───────────────────────────────────────────────────────────────
+/**
+ * Every part, in the order they should be created and listed.
+ *
+ * No part may emit anything under `figs/` — the example assets are their own
+ * bundle, owned by the scaffold. That keeps "two parts selected" from ever
+ * producing the same path twice, structurally rather than by de-duplication.
+ */
+const PAPER_PARTS = [
+    {
+        id: "main",
+        draftTitle: "Main Manuscript",
+        workflow: "PaperBell Manuscript",
+        labelKey: "parts.mainLabel",
+        descKey: "parts.mainDesc",
+        ownedPaths: ["Main Manuscript (Index).md", "manuscript"],
+        primaryPath: "Main Manuscript (Index).md",
+        build(ctx, form) {
+            const files = [
+                { path: "manuscript/introduction.md", text: INTRODUCTION_MD },
+                { path: "manuscript/methods.md", text: METHODS_MD },
+                { path: "manuscript/results.md", text: resultsMd(ctx.examples) },
+            ];
+            if (form === "legacy") {
+                files.push({
+                    path: "Main Manuscript (Index).md",
+                    text: mainIndex(ctx),
+                });
+                return { files };
+            }
+            return {
+                files,
+                asset: {
+                    name: "Main Manuscript",
+                    format: "scenes",
+                    folder: "manuscript",
+                    workflow: "PaperBell Manuscript",
+                    scenes: ["introduction", "methods", "results"],
+                    ignoredFiles: [],
+                },
+            };
+        },
+    },
+    {
+        id: "supplementary",
+        draftTitle: "Supplementary",
+        workflow: "PaperBell Supplementary",
+        labelKey: "parts.supplementaryLabel",
+        descKey: "parts.supplementaryDesc",
+        ownedPaths: ["supplementary"],
+        primaryPath: "supplementary/Supplementary (Index).md",
+        build(ctx, form) {
+            const files = [
+                {
+                    path: "supplementary/supplementary results.md",
+                    text: supplementaryResultsMd(ctx.examples),
+                },
+                {
+                    path: "supplementary/metadata.json",
+                    text: supplementaryMetadata(ctx),
+                },
+            ];
+            if (form === "legacy") {
+                files.push({
+                    path: "supplementary/Supplementary (Index).md",
+                    text: supplementaryIndex(ctx),
+                });
+                return { files };
+            }
+            return {
+                files,
+                asset: {
+                    name: "Supplementary",
+                    format: "scenes",
+                    folder: "supplementary",
+                    workflow: "PaperBell Supplementary",
+                    scenes: ["supplementary results"],
+                    ignoredFiles: [],
+                },
+            };
+        },
+    },
+    {
+        id: "cover",
+        draftTitle: "Cover Letter",
+        workflow: "PaperBell Cover Letter",
+        labelKey: "parts.coverLabel",
+        descKey: "parts.coverDesc",
+        ownedPaths: ["Cover Letter.md"],
+        primaryPath: "Cover Letter.md",
+        build(ctx, form) {
+            const files = [
+                { path: "Cover Letter.md", text: coverLetter(ctx, form) },
+            ];
+            if (form === "legacy") {
+                return { files };
+            }
+            return {
+                files,
+                asset: {
+                    name: "Cover Letter",
+                    format: "single",
+                    file: "Cover Letter.md",
+                    workflow: "PaperBell Cover Letter",
+                },
+            };
+        },
+    },
+    {
+        id: "response",
+        draftTitle: "Response Letter",
+        workflow: "PaperBell Response Letter",
+        labelKey: "parts.responseLabel",
+        descKey: "parts.responseDesc",
+        ownedPaths: ["Response Letter (Index).md", "response"],
+        primaryPath: "Response Letter (Index).md",
+        build(ctx, form) {
+            const files = [
+                { path: "response/response.md", text: responseMd(ctx) },
+            ];
+            if (form === "legacy") {
+                files.push({
+                    path: "Response Letter (Index).md",
+                    text: responseIndex(ctx),
+                });
+                return { files };
+            }
+            return {
+                files,
+                asset: {
+                    name: "Response Letter",
+                    format: "scenes",
+                    folder: "response",
+                    workflow: "PaperBell Response Letter",
+                    scenes: ["response"],
+                    ignoredFiles: [],
+                },
+            };
+        },
+    },
+];
+/** Look a part up by id. */
+function paperPart(id) {
+    const part = PAPER_PARTS.find((p) => p.id === id);
+    if (!part)
+        throw new Error(`Unknown paper part: ${id}`);
+    return part;
+}
+/**
+ * The file to open after creating `ids` — the first selected part's own, in
+ * canonical order. Only meaningful for the legacy form, where each part has an
+ * index note of its own.
+ */
+function primaryPathFor(ids) {
+    var _a;
+    const selected = new Set(ids);
+    const first = PAPER_PARTS.find((p) => selected.has(p.id));
+    return (_a = first === null || first === void 0 ? void 0 : first.primaryPath) !== null && _a !== void 0 ? _a : null;
+}
+/** Every part id, in canonical order. */
+PAPER_PARTS.map((p) => p.id);
+/**
+ * Is this file an index note — the one carrying a draft's `longform:` block?
+ *
+ * Index notes must be written *last*. `StoreVaultSync.reconcileScenesDraft`
+ * drops any scene listed in frontmatter that is not yet on disk and writes the
+ * shortened list back, so an index landing before its scenes gets `scenes:`
+ * emptied.
+ */
+function isIndexNote(file) {
+    return "text" in file && /^---\r?\nlongform:/.test(file.text);
+}
+/** Scaffold files reordered so every index note is written after its scenes. */
+function scenesBeforeIndexes(entries) {
+    return [
+        ...entries.filter((e) => !isIndexNote(e.file)),
+        ...entries.filter((e) => isIndexNote(e.file)),
+    ];
+}
+
+/**
+ * Stand-in for the lead author. Left as a placeholder for the user to replace in
+ * metadata.json, which is the single authority for publication metadata.
+ */
+const PLACEHOLDER_AUTHOR = "Lastname, Firstname";
+/** Initials of a title, upper-cased, digits kept — "Sea Level Memory" → "SLM". */
+function acronymFromTitle(title) {
+    const initials = (title || "")
+        .split(/[\s_-]+/)
+        .filter(Boolean)
+        .map((w) => w.replace(/[^A-Za-z0-9]/g, "")[0])
+        .filter(Boolean)
+        .join("")
+        .toUpperCase()
+        .slice(0, 6);
+    return initials || "PAPER";
+}
+function mainMetadata(title, acronym, author) {
+    return json({
+        title,
+        publication_date: "",
+        upload_type: "publication",
+        publication_type: "article",
+        description: "One-paragraph summary of the paper. Fill this in — it is emitted into the compiled manuscript's frontmatter and (for Zenodo) the deposit description.",
+        creators: [
+            {
+                name: author,
+                affiliation: "Your Institution",
+                orcid: "0000-0000-0000-0000",
+                email: "you@example.com",
+            },
+        ],
+        keywords: ["keyword-one", "keyword-two"],
+        journal_title: "Target Journal",
+        version: "v1.0",
+        _longform: {
+            acronym,
+            csl: "nature",
+            template: "paperbell",
+            lineno: true,
+            figures_at_end: false,
+            corresponding: [author],
+            extra_yaml: "corresponding_email: you@example.com\nnumbersections: true\n",
+        },
+    });
+}
+const RESULTS_JSON = json({
+    summary: { n: 0, mean: 0, unit: "samples" },
+    samples: [{ id: "S-01" }, { id: "S-02" }],
+    computed_date: "",
+});
+const REFERENCES_BIB = `@article{doe2020,
+  author  = {Doe, Jane},
+  title   = {A Prior Study},
+  journal = {Journal Name},
+  year    = {2020},
+  volume  = {1},
+  pages   = {1--10}
+}
+
+@article{roe2021,
+  author  = {Roe, Rick},
+  title   = {A Related Study},
+  journal = {Journal Name},
+  year    = {2021},
+  volume  = {2},
+  pages   = {11--20}
+}
+`;
+/** One-line notes for the README tree, keyed by the path they annotate. */
+const TREE_ANNOTATIONS = {
+    "metadata.json": "shared publication metadata (Zenodo schema + _longform)",
+    "results.json": "externally-computed values for {{ }} placeholders",
+    "references.bib": "local bib for [@citekey] (consumed by pandoc)",
+    "figs/example_figure.png": "placeholder figure — replace with your own",
+    // No backticks in these notes: the tree is itself inside a fenced block, and
+    // a nested fence would close it early. (The old hand-written tree did that.)
+    "figs/example_data.xlsx": "Data sheet for the xlsx-table blocks",
+    "Main Manuscript (Index).md": "draft index (sceneFolder: manuscript)",
+    "Response Letter (Index).md": "draft index (sceneFolder: response)",
+    "Cover Letter.md": "single-file draft; own to/date/manuscript frontmatter",
+    "supplementary/Supplementary (Index).md": "draft index (same title → same project)",
+    "supplementary/metadata.json": "nearest-wins override adding supplementary: true",
+};
+/**
+ * Render an ASCII directory tree from the paths actually emitted.
+ *
+ * Derived rather than hand-written so the README can never drift from what the
+ * scaffold produced — which it would, now that the file set depends on a
+ * selection. Exported for unit testing.
+ */
+function renderTree(root, paths) {
+    const tree = { name: root, children: [], path: "" };
+    for (const p of paths) {
+        let node = tree;
+        const segments = p.split("/");
+        segments.forEach((segment, i) => {
+            const path = segments.slice(0, i + 1).join("/");
+            let child = node.children.find((c) => c.name === segment);
+            if (!child) {
+                child = { name: segment, children: [], path };
+                node.children.push(child);
+            }
+            node = child;
+        });
+    }
+    const lines = [`${root}/`];
+    const walk = (node, prefix) => {
+        node.children.forEach((child, i) => {
+            const last = i === node.children.length - 1;
+            const isDir = child.children.length > 0;
+            const note = TREE_ANNOTATIONS[child.path];
+            const label = `${child.name}${isDir ? "/" : ""}`;
+            lines.push(`${prefix}${last ? "└── " : "├── "}${label}${note ? `  # ${note}` : ""}`);
+            if (isDir)
+                walk(child, prefix + (last ? "    " : "│   "));
+        });
+    };
+    walk(tree, "");
+    return lines.join("\n");
+}
+/** Only written alongside the example content, so it can assume it is there. */
+function readme(title, acronym, emitted) {
+    return `# ${title}
+
+A PaperBell paper project scaffolded by PaperOut To-Authors. Each part is a draft
+of one project — same \`title\`, distinct \`draftTitle\`.
+
+## Layout
+
+\`\`\`
+${renderTree(title, emitted)}
+\`\`\`
+
+## Getting started
+
+1. Fill in \`metadata.json\` (title, authors, \`email\` for the corresponding author,
+   \`publication_date\`) and \`results.json\`. The acronym is set to \`${acronym}\`.
+2. Replace \`figs/example_figure.png\` and \`figs/example_data.xlsx\` with your own.
+3. Write your scenes under \`manuscript/\`. Keep each scene's own \`#\` heading.
+4. Compile with the **Compile** tab or the **Compile All Drafts** board. Compile the
+   Main Manuscript first so a Response Letter can resolve its manuscript references.
+
+Need a part you did not create — a Supplementary Information, a Cover Letter, a
+Response Letter? Run **Add paper components…** from the command palette, or
+right-click this folder. (This file is not regenerated when you do, so the tree
+above reflects the project as first created.)
+
+The Pandoc toolchain (defaults/filters/templates/CSL) is downloaded on demand — run
+the **Set up Pandoc export** command for a prerequisites checklist.
+`;
+}
+/** The shared files every paper project needs, whichever parts it has. */
+function commonScaffoldFiles(ctx) {
+    return [
+        {
+            path: "metadata.json",
+            text: mainMetadata(ctx.title, ctx.acronym, ctx.author),
+        },
+        { path: "results.json", text: RESULTS_JSON },
+        { path: "references.bib", text: REFERENCES_BIB },
+    ];
+}
+/** The example figure and workbook the starter body text references. */
+function exampleAssetFiles() {
+    return [
+        { path: "figs/example_figure.png", base64: EXAMPLE_FIGURE_PNG_BASE64 },
+        { path: "figs/example_data.xlsx", base64: EXAMPLE_DATA_XLSX_BASE64 },
+    ];
+}
+/** Normalize the caller's options into the context every part builder takes. */
+function scaffoldContext(opts) {
+    var _a;
+    return {
+        title: opts.title.trim(),
+        acronym: (opts.acronym || acronymFromTitle(opts.title.trim())).trim(),
+        author: PLACEHOLDER_AUTHOR,
+        project: ((_a = opts.project) === null || _a === void 0 ? void 0 : _a.trim()) || undefined,
+        examples: opts.examples,
+        present: new Set(opts.parts),
+    };
+}
+/**
+ * Build every file of a new PaperBell paper project. Paths are relative to the
+ * project folder (named after `title`); the writer prefixes the parent path.
+ *
+ * Always writes the legacy form — one `longform:`-carrying note per draft — which
+ * is what the plugin's project model reads natively. A project only becomes a
+ * single `format: project` index via the convert command.
+ */
+function buildPaperbellScaffold(opts) {
+    // The Main Manuscript is not optional. It anchors the project root that every
+    // nearest-wins metadata.json lookup is bounded by; a project whose only draft
+    // sat in supplementary/ would search from there and miss the shared files.
+    if (!opts.parts.includes("main")) {
+        throw new Error("A paper project must include the Main Manuscript.");
+    }
+    const ctx = scaffoldContext(opts);
+    const files = [...commonScaffoldFiles(ctx)];
+    if (ctx.examples) {
+        files.push(...exampleAssetFiles());
+    }
+    for (const part of paperPartsOf(opts.parts)) {
+        files.push(...part.build(ctx, "legacy").files);
+    }
+    if (ctx.examples) {
+        files.push({
+            path: "README.md",
+            // The README documents the tree, so it has to see the final path list.
+            text: readme(ctx.title, ctx.acronym, files.map((f) => f.path).concat("README.md")),
+        });
+    }
+    return files;
+}
+/**
+ * The selected parts, in the order `PAPER_PARTS` declares — never the caller's
+ * argument order, so the layout (and the README tree derived from it) is stable
+ * however the modal collected the selection.
+ */
+function paperPartsOf(ids) {
+    const selected = new Set(ids);
+    return PAPER_PARTS.filter((p) => selected.has(p.id));
+}
+/** The project's primary draft path (relative), for selecting it after creation. */
+const SCAFFOLD_PRIMARY_DRAFT = "Main Manuscript (Index).md";
+
+/** Create every intermediate folder of a vault-relative path, top down. */
+function ensureFolder(app, folder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const parts = obsidian.normalizePath(folder).split("/").filter(Boolean);
+        let cur = "";
+        for (const part of parts) {
+            cur = cur ? `${cur}/${part}` : part;
+            if (!(yield app.vault.adapter.exists(cur))) {
+                yield app.vault.createFolder(cur);
+            }
+        }
+    });
+}
+class ScaffoldConflictError extends Error {
+    constructor(conflicts) {
+        super(`Some files already exist:\n${conflicts.map((c) => `  ${c}`).join("\n")}`);
+        this.conflicts = conflicts;
+        this.name = "ScaffoldConflictError";
+    }
+}
+/**
+ * Write scaffold files under `baseFolder`, all or nothing.
+ *
+ * Every target path is probed first and the whole batch is refused if any of
+ * them exists — half a component is harder to clean up than none. Index notes
+ * go last; see {@link scenesBeforeIndexes}.
+ */
+function writeScaffoldFiles(app, baseFolder, files) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const resolved = files.map((file) => ({
+            file,
+            full: obsidian.normalizePath(`${baseFolder}/${file.path}`),
+        }));
+        const conflicts = [];
+        for (const { full } of resolved) {
+            if (yield app.vault.adapter.exists(full)) {
+                conflicts.push(full);
+            }
+        }
+        if (conflicts.length > 0) {
+            throw new ScaffoldConflictError(conflicts);
+        }
+        for (const { file, full } of scenesBeforeIndexes(resolved)) {
+            yield ensureFolder(app, full.split("/").slice(0, -1).join("/"));
+            if ("text" in file) {
+                yield app.vault.create(full, file.text);
+            }
+            else {
+                yield app.vault.createBinary(full, obsidian.base64ToArrayBuffer(file.base64));
+            }
+        }
+    });
+}
+/**
+ * Write a full PaperBell paper scaffold under `parentPath` into a new folder named
+ * after the project title, and return the vault path of its primary (Main
+ * Manuscript) draft. Throws if the project folder already exists.
+ */
+function writePaperbellScaffold(app, parentPath, opts) {
+    var _a;
+    return __awaiter(this, void 0, void 0, function* () {
+        const projectFolder = obsidian.normalizePath(`${parentPath ? parentPath + "/" : ""}${opts.title.trim()}`);
+        if (yield app.vault.adapter.exists(projectFolder)) {
+            throw new Error(`A folder already exists at ${projectFolder}.`);
+        }
+        yield writeScaffoldFiles(app, projectFolder, buildPaperbellScaffold(opts));
+        return obsidian.normalizePath(`${projectFolder}/${(_a = primaryPathFor(opts.parts)) !== null && _a !== void 0 ? _a : SCAFFOLD_PRIMARY_DRAFT}`);
+    });
+}
+
+/**
+ * Turn the host's project list into dropdown options.
+ *
+ * Kept pure and DOM-free so the interesting parts — which field becomes the
+ * frontmatter value, and what happens to a project the host returned without an
+ * acronym — are unit-testable without an Obsidian environment.
+ *
+ * `acronym` is the interop key (see docs/PROPOSAL_PROJECTS_SCOPE.md), but it is
+ * optional in the contract, so we fall back to the name rather than silently
+ * dropping the project. Entries with nothing usable at all are dropped: an option
+ * that would write an empty `project:` is worse than an absent one.
+ */
+function projectOptions(projects) {
+    return projects
+        .map((project) => {
+        const value = (project.acronym || project.name || "").trim();
+        const name = (project.name || "").trim();
+        return {
+            value,
+            label: name && value !== name ? `${name} (${value})` : value,
+        };
+    })
+        .filter((option) => option.value.length > 0)
+        .sort((a, b) => a.label.localeCompare(b.label));
+}
+
+const ILLEGAL = /[:\\/]/;
+/**
+ * Dropdown value meaning "let me type it myself".
+ *
+ * Cannot collide with a real project: `projectOptions` trims every value and drops
+ * the empty ones, so no option it produces can start with a space.
+ */
+const MANUAL_ENTRY = " manual entry";
+/**
+ * Prompts for a project title, an optional acronym, the PaperBell project the
+ * paper is a deliverable of, and which parts it needs, then scaffolds the project
+ * under `parent`.
+ *
+ * Only the Main Manuscript is created by default: a short paper often needs no
+ * supplement and never needs a response letter before review. Anything left out
+ * can be added later with "Add paper components…".
+ */
+class NewPaperModal extends obsidian.Modal {
+    constructor(plugin, parent) {
+        super(plugin.app);
+        this.titleValue = "";
+        this.acronymValue = "";
+        this.acronymEdited = false;
+        /** The PaperBell project's acronym, or "" for no association. */
+        this.projectValue = "";
+        /** True once the user has typed into the project field by hand. */
+        this.projectEdited = false;
+        this.projectSetting = null;
+        /**
+         * The host's projects, once fetched. Kept so switching to manual entry is not a
+         * one-way door — the text field offers a button back to the list.
+         */
+        this.hostProjects = [];
+        /** Main is mandatory — see the note on the toggle below. */
+        this.parts = new Set(["main"]);
+        this.examples = true;
+        this.plugin = plugin;
+        this.parent = parent;
+    }
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.createEl("h1", { text: translate("scaffold.title") }, (el) => {
+            el.style.margin = "0 0 var(--size-4-2) 0";
+        });
+        contentEl.createEl("p", {
+            text: translate("scaffold.desc"),
+            cls: "setting-item-description",
+        });
+        let acronymInput;
+        let createButton;
+        const validate = () => {
+            const title = this.titleValue.trim();
+            const ok = !!title && !ILLEGAL.test(title);
+            createButton === null || createButton === void 0 ? void 0 : createButton.setDisabled(!ok);
+        };
+        new obsidian.Setting(contentEl)
+            .setName(translate("scaffold.nameLabel"))
+            .setDesc(translate("scaffold.nameDesc"))
+            .addText((text) => {
+            text.setPlaceholder("My Paper").onChange((value) => {
+                this.titleValue = value;
+                if (!this.acronymEdited) {
+                    this.acronymValue = acronymFromTitle(value);
+                    acronymInput === null || acronymInput === void 0 ? void 0 : acronymInput.setValue(this.acronymValue);
+                }
+                validate();
+            });
+            window.setTimeout(() => text.inputEl.focus(), 0);
+        });
+        new obsidian.Setting(contentEl)
+            .setName(translate("scaffold.acronymLabel"))
+            .setDesc(translate("scaffold.acronymDesc"))
+            .addText((text) => {
+            acronymInput = text;
+            text.setPlaceholder("MP").onChange((value) => {
+                this.acronymEdited = true;
+                this.acronymValue = value;
+            });
+        });
+        // Starts as a plain text field — the control that always works. If the host
+        // turns out to have a project list, it is swapped for a dropdown below.
+        //
+        // Known limitation: the `projects` scope is consent-gated, and the contract has
+        // no way to cancel a pending request. Close the modal while the host's
+        // permission dialog is up and that dialog outlives it. Asking the host for a
+        // consent-free "do you have projects?" probe is filed in
+        // docs/PROPOSAL_PROJECTS_SCOPE.md; until then the render is guarded instead.
+        this.projectSetting = new obsidian.Setting(contentEl)
+            .setName(translate("scaffold.projectLabel"))
+            .setDesc(translate("scaffold.projectDesc"));
+        this.renderProjectTextInput();
+        void this.loadHostProjects();
+        contentEl.createEl("h4", { text: translate("scaffold.partsHeading") });
+        for (const part of PAPER_PARTS) {
+            const setting = new obsidian.Setting(contentEl)
+                .setName(translate(part.labelKey))
+                .setDesc(translate(part.descKey));
+            setting.addToggle((toggle) => {
+                toggle.setValue(this.parts.has(part.id)).onChange((value) => {
+                    if (value)
+                        this.parts.add(part.id);
+                    else
+                        this.parts.delete(part.id);
+                });
+                // The Main Manuscript is not optional: it anchors the project root that
+                // every nearest-wins metadata.json lookup is bounded by, and a project
+                // whose only draft sits in supplementary/ would search from there.
+                if (part.id === "main") {
+                    toggle.setDisabled(true);
+                }
+            });
+        }
+        new obsidian.Setting(contentEl)
+            .setName(translate("scaffold.examplesLabel"))
+            .setDesc(translate("scaffold.examplesDesc"))
+            .addToggle((toggle) => {
+            toggle.setValue(this.examples).onChange((value) => {
+                this.examples = value;
+            });
+        });
+        new obsidian.Setting(contentEl).addButton((button) => {
+            createButton = button;
+            button
+                .setButtonText(translate("scaffold.create"))
+                .setCta()
+                .setDisabled(true)
+                .onClick(() => this.create());
+        });
+        validate();
+    }
+    /**
+     * Ask the host for its project list and, if it has one, upgrade the field to a
+     * dropdown. Deliberately fire-and-forget: `fetchProjects` returns null for a
+     * missing host, an older host, a denied consent prompt, or a host-side error,
+     * and every one of those just leaves the text field in place. Creating a paper
+     * never waits on — or fails because of — PaperBell.
+     */
+    loadHostProjects() {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            const projects = yield ((_a = this.plugin.paperBell) === null || _a === void 0 ? void 0 : _a.fetchProjects());
+            if (!projects || projects.length === 0)
+                return;
+            // The modal may already be gone — `onClose` nulls the Setting, which is what
+            // makes this safe. We cannot cancel the host's consent prompt itself; see the
+            // note on the call site.
+            if (!this.projectSetting)
+                return;
+            this.hostProjects = projectOptions(projects);
+            // Don't yank the field out from under someone who gave up waiting on the
+            // consent prompt and typed the acronym themselves.
+            if (this.projectEdited)
+                return;
+            this.renderProjectDropdown();
+        });
+    }
+    /** Swap the project field's control, keeping `projectValue` as the source of truth. */
+    replaceProjectControl(render) {
+        const setting = this.projectSetting;
+        if (!setting)
+            return;
+        // `clear()` (not `controlEl.empty()`) so the discarded component is also
+        // dropped from the Setting's `components` array.
+        setting.clear();
+        render(setting);
+    }
+    renderProjectTextInput(focus = false) {
+        this.replaceProjectControl((setting) => {
+            // Only offered once a host list exists, so manual entry is not a one-way door.
+            if (this.hostProjects.length > 0) {
+                setting.addExtraButton((button) => {
+                    button
+                        .setIcon("list")
+                        .setTooltip(translate("scaffold.projectBackToList"))
+                        .onClick(() => this.renderProjectDropdown());
+                });
+            }
+            setting.addText((text) => {
+                text
+                    .setPlaceholder(translate("scaffold.projectPlaceholder"))
+                    .setValue(this.projectValue)
+                    .onChange((value) => {
+                    this.projectEdited = true;
+                    this.projectValue = value;
+                });
+                if (focus)
+                    text.inputEl.focus();
+            });
+        });
+    }
+    renderProjectDropdown() {
+        this.replaceProjectControl((setting) => {
+            setting.addDropdown((dropdown) => {
+                dropdown.addOption("", translate("scaffold.projectNone"));
+                for (const option of this.hostProjects) {
+                    dropdown.addOption(option.value, option.label);
+                }
+                dropdown.addOption(MANUAL_ENTRY, translate("scaffold.projectManual"));
+                // A hand-typed value need not be in the list; fall back to "no project"
+                // rather than letting the select silently show the wrong row.
+                const known = this.hostProjects.some((o) => o.value === this.projectValue);
+                dropdown.setValue(known ? this.projectValue : "");
+                dropdown.onChange((value) => {
+                    if (value === MANUAL_ENTRY) {
+                        // Keep whatever was selected as the starting text — switching input
+                        // method should not throw away the answer.
+                        this.renderProjectTextInput(true);
+                        return;
+                    }
+                    this.projectValue = value;
+                });
+            });
+        });
+    }
+    create() {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            const title = this.titleValue.trim();
+            if (!title || ILLEGAL.test(title)) {
+                new obsidian.Notice(translate("scaffold.invalidName"));
+                return;
+            }
+            try {
+                const primaryPath = yield writePaperbellScaffold(this.app, this.parent.path, {
+                    title,
+                    acronym: this.acronymValue.trim() || undefined,
+                    project: this.projectValue.trim() || undefined,
+                    parts: [...this.parts],
+                    examples: this.examples,
+                });
+                selectedDraftVaultPath.set(primaryPath);
+                selectedTab.set("Scenes");
+                this.app.workspace.openLinkText(primaryPath, "/", false);
+                new obsidian.Notice(translate("scaffold.created", { title }));
+                this.close();
+            }
+            catch (e) {
+                new obsidian.Notice(translate("scaffold.failed", { error: String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0 ? _a : e) }));
+            }
+        });
+    }
+    onClose() {
+        this.projectSetting = null;
+        this.contentEl.empty();
+    }
+}
+
+const newPaperProject = (plugin) => ({
+    id: "longform-new-paper-project",
+    name: translate("cmd.newPaperProject"),
+    callback: () => {
+        // No folder context from the palette: scaffold under the active file's folder,
+        // falling back to the vault root.
+        const active = plugin.app.workspace.getActiveFile();
+        const parent = (active === null || active === void 0 ? void 0 : active.parent) instanceof obsidian.TFolder
+            ? active.parent
+            : plugin.app.vault.getRoot();
+        new NewPaperModal(plugin, parent).open();
+    },
+});
+
+function joinPath(folder, name) {
+    return folder ? `${folder}/${name}` : name;
+}
+/** A path made relative to `root` (which must be an ancestor of, or equal to, it). */
+function relativeToRoot(path, root) {
+    if (!root)
+        return path;
+    if (path === root)
+        return "";
+    if (path.startsWith(`${root}/`))
+        return path.slice(root.length + 1);
+    return path;
+}
+/**
+ * Build the on-disk `assets[]` entry for one legacy draft. `folder`/`file` are
+ * made relative to `projectRoot` (where the new index will live), so they match
+ * how the runtime writer (`assetEntryFromDraft`) later serializes them.
+ */
+function assetFromLegacyDraft(draft, projectRoot) {
+    var _a, _b;
+    const name = (_a = draft.draftTitle) !== null && _a !== void 0 ? _a : draft.title;
+    const id = slugifyAssetName(name);
+    const workflow = (_b = draft.workflow) !== null && _b !== void 0 ? _b : undefined;
+    if (draft.format === "single") {
+        // A legacy single draft's own index note IS its body — keep it as the body.
+        return {
+            name,
+            id,
+            format: "single",
+            file: relativeToRoot(draft.vaultPath, projectRoot),
+            workflow,
+        };
+    }
+    const indexFolder = draftParentFolder(draft.vaultPath);
+    const trimmed = (draft.sceneFolder || "").replace(/^\/+|\/+$/g, "");
+    const sceneFolderAbs = trimmed ? joinPath(indexFolder, trimmed) : indexFolder;
+    const folder = relativeToRoot(sceneFolderAbs, projectRoot) || "/";
+    const entry = {
+        name,
+        id,
+        format: "scenes",
+        folder,
+        workflow,
+        scenes: indentedScenesToArrays(draft.scenes),
+    };
+    if (draft.sceneTemplate)
+        entry.sceneTemplate = draft.sceneTemplate;
+    if (draft.ignoredFiles && draft.ignoredFiles.length > 0) {
+        entry.ignoredFiles = draft.ignoredFiles;
+    }
+    return entry;
+}
+/** Ensure every asset id is unique, disambiguating collisions with a suffix. */
+function withUniqueIds(assets) {
+    const seen = new Map();
+    return assets.map((a) => {
+        var _a, _b;
+        const id = (_a = a.id) !== null && _a !== void 0 ? _a : "asset";
+        const count = (_b = seen.get(id)) !== null && _b !== void 0 ? _b : 0;
+        seen.set(id, count + 1);
+        return count === 0 ? Object.assign(Object.assign({}, a), { id }) : Object.assign(Object.assign({}, a), { id: `${id}-${count + 1}` });
+    });
+}
+/**
+ * Plan the conversion of a legacy title-grouped project into a single index.
+ * The new index is placed at `<projectRoot>/<title> (Index).md`; the command is
+ * responsible for guarding against a name collision.
+ */
+function buildProjectIndexFromDrafts(projectDrafts, projectRoot, title) {
+    const assets = withUniqueIds(projectDrafts.map((d) => assetFromLegacyDraft(d, projectRoot)));
+    return {
+        indexPath: joinPath(projectRoot, `${title} (Index).md`),
+        indexEntry: { format: "project", title, assets },
+        stripPaths: projectDrafts.map((d) => d.vaultPath),
+    };
+}
+
+/** Create the new single index note, writing its `longform` frontmatter. */
+function writeProjectIndex(app, plan) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const exists = yield app.vault.adapter.exists(plan.indexPath);
+        if (!exists) {
+            yield app.vault.create(plan.indexPath, "");
+        }
+        const file = app.vault.getAbstractFileByPath(plan.indexPath);
+        if (!(file instanceof obsidian.TFile))
+            return;
+        yield app.fileManager.processFrontMatter(file, (fm) => {
+            fm["longform"] = plan.indexEntry;
+        });
+    });
+}
+/**
+ * Non-destructively retire a legacy index file: strip only its `longform`
+ * entry so it is no longer discovered as its own project. The note and any
+ * other frontmatter (e.g. a cover letter's to/date/manuscript) are preserved.
+ */
+function stripLongform(app, path) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const file = app.vault.getAbstractFileByPath(path);
+        if (!(file instanceof obsidian.TFile))
+            return;
+        yield app.fileManager.processFrontMatter(file, (fm) => {
+            delete fm["longform"];
+        });
+    });
+}
+function convertProject(app, title, projectDrafts) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (projectDrafts.every((d) => d.indexPath)) {
+            new obsidian.Notice(`“${title}” already uses a single index.`);
+            return;
+        }
+        const projectRoot = projectRootPath(projectDrafts);
+        const plan = buildProjectIndexFromDrafts(projectDrafts, projectRoot, title);
+        // Guard against overwriting an existing note at the target index path.
+        if (yield app.vault.adapter.exists(plan.indexPath)) {
+            new obsidian.Notice(`Cannot convert “${title}”: ${plan.indexPath} already exists. ` +
+                `Rename or move it and try again.`);
+            return;
+        }
+        try {
+            // Create the new index first so the project is never left without one; then
+            // retire the old index files.
+            yield writeProjectIndex(app, plan);
+            for (const p of plan.stripPaths) {
+                yield stripLongform(app, p);
+            }
+        }
+        catch (error) {
+            console.error("[PaperOut] convert-to-project failed:", error);
+            new obsidian.Notice(`Failed to convert “${title}”. See console for details.`);
+            return;
+        }
+        // Select the first asset of the new project.
+        const firstAsset = plan.indexEntry.assets[0];
+        if (firstAsset) {
+            selectedDraftVaultPath.set(syntheticAssetPath(plan.indexPath, assetIdFor(firstAsset)));
+        }
+        new obsidian.Notice(`Converted “${title}” into ${plan.indexPath}. ` +
+            `${plan.stripPaths.length} old index file(s) kept but detached.`);
+    });
+}
+const convertToProject = (plugin) => ({
+    id: "longform-convert-to-project",
+    name: translate("cmd.convertToProject"),
+    checkCallback: (checking) => {
+        const allProjects = get_store_value(projects);
+        // Only offer projects that still have at least one legacy (non-asset) draft.
+        const convertible = Object.keys(allProjects).filter((title) => allProjects[title].some((d) => !d.indexPath));
+        if (checking) {
+            return convertible.length > 0;
+        }
+        const opts = new Map(convertible.map((t) => [t, t]));
+        new JumpModal(plugin.app, opts, [
+            { command: "↑↓", purpose: "to navigate" },
+            { command: "↵", purpose: "to convert" },
+            { command: "esc", purpose: "to dismiss" },
+        ], (title) => {
+            const projectDrafts = allProjects[title];
+            if (!projectDrafts || projectDrafts.length === 0)
+                return;
+            convertProject(plugin.app, title, projectDrafts);
+        }).open();
+    },
+});
+
+const openPandocMarket = (plugin) => ({
+    id: "longform-open-pandoc-market",
+    name: translate("cmd.openMarket"),
+    callback: () => {
+        new PandocMarketModal(plugin.app, plugin).open();
+    },
+});
+
+/**
+ * Registers one command per compile workflow — "Run workflow: <name>" — and
+ * keeps that set in sync as workflows are created, renamed, and deleted.
+ *
+ * The commands run against the *active note* rather than the pane's selected
+ * draft, so a single markdown file can be compiled and exported straight from a
+ * hotkey without first being made into a project. See `runWorkflowOnActiveNote`.
+ */
+function registerWorkflowCommands(plugin) {
+    const registered = new Set();
+    const sync = (names) => {
+        var _a;
+        const wanted = new Set(names);
+        const added = [];
+        const removed = [];
+        for (const name of wanted) {
+            if (registered.has(name)) {
+                continue;
+            }
+            plugin.addCommand({
+                id: workflowCommandId(name),
+                // Obsidian prefixes the plugin name in the palette, so this must not
+                // repeat it: "PaperOut To-Authors: Run workflow: PaperBell Manuscript".
+                name: `${translate("cmd.runWorkflow")}: ${name}`,
+                checkCallback: (checking) => {
+                    if (!get_store_value(workflows)[name]) {
+                        return false;
+                    }
+                    if (!isExportableNote(plugin.app.workspace.getActiveFile())) {
+                        return false;
+                    }
+                    if (checking) {
+                        return true;
+                    }
+                    void runWorkflowOnActiveNote(plugin, name);
+                },
+            });
+            registered.add(name);
+            added.push(name);
+        }
+        for (const name of [...registered]) {
+            if (wanted.has(name)) {
+                continue;
+            }
+            const commands = plugin.app
+                .commands;
+            (_a = commands === null || commands === void 0 ? void 0 : commands.removeCommand) === null || _a === void 0 ? void 0 : _a.call(commands, `${plugin.manifest.id}:${workflowCommandId(name)}`);
+            registered.delete(name);
+            removed.push(name);
+        }
+        if (added.length > 0 || removed.length > 0) {
+            console.log(`[PaperOut] Workflow commands: +[${added.join(", ")}] -[${removed.join(", ")}] — now ${registered.size} registered.`);
+        }
+    };
+    // The store is rewritten on every keystroke in the compile pane's description
+    // field (and wholesale whenever user scripts reload), so only ever act on a
+    // change to the *set of names*. Re-adding an id would also leak an unload
+    // closure per call, since Plugin.addCommand registers one each time.
+    const unsubscribe = workflows.subscribe((all) => sync(Object.keys(all)));
+    plugin.register(unsubscribe);
+}
+
+/**
+ * Offers the paper parts a project does not have yet.
+ *
+ * Deliberately narrower than the new-project modal: no example-assets toggle,
+ * because whether the starter text may reference `figs/example_*` is read from
+ * what is already on disk rather than asked again — which also means this flow
+ * never rewrites `figs/` or `README.md`.
+ */
+class AddComponentsModal extends obsidian.Modal {
+    constructor(app, projectTitle, plan, onAdd) {
+        super(app);
+        this.projectTitle = projectTitle;
+        this.plan = plan;
+        this.onAdd = onAdd;
+        this.selected = new Set();
+    }
+    onOpen() {
+        const { contentEl } = this;
+        contentEl.createEl("h1", { text: translate("components.title") }, (el) => {
+            el.style.margin = "0 0 var(--size-4-2) 0";
+        });
+        contentEl.createEl("p", {
+            text: translate("components.desc", { title: this.projectTitle }),
+            cls: "setting-item-description",
+        });
+        let addButton;
+        const validate = () => addButton === null || addButton === void 0 ? void 0 : addButton.setDisabled(this.selected.size === 0);
+        for (const id of this.plan.addable) {
+            const part = paperPart(id);
+            new obsidian.Setting(contentEl)
+                .setName(translate(part.labelKey))
+                .setDesc(translate(part.descKey))
+                .addToggle((toggle) => {
+                toggle.setValue(false).onChange((value) => {
+                    if (value)
+                        this.selected.add(id);
+                    else
+                        this.selected.delete(id);
+                    validate();
+                });
+            });
+        }
+        new obsidian.Setting(contentEl).addButton((button) => {
+            addButton = button;
+            button
+                .setButtonText(translate("components.add"))
+                .setCta()
+                .setDisabled(true)
+                .onClick(() => __awaiter(this, void 0, void 0, function* () {
+                const parts = [...this.selected];
+                this.close();
+                yield this.onAdd(parts);
+            }));
+        });
+        validate();
+    }
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
+/**
+ * Which shape is this project in?
+ *
+ * A project is `project` form only when *every* draft comes from the same index
+ * — a project half-converted (or two indexes sharing a title) is `mixed` and
+ * must not be written to, since neither write path would be correct for all of
+ * its drafts.
+ */
+function projectFormOf(drafts) {
+    if (drafts.length === 0)
+        return "empty";
+    const indexed = drafts.filter((d) => d.indexPath);
+    if (indexed.length === 0)
+        return "legacy";
+    // Some drafts converted and some not: neither write path is right for all.
+    if (indexed.length !== drafts.length)
+        return "mixed";
+    const indexPaths = new Set(indexed.map((d) => d.indexPath));
+    return indexPaths.size === 1 ? "project" : "mixed";
+}
+/** The single `format: project` index path, or null when there isn't exactly one. */
+function projectIndexPathOf(drafts) {
+    const indexPaths = new Set(drafts.map((d) => d.indexPath).filter((p) => !!p));
+    return indexPaths.size === 1 ? [...indexPaths][0] : null;
+}
+/**
+ * The folder new files are written under.
+ *
+ * For `project` form this must be the index note's own folder: an asset's
+ * `folder`/`file` is resolved relative to it, so anchoring anywhere else would
+ * need every path translated twice.
+ *
+ * For `legacy` form it is the project root — the lowest common ancestor of the
+ * drafts' index folders. That degrades in one case: a project whose only
+ * remaining draft is the Supplementary has its root *inside* `supplementary/`,
+ * and writing a Main Manuscript there would nest it wrongly. When the root has
+ * no `metadata.json` but its parent does, step up one level. Only one level:
+ * walking up without a bound would escape toward the vault root.
+ */
+function anchorFolderFor(drafts, form, hasMetadata) {
+    if (form === "project") {
+        const indexPath = projectIndexPathOf(drafts);
+        return indexPath ? draftParentFolder(indexPath) : projectRootPath(drafts);
+    }
+    const root = projectRootPath(drafts);
+    if (!hasMetadata(root)) {
+        const parent = draftParentFolder(root);
+        if (parent !== root && hasMetadata(parent))
+            return parent;
+    }
+    return root;
+}
+/**
+ * The parts this project already has.
+ *
+ * Matched on `draftTitle` first — for a project asset that is the asset's
+ * `name`, so one rule covers both forms. A user who renamed a draft would fall
+ * through, so `workflow` and then the part's own paths act as backstops. Any of
+ * the three counts as present: over-reporting a part merely hides it from the
+ * list, while under-reporting would offer to create files that already exist —
+ * and that is caught for real by the conflict check at write time.
+ */
+function presentParts(drafts, pathExists, anchor) {
+    const present = new Set();
+    for (const part of PAPER_PARTS) {
+        const byTitle = drafts.some((d) => d.draftTitle === part.draftTitle);
+        const byWorkflow = drafts.some((d) => d.workflow === part.workflow);
+        const byPath = part.ownedPaths.some((p) => pathExists(joinPath$1(anchor, p)));
+        if (byTitle || byWorkflow || byPath)
+            present.add(part.id);
+    }
+    return present;
+}
+/** Ids already taken in an index, so a new asset never collides. */
+function usedAssetIds(assets) {
+    return new Set(assets.map((a) => assetIdFor(a)));
+}
+/**
+ * An asset id derived from its name, suffixed until unique. Mirrors
+ * `withUniqueIds` in the convert planner, but for appending one at a time.
+ */
+function uniqueAssetId(name, used) {
+    const base = slugifyAssetName(name);
+    if (!used.has(base))
+        return base;
+    for (let n = 2;; n++) {
+        const candidate = `${base}-${n}`;
+        if (!used.has(candidate))
+            return candidate;
+    }
+}
+/** All drafts of every project whose files live under `folder`. */
+function projectsUnderFolder(folder, allDrafts) {
+    const prefix = folder ? `${folder}/` : "";
+    const titles = new Set();
+    for (const draft of allDrafts) {
+        // Must go through draftIndexFolder: an asset's own vaultPath is synthetic
+        // (`<indexPath>::<assetId>`) and would not resolve as a real path.
+        const dir = draftIndexFolder(draft);
+        if (!folder || dir === folder || dir.startsWith(prefix)) {
+            titles.add(draft.title);
+        }
+    }
+    return [...titles].sort();
+}
+/** Work out what can be added to a project, and where it would go. */
+function planAddComponents(drafts, deps) {
+    const form = projectFormOf(drafts);
+    if (form === "mixed" || form === "empty") {
+        return {
+            form,
+            anchor: "",
+            indexPath: null,
+            present: new Set(),
+            addable: [],
+            examples: false,
+        };
+    }
+    const anchor = anchorFolderFor(drafts, form, deps.hasMetadata);
+    const present = presentParts(drafts, deps.pathExists, anchor);
+    return {
+        form,
+        anchor,
+        indexPath: form === "project" ? projectIndexPathOf(drafts) : null,
+        present,
+        addable: PAPER_PARTS.filter((p) => !present.has(p.id)).map((p) => p.id),
+        examples: deps.pathExists(joinPath$1(anchor, EXAMPLE_FIGURE)),
+    };
+}
+/** The example figure's path, whose presence stands for the example bundle. */
+const EXAMPLE_FIGURE = "figs/example_figure.png";
+
+/** Build the plan for a project, wiring the pure planner to the vault. */
+function planFor(app, projectDrafts) {
+    const exists = (path) => app.vault.getAbstractFileByPath(path) !== null;
+    return planAddComponents(projectDrafts, {
+        pathExists: exists,
+        hasMetadata: (folder) => exists(joinPath$1(folder, "metadata.json")),
+    });
+}
+/**
+ * Open the "Add paper components…" flow for a project.
+ *
+ * `folder` scopes the project choice when invoked from a folder's context menu;
+ * without it the pane's current project is used, falling back to a picker.
+ */
+function openAddComponents(plugin, folder) {
+    var _a;
+    return __awaiter(this, void 0, void 0, function* () {
+        const allDrafts = get_store_value(drafts);
+        const allProjects = get_store_value(projects);
+        const titles = folder
+            ? projectsUnderFolder(folder.path, allDrafts)
+            : Object.keys(allProjects);
+        if (titles.length === 0) {
+            new obsidian.Notice(translate("components.noProject"));
+            return;
+        }
+        const open = (title) => {
+            var _a;
+            const projectDrafts = (_a = allProjects[title]) !== null && _a !== void 0 ? _a : [];
+            const plan = planFor(plugin.app, projectDrafts);
+            if (plan.form === "mixed") {
+                new obsidian.Notice(translate("components.mixedForm"), 10000);
+                return;
+            }
+            if (plan.form === "empty") {
+                new obsidian.Notice(translate("components.noProject"));
+                return;
+            }
+            if (plan.addable.length === 0) {
+                new obsidian.Notice(translate("components.allPresent", { title }));
+                return;
+            }
+            new AddComponentsModal(plugin.app, title, plan, (selected) => addComponents(plugin, title, plan, selected)).open();
+        };
+        if (titles.length === 1) {
+            open(titles[0]);
+            return;
+        }
+        // Prefer the pane's selection when the command is run with several candidates.
+        const current = get_store_value(selectedProject);
+        const currentTitle = (_a = current === null || current === void 0 ? void 0 : current[0]) === null || _a === void 0 ? void 0 : _a.title;
+        if (!folder && currentTitle && titles.includes(currentTitle)) {
+            open(currentTitle);
+            return;
+        }
+        const opts = new Map(titles.map((t) => [t, t]));
+        new JumpModal(plugin.app, opts, [
+            { command: "↑↓", purpose: "to navigate" },
+            { command: "↵", purpose: "to choose project" },
+            { command: "esc", purpose: "to dismiss" },
+        ], (title) => open(title)).open();
+    });
+}
+/** Create the selected parts in an existing project. */
+function addComponents(plugin, title, plan, selected) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (selected.length === 0)
+            return;
+        const app = plugin.app;
+        const form = plan.form === "project" ? "project" : "legacy";
+        const acronym = yield acronymOf(app, plan.anchor);
+        const ctx = scaffoldContext({
+            title,
+            acronym,
+            // Only the shared fields are used; the parts are built one by one below.
+            parts: ["main"],
+            examples: plan.examples,
+        });
+        // Cross-part references must see the project as it will be *after* this run.
+        const present = new Set([...plan.present, ...selected]);
+        const partCtx = Object.assign(Object.assign({}, ctx), { present });
+        const files = [];
+        const assets = [];
+        for (const id of selected) {
+            const built = paperPart(id).build(partCtx, form);
+            files.push(...built.files);
+            if (built.asset)
+                assets.push(built.asset);
+        }
+        try {
+            yield writeScaffoldFiles(app, plan.anchor, files);
+            if (form === "project" && plan.indexPath && assets.length > 0) {
+                const indexFile = app.vault.getAbstractFileByPath(plan.indexPath);
+                if (!(indexFile instanceof obsidian.TFile)) {
+                    throw new Error(`Could not locate the project index at ${plan.indexPath}.`);
+                }
+                // Append rather than rebuild: re-serializing the whole array from drafts
+                // would drop any field the Draft model doesn't carry.
+                yield app.fileManager.processFrontMatter(indexFile, (fm) => {
+                    var _a, _b;
+                    const longform = ((_a = fm["longform"]) !== null && _a !== void 0 ? _a : (fm["longform"] = {}));
+                    const existing = (_b = longform["assets"]) !== null && _b !== void 0 ? _b : [];
+                    const used = usedAssetIds(existing);
+                    for (const asset of assets) {
+                        const id = uniqueAssetId(asset.name, used);
+                        used.add(id);
+                        existing.push(Object.assign(Object.assign({}, asset), { id }));
+                    }
+                    longform["assets"] = existing;
+                });
+            }
+            if (form === "legacy") {
+                // Select the first new draft so the pane lands on it. Project form has no
+                // per-part index note to open, so it is left on the current selection.
+                const target = primaryPathFor(selected);
+                if (target) {
+                    selectedDraftVaultPath.set(joinPath$1(plan.anchor, target));
+                }
+            }
+            new obsidian.Notice(translate("components.added", {
+                names: selected.map((id) => paperPart(id).draftTitle).join(", "),
+            }));
+            // Known gap: in project form the compile steps resolve metadata.json from
+            // the index's own folder, so a Supplementary's nearer override is not seen.
+            if (form === "project" && selected.includes("supplementary")) {
+                new obsidian.Notice(translate("components.siProjectFormWarning"), 12000);
+            }
+        }
+        catch (error) {
+            if (error instanceof ScaffoldConflictError) {
+                showErrorModal(app, translate("components.conflictTitle"), `${translate("components.conflictBody")}\n\n${error.conflicts.join("\n")}`);
+                return;
+            }
+            showErrorModal(app, translate("components.failed"), String(error));
+        }
+    });
+}
+/**
+ * The project's acronym, read from its metadata.json so a part added later
+ * matches the one created with the project. Undefined when it can't be read —
+ * `scaffoldContext` then derives one from the title, as it does at creation.
+ */
+function acronymOf(app, anchor) {
+    var _a;
+    return __awaiter(this, void 0, void 0, function* () {
+        const path = joinPath$1(anchor, "metadata.json");
+        const file = app.vault.getAbstractFileByPath(path);
+        if (!(file instanceof obsidian.TFile))
+            return undefined;
+        try {
+            const parsed = JSON.parse(yield app.vault.read(file));
+            const acronym = (_a = parsed === null || parsed === void 0 ? void 0 : parsed._longform) === null || _a === void 0 ? void 0 : _a.acronym;
+            return typeof acronym === "string" && acronym.trim() ? acronym : undefined;
+        }
+        catch (e) {
+            console.warn(`[PaperOut] Could not read the acronym from ${path}:`, e);
+            return undefined;
+        }
+    });
+}
+const addComponentsCommand = (plugin) => ({
+    id: "longform-add-components",
+    name: translate("cmd.addComponents"),
+    checkCallback: (checking) => {
+        if (checking) {
+            return Object.keys(get_store_value(projects)).length > 0;
+        }
+        void openAddComponents(plugin);
     },
 });
 
 const commandBuilders = [
     compileCurrent,
     compileSelection,
+    setupPandocExport,
     focusCurrentDraft,
     previousScene,
     previousSceneAtIndent,
@@ -39853,11 +51090,20 @@ const commandBuilders = [
     insertMultiSceneTemplate,
     insertSingleSceneTemplate,
     startNewSession,
+    markManuscriptSpan,
+    insertManuscriptRef,
+    newPaperProject,
+    convertToProject,
+    openPandocMarket,
+    addComponentsCommand,
 ];
 function addCommands(plugin) {
     commandBuilders.forEach((c) => {
         plugin.addCommand(c(plugin));
     });
+    // One "Run workflow: <name>" command per workflow, kept in sync with the
+    // workflows store. Safe to call here: loadSettings() has already populated it.
+    registerWorkflowCommands(plugin);
 }
 
 // A lot of the word-counting logic is from
@@ -40141,428 +51387,6 @@ function withDeletions(localTotal, sessionTotal, includeDeletions) {
     }
 }
 
-/* src/view/project-lifecycle/new-project-modal/NewProjectModal.svelte generated by Svelte v3.49.0 */
-
-function add_css(target) {
-	append_styles(target, "svelte-1yi9wvd", ".switch-container.svelte-1yi9wvd.svelte-1yi9wvd{display:flex;flex-direction:row;justify-content:center;align-items:center}.switch-container.svelte-1yi9wvd button.svelte-1yi9wvd{margin:0;font-weight:bold}.switch-container.svelte-1yi9wvd button.svelte-1yi9wvd:first-child{border-radius:var(--radius-s) 0 0 var(--radius-s)}.switch-container.svelte-1yi9wvd button.svelte-1yi9wvd:last-child{border-radius:0 var(--radius-s) var(--radius-s) 0}.switch-container.svelte-1yi9wvd button.selected.svelte-1yi9wvd{background-color:var(--interactive-accent);color:var(--text-on-accent)}.switch-container.svelte-1yi9wvd button.svelte-1yi9wvd{box-shadow:var(--input-shadow)}.target-path.svelte-1yi9wvd.svelte-1yi9wvd{color:var(--text-accent)}label.svelte-1yi9wvd.svelte-1yi9wvd{font-weight:bold;color:var(--text-muted);display:block;font-size:var(--font-smallest)}input[type=\"text\"].svelte-1yi9wvd.svelte-1yi9wvd{width:100%;font-size:var(--h2-size);height:var(--size-4-12);padding:var(--size-4-2)}.project-creation-container.svelte-1yi9wvd.svelte-1yi9wvd{display:flex;flex-direction:row;justify-content:end}.project-creation-container.svelte-1yi9wvd button.svelte-1yi9wvd{font-weight:bold;background-color:var(--interactive-accent);color:var(--text-on-accent);margin:0}");
-}
-
-// (55:4) {:else}
-function create_else_block(ctx) {
-	let p;
-
-	return {
-		c() {
-			p = element("p");
-
-			p.innerHTML = `A <i>single-scene project</i> is a single note, perhaps a short story or
-        essay, that includes its own YAML frontmatter which is used by Longform to
-        track your project.`;
-		},
-		m(target, anchor) {
-			insert(target, p, anchor);
-		},
-		d(detaching) {
-			if (detaching) detach(p);
-		}
-	};
-}
-
-// (44:4) {#if type === "scenes"}
-function create_if_block_1(ctx) {
-	let p0;
-	let t3;
-	let p1;
-
-	return {
-		c() {
-			p0 = element("p");
-
-			p0.innerHTML = `A <i>multi-scene project</i> is comprised of many ordered notes, called “scenes,”
-        that you can combine together into your manuscript. It also includes an index
-        file, the YAML frontmatter of which is used by Longform to track your project.`;
-
-			t3 = space();
-			p1 = element("p");
-			p1.textContent = "Because this project type involves multiple notes, Longform will create\n        an enclosing folder for your project and its scenes. You can always\n        rename the folder, the index file, or both.";
-		},
-		m(target, anchor) {
-			insert(target, p0, anchor);
-			insert(target, t3, anchor);
-			insert(target, p1, anchor);
-		},
-		d(detaching) {
-			if (detaching) detach(p0);
-			if (detaching) detach(t3);
-			if (detaching) detach(p1);
-		}
-	};
-}
-
-// (78:4) {#if valid}
-function create_if_block(ctx) {
-	let p;
-	let t0;
-	let b;
-
-	let t1_value = (/*type*/ ctx[0] === "scenes"
-	? "multi-scene"
-	: "single-scene") + "";
-
-	let t1;
-	let t2;
-	let t3;
-	let span;
-	let t4;
-	let t5;
-	let div;
-	let button;
-	let mounted;
-	let dispose;
-
-	return {
-		c() {
-			p = element("p");
-			t0 = text("You are creating a ");
-			b = element("b");
-			t1 = text(t1_value);
-			t2 = text(" project");
-			t3 = text("\n        at\n        ");
-			span = element("span");
-			t4 = text(/*draftPath*/ ctx[3]);
-			t5 = space();
-			div = element("div");
-			button = element("button");
-			button.textContent = "Create";
-			attr(span, "class", "target-path svelte-1yi9wvd");
-			attr(p, "class", "create-project-prompt");
-			attr(button, "type", "button");
-			attr(button, "class", "svelte-1yi9wvd");
-			attr(div, "class", "project-creation-container svelte-1yi9wvd");
-		},
-		m(target, anchor) {
-			insert(target, p, anchor);
-			append(p, t0);
-			append(p, b);
-			append(b, t1);
-			append(b, t2);
-			append(p, t3);
-			append(p, span);
-			append(span, t4);
-			insert(target, t5, anchor);
-			insert(target, div, anchor);
-			append(div, button);
-
-			if (!mounted) {
-				dispose = listen(button, "click", /*onCreateProject*/ ctx[4]);
-				mounted = true;
-			}
-		},
-		p(ctx, dirty) {
-			if (dirty & /*type*/ 1 && t1_value !== (t1_value = (/*type*/ ctx[0] === "scenes"
-			? "multi-scene"
-			: "single-scene") + "")) set_data(t1, t1_value);
-
-			if (dirty & /*draftPath*/ 8) set_data(t4, /*draftPath*/ ctx[3]);
-		},
-		d(detaching) {
-			if (detaching) detach(p);
-			if (detaching) detach(t5);
-			if (detaching) detach(div);
-			mounted = false;
-			dispose();
-		}
-	};
-}
-
-function create_fragment(ctx) {
-	let div4;
-	let div0;
-	let button0;
-	let t1;
-	let button1;
-	let t3;
-	let div1;
-	let t4;
-	let div2;
-	let label;
-	let t6;
-	let input;
-	let t7;
-	let div3;
-	let mounted;
-	let dispose;
-
-	function select_block_type(ctx, dirty) {
-		if (/*type*/ ctx[0] === "scenes") return create_if_block_1;
-		return create_else_block;
-	}
-
-	let current_block_type = select_block_type(ctx);
-	let if_block0 = current_block_type(ctx);
-	let if_block1 = /*valid*/ ctx[2] && create_if_block(ctx);
-
-	return {
-		c() {
-			div4 = element("div");
-			div0 = element("div");
-			button0 = element("button");
-			button0.textContent = "Multi";
-			t1 = space();
-			button1 = element("button");
-			button1.textContent = "Single";
-			t3 = space();
-			div1 = element("div");
-			if_block0.c();
-			t4 = space();
-			div2 = element("div");
-			label = element("label");
-			label.textContent = "Title";
-			t6 = space();
-			input = element("input");
-			t7 = space();
-			div3 = element("div");
-			if (if_block1) if_block1.c();
-			attr(button0, "type", "button");
-			attr(button0, "class", "svelte-1yi9wvd");
-			toggle_class(button0, "selected", /*type*/ ctx[0] === "scenes");
-			attr(button1, "type", "button");
-			attr(button1, "class", "svelte-1yi9wvd");
-			toggle_class(button1, "selected", /*type*/ ctx[0] === "single");
-			attr(div0, "class", "switch-container svelte-1yi9wvd");
-			attr(label, "for", "longform-new-project-title");
-			attr(label, "class", "svelte-1yi9wvd");
-			attr(input, "id", "longform-new-project-title");
-			attr(input, "type", "text");
-			attr(input, "placeholder", "My Project Title");
-			attr(input, "class", "svelte-1yi9wvd");
-		},
-		m(target, anchor) {
-			insert(target, div4, anchor);
-			append(div4, div0);
-			append(div0, button0);
-			append(div0, t1);
-			append(div0, button1);
-			append(div4, t3);
-			append(div4, div1);
-			if_block0.m(div1, null);
-			append(div4, t4);
-			append(div4, div2);
-			append(div2, label);
-			append(div2, t6);
-			append(div2, input);
-			set_input_value(input, /*title*/ ctx[1]);
-			append(div4, t7);
-			append(div4, div3);
-			if (if_block1) if_block1.m(div3, null);
-
-			if (!mounted) {
-				dispose = [
-					listen(button0, "click", /*click_handler*/ ctx[6]),
-					listen(button1, "click", /*click_handler_1*/ ctx[7]),
-					listen(input, "input", /*input_input_handler*/ ctx[8]),
-					listen(input, "keydown", /*keydown_handler*/ ctx[9])
-				];
-
-				mounted = true;
-			}
-		},
-		p(ctx, [dirty]) {
-			if (dirty & /*type*/ 1) {
-				toggle_class(button0, "selected", /*type*/ ctx[0] === "scenes");
-			}
-
-			if (dirty & /*type*/ 1) {
-				toggle_class(button1, "selected", /*type*/ ctx[0] === "single");
-			}
-
-			if (current_block_type !== (current_block_type = select_block_type(ctx))) {
-				if_block0.d(1);
-				if_block0 = current_block_type(ctx);
-
-				if (if_block0) {
-					if_block0.c();
-					if_block0.m(div1, null);
-				}
-			}
-
-			if (dirty & /*title*/ 2 && input.value !== /*title*/ ctx[1]) {
-				set_input_value(input, /*title*/ ctx[1]);
-			}
-
-			if (/*valid*/ ctx[2]) {
-				if (if_block1) {
-					if_block1.p(ctx, dirty);
-				} else {
-					if_block1 = create_if_block(ctx);
-					if_block1.c();
-					if_block1.m(div3, null);
-				}
-			} else if (if_block1) {
-				if_block1.d(1);
-				if_block1 = null;
-			}
-		},
-		i: noop,
-		o: noop,
-		d(detaching) {
-			if (detaching) detach(div4);
-			if_block0.d();
-			if (if_block1) if_block1.d();
-			mounted = false;
-			run_all(dispose);
-		}
-	};
-}
-
-const regex = /[:\\\/]/;
-
-function instance($$self, $$props, $$invalidate) {
-	let { parent } = $$props;
-	let type = "scenes";
-	let title;
-	let valid = false;
-	let draftPath;
-	const createProject = getContext("createProject");
-
-	function onCreateProject() {
-		createProject(type, title, draftPath);
-	}
-
-	const click_handler = () => {
-		$$invalidate(0, type = "scenes");
-	};
-
-	const click_handler_1 = () => {
-		$$invalidate(0, type = "single");
-	};
-
-	function input_input_handler() {
-		title = this.value;
-		$$invalidate(1, title);
-	}
-
-	const keydown_handler = e => {
-		if (e.key === "Enter") {
-			onCreateProject();
-		}
-	};
-
-	$$self.$$set = $$props => {
-		if ('parent' in $$props) $$invalidate(5, parent = $$props.parent);
-	};
-
-	$$self.$$.update = () => {
-		if ($$self.$$.dirty & /*title, valid, type, parent*/ 39) {
-			{
-				$$invalidate(2, valid = title && !regex.test(title));
-
-				if (valid) {
-					if (type === "scenes") {
-						$$invalidate(3, draftPath = obsidian.normalizePath(`${parent.path}/${title}/Index.md`));
-					} else {
-						$$invalidate(3, draftPath = obsidian.normalizePath(`${parent.path}/${title}.md`));
-					}
-				}
-			}
-		}
-	};
-
-	return [
-		type,
-		title,
-		valid,
-		draftPath,
-		onCreateProject,
-		parent,
-		click_handler,
-		click_handler_1,
-		input_input_handler,
-		keydown_handler
-	];
-}
-
-class NewProjectModal extends SvelteComponent {
-	constructor(options) {
-		super();
-		init(this, options, instance, create_fragment, safe_not_equal, { parent: 5 }, add_css);
-	}
-}
-
-class NewProjectModalContainer extends obsidian.Modal {
-    constructor(app, parent) {
-        super(app);
-        this.parent = parent;
-    }
-    onOpen() {
-        const { contentEl } = this;
-        contentEl.createEl("h1", { text: "Create Project" }, (el) => {
-            el.style.margin = "0 0 var(--size-4-4) 0";
-        });
-        const entrypoint = contentEl.createDiv("longform-add-create-project-root");
-        const context = appContext(this);
-        context.set("close", () => this.close());
-        context.set("createProject", (format, title, path) => __awaiter(this, void 0, void 0, function* () {
-            const exists = yield this.app.vault.adapter.exists(path);
-            if (exists) {
-                console.log(`[Longform] Cannot create project at ${path}, already exists.`);
-                return;
-            }
-            const parentPath = path.split("/").slice(0, -1).join("/");
-            if (!(yield this.app.vault.adapter.exists(parentPath))) {
-                yield this.app.vault.createFolder(parentPath);
-            }
-            const newDraft = (() => {
-                if (format === "scenes") {
-                    const multi = {
-                        format: "scenes",
-                        title,
-                        titleInFrontmatter: true,
-                        draftTitle: null,
-                        vaultPath: path,
-                        workflow: null,
-                        sceneFolder: "/",
-                        scenes: [],
-                        ignoredFiles: [],
-                        unknownFiles: [],
-                        sceneTemplate: null,
-                    };
-                    return multi;
-                }
-                else {
-                    const single = {
-                        format: "single",
-                        title,
-                        titleInFrontmatter: true,
-                        draftTitle: null,
-                        vaultPath: path,
-                        workflow: null,
-                    };
-                    return single;
-                }
-            })();
-            yield insertDraftIntoFrontmatter(this.app, path, newDraft);
-            selectedDraftVaultPath.set(path);
-            selectedTab.set(format === "scenes" ? "Scenes" : "Project");
-            if (format === "single") {
-                this.app.workspace.openLinkText(path, "/", false);
-            }
-            this.close();
-        }));
-        new NewProjectModal({
-            target: entrypoint,
-            context,
-            props: {
-                parent: this.parent,
-            },
-        });
-    }
-    onClose() {
-        const { contentEl } = this;
-        contentEl.empty();
-    }
-}
-
 /** Provides API access to useful Longform-specific functions. */
 class LongformAPI {
     /**
@@ -40667,7 +51491,575 @@ class LongformAPI {
     }
 }
 
+/**
+ * VENDORED COPY of PaperBell's public shared contract (`paperbell-shared-config.ts`).
+ *
+ * Source of truth lives in the PaperBell main plugin. This file is intentionally a
+ * zero-dependency copy (no Obsidian/plugin imports) so we can type our IPC surface
+ * without a build/submodule coupling — as the upstream file's own docstring recommends.
+ *
+ * SYNC POLICY: this copy is pinned to `PPB_SCHEMA_VERSION`. When PaperBell bumps its
+ * schema, re-vendor this file and reconcile the compatibility check in `client.ts`.
+ * See MAINTAINING.md → "PaperBell relationship".
+ *
+ * Last synced against PaperBell host build `paperbell` v0.4.4: `schemaVersion` is still 1,
+ * with backward-compatible additions — the `llm-credentials` / `activation` / `download-ticket`
+ * scopes and their `request*` methods, the `paperbell:plugins-changed` event, and the
+ * `providerId` / `providerName` / `hasApiKey` fields on the public LLM config.
+ *
+ * ⚠️ PROPOSAL — NOT YET UPSTREAM: the `projects` scope and everything it drags in
+ * (`PPB_PROJECTS_CHANGED_EVENT`, `PPBProject`, `PPBProjectsQuery`, `PPBProjectsResult`,
+ * `PPBClient.requestProjects` / `onProjectsChange`) are *our* proposal to the host, written
+ * up in docs/PROPOSAL_PROJECTS_SCOPE.md. No shipped host implements them yet, which is why
+ * the client methods are optional and every consumer gates on capability + `typeof` checks
+ * rather than on `PPB_SCHEMA_VERSION` — which stays at 1 until the host really bumps it,
+ * so the "host schema is newer than vendored" warning keeps working.
+ *
+ * ── Original header ──────────────────────────────────────────────────────────
+ * PaperBell 对外共享契约(消费方 / IPC 表面)。
+ * 安全约定:
+ * - `PaperBellSharedConfig` 是主插件内部持有的完整形态(含 `llm.apiKey`)。
+ * - 经 IPC 对外暴露的一律是 `*Public` 变体,永不包含 apiKey / 激活码等密钥。
+ */
+/** 契约版本号,便于未来兼容判断。 */
+const PPB_SCHEMA_VERSION = 1;
+/**
+ * 宿主挂载完成后在 `app.workspace` 上 trigger 的事件名,载荷为 {@link PPBHostApi}。
+ * 子插件与 PaperBell 的加载顺序不确定,推荐握手模式(事件只在宿主加载时触发一次,
+ * 后加载的一方必须先主动探测)。
+ */
+const PPB_READY_EVENT = "paperbell:ready";
+
+/** PaperBell host plugin id (the parent). */
+const HOST_PLUGIN_ID = "paperbell";
+/** Our own id — MUST match manifest.json `id`. Used for registration and settings deep-link. */
+const THIS_PLUGIN_ID = "longform-paperbell";
+const THIS_PLUGIN_NAME = "PaperOut To-Authors";
+/**
+ * Optional bridge to the PaperBell host plugin.
+ *
+ * The plugin works fully standalone; when PaperBell is installed we handshake per its
+ * `PPB*` contract to follow the host's language/account and (later) proxy LLM calls —
+ * so no API key ever lives in this plugin. Everything degrades gracefully when the host
+ * is absent (all methods no-op / return null).
+ *
+ * We deliberately do NOT request the `config`/`account`/`llm-invoke` scopes at startup:
+ * those trigger a host consent prompt, so they are requested lazily on user action
+ * (settings button, AI command). Capabilities come from `getPluginInfo()`, which needs
+ * no consent.
+ */
+class PaperBellClient {
+    constructor(plugin) {
+        this.client = null;
+        this.unsubscribeConfig = null;
+        /** Host-advertised scopes, mirrored into the store for the UI to read. */
+        this.capabilities = [];
+        this.plugin = plugin;
+    }
+    get app() {
+        return this.plugin.app;
+    }
+    /** True once we have registered with the host. */
+    get connected() {
+        return this.client !== null;
+    }
+    /**
+     * Probe for the host now; if it isn't loaded yet, wait (once) for its ready event.
+     * The listener is registered via `plugin.registerEvent`, so it is cleaned up on unload.
+     */
+    init() {
+        const host = this.lookupHost();
+        if (host) {
+            this.onHostReady(host);
+        }
+        // The host fires PPB_READY_EVENT once when it loads; this covers the
+        // host-loads-after-us ordering. Guard against a double connect.
+        this.plugin.registerEvent(this.app.workspace.on(PPB_READY_EVENT, ((api) => {
+            if (!this.client && api) {
+                this.onHostReady(api);
+            }
+        })));
+    }
+    lookupHost() {
+        var _a, _b, _c;
+        const api = (_c = (_b = (_a = this.app.plugins) === null || _a === void 0 ? void 0 : _a.plugins) === null || _b === void 0 ? void 0 : _b[HOST_PLUGIN_ID]) === null || _c === void 0 ? void 0 : _c.api;
+        return api !== null && api !== void 0 ? api : null;
+    }
+    onHostReady(host) {
+        var _a, _b;
+        let handle;
+        try {
+            handle = host.registerPPBplugin({
+                id: THIS_PLUGIN_ID,
+                name: THIS_PLUGIN_NAME,
+                description: "Academic manuscript writing & Pandoc export. Follows PaperBell's language and can use its AI.",
+                icon: "feather",
+                onOpen: () => this.openOwnSettings(),
+            });
+        }
+        catch (e) {
+            console.error("[PaperOut] Failed to register with PaperBell host:", e);
+            return;
+        }
+        this.client = handle;
+        // plugin-info is consent-free; use it to gate features (e.g. llm-invoke).
+        let capabilities = DISCONNECTED.capabilities;
+        try {
+            capabilities = (_b = (_a = host.getPluginInfo()) === null || _a === void 0 ? void 0 : _a.capabilities) !== null && _b !== void 0 ? _b : [];
+        }
+        catch (e) {
+            console.warn("[PaperOut] Could not read PaperBell plugin info:", e);
+        }
+        this.capabilities = capabilities;
+        paperbell.set({ connected: true, config: null, capabilities });
+        console.log("[PaperOut] Connected to PaperBell host.");
+        // Keep the public config fresh when the host pushes changes. Subscribing does
+        // not prompt for consent (it's a plain workspace event under the hood).
+        this.unsubscribeConfig = handle.onConfigChange((config) => {
+            this.checkSchema(config);
+            paperbell.update((s) => (Object.assign(Object.assign({}, s), { config })));
+        });
+    }
+    /**
+     * Request the host's public shared config (scope: `config`). First call prompts the
+     * user for consent. Returns null if denied or the host is absent. Updates the store.
+     */
+    fetchSharedConfig() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this.client)
+                return null;
+            const config = yield this.client.requestSharedConfig();
+            if (config) {
+                this.checkSchema(config);
+                paperbell.update((s) => (Object.assign(Object.assign({}, s), { config })));
+            }
+            return config;
+        });
+    }
+    /** Request the host's account info (scope: `account`). First call prompts for consent. */
+    fetchAccountInfo() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return this.client ? this.client.requestAccountInfo() : null;
+        });
+    }
+    /**
+     * Ask the host to run one non-streaming completion with its AI config (scope:
+     * `llm-invoke`). The key never leaves the host. Returns:
+     * - `null` — host absent or the user denied the scope;
+     * - `{ ok: false, error }` — host unconfigured / upstream failed;
+     * - `{ ok: true, text, model }` — success.
+     */
+    requestCompletion(params) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return this.client ? this.client.requestCompletion(params) : null;
+        });
+    }
+    /**
+     * Request the host's full LLM credentials — **including the API key** (scope:
+     * `llm-credentials`). First call prompts for consent. Prefer `requestCompletion`
+     * (which keeps the key inside the host); use this only when a feature must talk to
+     * the provider directly. Never persist or log the returned key.
+     */
+    requestLLMCredentials() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return this.client ? this.client.requestLLMCredentials() : null;
+        });
+    }
+    /** Request the host's activation/license status (scope: `activation`). First call prompts for consent. */
+    requestActivationInfo() {
+        return __awaiter(this, void 0, void 0, function* () {
+            return this.client ? this.client.requestActivationInfo() : null;
+        });
+    }
+    /**
+     * Ask the host for a protected download ticket (scope: `download-ticket`). First call
+     * prompts for consent; the host requires an active license and may throw if it isn't.
+     * Returns null when the host is absent or the scope is denied.
+     */
+    requestProtectedDownloadTicket(params) {
+        return __awaiter(this, void 0, void 0, function* () {
+            return this.client
+                ? this.client.requestProtectedDownloadTicket(params)
+                : null;
+        });
+    }
+    /**
+     * The host's project-list method, or null when it cannot serve one.
+     *
+     * Both halves matter: `capabilities` comes from `getPluginInfo()` and says what the
+     * host *advertises* (and therefore what it will prompt for consent on), while the
+     * `typeof` check is what stops us calling a method an older host's handle simply
+     * does not have. Neither alone is trustworthy.
+     */
+    get projectsRequester() {
+        if (!this.client)
+            return null;
+        if (!this.capabilities.includes("projects"))
+            return null;
+        const request = this.client.requestProjects;
+        return typeof request === "function" ? request.bind(this.client) : null;
+    }
+    /**
+     * Request the host's project list (scope: `projects`). First call prompts for consent.
+     *
+     * Returns `null` for every "no list available" case — host absent, host too old to
+     * implement it, consent denied, host-side error, or a thrown exception. Callers are
+     * meant to treat them identically and fall back to manual entry, so a missing project
+     * list can never block creating a paper.
+     */
+    fetchProjects(query) {
+        var _a, _b;
+        return __awaiter(this, void 0, void 0, function* () {
+            const requestProjects = this.projectsRequester;
+            if (!requestProjects)
+                return null;
+            try {
+                const result = yield requestProjects(query);
+                if (!result)
+                    return null; // consent denied
+                if (!result.ok) {
+                    console.warn("[PaperOut] PaperBell could not list projects:", (_a = result.error) !== null && _a !== void 0 ? _a : "(no error given)");
+                    return null;
+                }
+                return (_b = result.projects) !== null && _b !== void 0 ? _b : [];
+            }
+            catch (e) {
+                // The host is a plugin we do not control; a throw here must not reach the modal.
+                console.warn("[PaperOut] Error requesting PaperBell projects:", e);
+                return null;
+            }
+        });
+    }
+    /** Tear down: unsubscribe, unregister from the host, reset the store. */
+    destroy() {
+        if (this.unsubscribeConfig) {
+            this.unsubscribeConfig();
+            this.unsubscribeConfig = null;
+        }
+        if (this.client) {
+            try {
+                this.client.unregister();
+            }
+            catch (e) {
+                console.warn("[PaperOut] Error unregistering from PaperBell host:", e);
+            }
+            this.client = null;
+        }
+        this.capabilities = [];
+        paperbell.set(Object.assign({}, DISCONNECTED));
+    }
+    checkSchema(config) {
+        if (config.schemaVersion > PPB_SCHEMA_VERSION) {
+            console.warn(`[PaperOut] PaperBell shared-config schemaVersion ${config.schemaVersion} is newer ` +
+                `than the vendored contract (${PPB_SCHEMA_VERSION}). Consider re-vendoring ` +
+                `src/paperbell/shared-config.ts (see MAINTAINING.md).`);
+        }
+    }
+    openOwnSettings() {
+        const setting = this.app.setting;
+        if (setting) {
+            setting.open();
+            setting.openTabById(THIS_PLUGIN_ID);
+        }
+    }
+}
+
+/** Best-effort read of Obsidian's own UI language (falls back to English). */
+function obsidianLocale() {
+    try {
+        const lang = (window.localStorage.getItem("language") || "en").toLowerCase();
+        return lang.startsWith("zh") ? "zh" : "en";
+    }
+    catch (_a) {
+        return "en";
+    }
+}
+/**
+ * Resolve the effective locale from three inputs, in priority order:
+ *   1. an explicit user preference ("en" / "zh") always wins;
+ *   2. otherwise ("auto") follow the connected PaperBell host's language;
+ *   3. otherwise fall back to Obsidian's UI language.
+ */
+function resolveLocale(preference, hostLanguage) {
+    if (preference === "en" || preference === "zh")
+        return preference;
+    return hostLanguage !== null && hostLanguage !== void 0 ? hostLanguage : obsidianLocale();
+}
+/**
+ * Keep the active `locale` in sync with the plugin's language preference and the
+ * PaperBell host's language. Returns an unsubscriber; call it on plugin unload.
+ */
+function startLocaleSync() {
+    const effective = derived([pluginSettings, paperbell], ([$settings, $paperbell]) => {
+        var _a, _b;
+        const preference = (_a = $settings === null || $settings === void 0 ? void 0 : $settings.language) !== null && _a !== void 0 ? _a : "auto";
+        const hostLanguage = $paperbell.connected
+            ? (_b = $paperbell.config) === null || _b === void 0 ? void 0 : _b.language
+            : undefined;
+        return resolveLocale(preference, hostLanguage);
+    });
+    return effective.subscribe((loc) => locale.set(loc));
+}
+
+/**
+ * Locate and read the `metadata.json` that backs the Longform project owning
+ * `sourcePath`, mirroring how the compile steps resolve project resources: from
+ * the draft's own folder up to the project root (lowest common ancestor of the
+ * project's drafts), checking each level's `source/` subfolder too.
+ *
+ * Returns `null` when the note is not part of any Longform draft or no metadata
+ * file exists — so live rendering only ever touches project notes.
+ */
+function resolveProjectMetadataFile(app, sourcePath) {
+    var _a;
+    return __awaiter(this, void 0, void 0, function* () {
+        const allDrafts = get_store_value(drafts);
+        const draft = draftForPath(sourcePath, allDrafts);
+        if (!draft)
+            return null;
+        const projectDrafts = (_a = get_store_value(projects)[draft.title]) !== null && _a !== void 0 ? _a : [draft];
+        const root = projectRootPath(projectDrafts);
+        // Start the nearest-wins walk from the draft's own folder. For a project
+        // asset (all assets share one index at the project root) start instead from
+        // its scene folder, so a nearer `metadata.json` (e.g. supplementary/) still
+        // wins. Legacy drafts keep their own index folder — unchanged behavior.
+        const startDir = draft.format === "scenes" && draft.indexPath
+            ? sceneFolderPath(draft, app.vault)
+            : draftIndexFolder(draft);
+        const candidatePaths = projectResourceCandidatePaths(startDir, root, "metadata.json");
+        let file = null;
+        for (const path of candidatePaths) {
+            const f = app.vault.getAbstractFileByPath(path);
+            if (f instanceof obsidian.TFile) {
+                file = f;
+                break;
+            }
+        }
+        if (!file)
+            return null;
+        let data = null;
+        try {
+            data = JSON.parse(yield app.vault.cachedRead(file));
+        }
+        catch (_b) {
+            data = null;
+        }
+        return { file, data };
+    });
+}
+
+/**
+ * Coerce a text input into the scalar we store in metadata.json: `true`/`false`
+ * become booleans, clean numeric strings become numbers, everything else stays a
+ * string (so "2.2.0" or "Paper 1" are preserved verbatim).
+ */
+function coerceScalar(raw) {
+    const t = raw.trim();
+    if (t === "true")
+        return true;
+    if (t === "false")
+        return false;
+    if (t !== "" && /^-?\d+(\.\d+)?$/.test(t))
+        return Number(t);
+    return raw;
+}
+/**
+ * Lightweight editor for a single `{{Variable}}`: edits one field of the
+ * project's metadata.json in place. Created/overwrites simple object-key paths;
+ * defers array/complex paths to the full "Edit metadata…" modal.
+ */
+class VariableEditModal extends obsidian.Modal {
+    constructor(app, opts) {
+        super(app);
+        this.opts = opts;
+        this.value = opts.currentValue;
+    }
+    onOpen() {
+        const { contentEl, titleEl } = this;
+        titleEl.setText(`Edit variable: ${this.opts.varPath}`);
+        contentEl.empty();
+        const setting = new obsidian.Setting(contentEl)
+            .setName("Value")
+            .addText((text) => {
+            text.setValue(this.value).onChange((v) => (this.value = v));
+            text.inputEl.addEventListener("keydown", (evt) => {
+                if (evt.key === "Enter") {
+                    evt.preventDefault();
+                    void this.save();
+                }
+            });
+            // Focus and select for quick replacement.
+            window.setTimeout(() => {
+                text.inputEl.focus();
+                text.inputEl.select();
+            }, 0);
+        });
+        setting.descEl.setText(`Saved to ${this.opts.metadataFilePath}. Booleans and numbers are stored as-is; everything else as text.`);
+        new obsidian.Setting(contentEl)
+            .addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()))
+            .addButton((b) => b
+            .setButtonText("Save")
+            .setCta()
+            .onClick(() => void this.save()));
+    }
+    save() {
+        return __awaiter(this, void 0, void 0, function* () {
+            const file = this.app.vault.getAbstractFileByPath(this.opts.metadataFilePath);
+            if (!(file instanceof obsidian.TFile)) {
+                new obsidian.Notice("Could not find the project's metadata.json.");
+                return;
+            }
+            let data;
+            try {
+                data = JSON.parse(yield this.app.vault.read(file));
+            }
+            catch (e) {
+                new obsidian.Notice(`metadata.json is not valid JSON: ${e.message}`);
+                return;
+            }
+            if (typeof data !== "object" || data === null || Array.isArray(data)) {
+                new obsidian.Notice("metadata.json must be a JSON object.");
+                return;
+            }
+            const coerced = coerceScalar(this.value);
+            if (!setByPath(data, this.opts.varPath, coerced)) {
+                new obsidian.Notice(`Can't set "${this.opts.varPath}" here — edit it from “Edit metadata…”.`);
+                return;
+            }
+            try {
+                yield this.app.vault.modify(file, JSON.stringify(data, null, 2) + "\n");
+            }
+            catch (e) {
+                new obsidian.Notice(`Failed to save: ${e.message}`);
+                return;
+            }
+            this.opts.onSaved(formatPlaceholderValue(coerced));
+            this.close();
+        });
+    }
+    onClose() {
+        this.contentEl.empty();
+    }
+}
+
+/** True when a text node is nested inside inline code or a code block. */
+function isInCodeOrPre(node) {
+    let el = node.parentElement;
+    while (el) {
+        const tag = el.tagName;
+        if (tag === "CODE" || tag === "PRE")
+            return true;
+        el = el.parentElement;
+    }
+    return false;
+}
+function makeVariableSpan(app, metadataFilePath, path, value) {
+    const span = document.createElement("span");
+    span.className = "longform-variable";
+    const defined = value !== undefined;
+    const display = defined ? formatPlaceholderValue(value) : `{{${path}}}`;
+    span.dataset.longformVarPath = path;
+    span.dataset.longformVarDefined = String(defined);
+    span.textContent = display;
+    span.setAttribute("aria-label", `Longform variable: ${path} — double-click to edit`);
+    span.addEventListener("dblclick", (evt) => {
+        evt.preventDefault();
+        evt.stopPropagation();
+        try {
+            new VariableEditModal(app, {
+                metadataFilePath,
+                varPath: path,
+                currentValue: defined ? formatPlaceholderValue(value) : "",
+                onSaved: (newDisplay) => {
+                    const nowDefined = newDisplay !== "";
+                    span.textContent = nowDefined ? newDisplay : `{{${path}}}`;
+                    span.dataset.longformVarDefined = String(nowDefined);
+                },
+            }).open();
+        }
+        catch (e) {
+            console.error("longform: failed to open the variable editor", e);
+            new obsidian.Notice("Couldn't open the variable editor.");
+        }
+    });
+    return span;
+}
+/** Replace every `{{path}}` in a text node with a rendered variable span. */
+function renderTextNode(textNode, regex, data, metadataFilePath, app) {
+    var _a;
+    const text = (_a = textNode.nodeValue) !== null && _a !== void 0 ? _a : "";
+    regex.lastIndex = 0;
+    let match;
+    let lastIndex = 0;
+    let matched = false;
+    const frag = document.createDocumentFragment();
+    while ((match = regex.exec(text)) !== null) {
+        matched = true;
+        const start = match.index;
+        if (start > lastIndex) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex, start)));
+        }
+        const path = match[1].trim();
+        const value = getByPath(data, path);
+        frag.appendChild(makeVariableSpan(app, metadataFilePath, path, value));
+        lastIndex = start + match[0].length;
+    }
+    if (!matched)
+        return;
+    if (lastIndex < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+    }
+    // The node may have been detached since we collected it; only replace when
+    // it is still attached, otherwise replaceWith throws.
+    if (textNode.parentNode) {
+        textNode.replaceWith(frag);
+    }
+}
+/**
+ * Register a reading-mode post-processor that renders `{{Variable}}`
+ * placeholders in Longform project notes as their resolved value from the
+ * project's metadata.json, and lets the author double-click a value to edit it.
+ */
+function registerVariablePostProcessor(plugin) {
+    plugin.registerMarkdownPostProcessor((el, ctx) => __awaiter(this, void 0, void 0, function* () {
+        // Never let a rendering hiccup break Obsidian's reading view: any failure
+        // here just leaves the raw `{{...}}` text untouched.
+        try {
+            // Quick bail before any async work if there's nothing to render.
+            if (!el.textContent || !el.textContent.includes("{{"))
+                return;
+            const resolved = yield resolveProjectMetadataFile(plugin.app, ctx.sourcePath);
+            if (!resolved || !resolved.data)
+                return;
+            const { file, data } = resolved;
+            const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+            const textNodes = [];
+            let node;
+            while ((node = walker.nextNode())) {
+                const t = node;
+                if (!t.nodeValue || !t.nodeValue.includes("{{"))
+                    continue;
+                if (isInCodeOrPre(t))
+                    continue;
+                textNodes.push(t);
+            }
+            const regex = buildPlaceholderRegex("{{", "}}");
+            for (const textNode of textNodes) {
+                renderTextNode(textNode, regex, data, file.path, plugin.app);
+            }
+        }
+        catch (e) {
+            console.error("longform: failed to render {{Variable}} placeholders", e);
+        }
+    }));
+}
+
 const LONGFORM_LEAF_CLASS = "longform-leaf";
+// The explorer's view type before it was made unique to this fork (so it could
+// coexist with the original `longform` plugin). A workspace saved by an older
+// build still references this string; Obsidian renders such a leaf as an orphaned
+// "plugin no longer active" tab. We detach any of them once on load.
+const LEGACY_VIEW_TYPE_LONGFORM_EXPLORER = "VIEW_TYPE_LONGFORM_EXPLORER";
 // TODO: Try and abstract away more logic from actual plugin hooks here
 class LongformPlugin extends obsidian.Plugin {
     constructor() {
@@ -40679,7 +52071,7 @@ class LongformPlugin extends obsidian.Plugin {
     }
     onload() {
         return __awaiter(this, void 0, void 0, function* () {
-            console.log(`[Longform] Starting Longform ${this.manifest.version}…`);
+            console.log(`[PaperOut] Starting PaperOut To-Authors ${this.manifest.version}…`);
             obsidian.addIcon(ICON_NAME, ICON_SVG);
             this.registerView(VIEW_TYPE_LONGFORM_EXPLORER, (leaf) => new ExplorerPane(leaf));
             this.registerEvent(this.app.workspace.on("file-menu", (menu, file) => {
@@ -40688,12 +52080,24 @@ class LongformPlugin extends obsidian.Plugin {
                 }
                 menu.addItem((item) => {
                     item
-                        .setTitle("Create Longform Project")
+                        .setTitle(translate("menu.newPaperProject"))
                         .setIcon(ICON_NAME)
                         .onClick(() => {
-                        new NewProjectModalContainer(this.app, file).open();
+                        new NewPaperModal(this, file).open();
                     });
                 });
+                // Only offered where there is something to add to, so this doesn't
+                // appear on every folder in the vault.
+                if (projectsUnderFolder(file.path, get_store_value(drafts)).length > 0) {
+                    menu.addItem((item) => {
+                        item
+                            .setTitle(translate("menu.addComponents"))
+                            .setIcon(ICON_NAME)
+                            .onClick(() => {
+                            void openAddComponents(this, file);
+                        });
+                    });
+                }
             }));
             // Settings
             this.unsubscribeSettings = pluginSettings.subscribe((value) => __awaiter(this, void 0, void 0, function* () {
@@ -40711,6 +52115,9 @@ class LongformPlugin extends obsidian.Plugin {
                 }
             }));
             yield this.loadSettings();
+            // Resolve UI language from the saved preference (+ PaperBell/Obsidian) before
+            // commands and notices are created, so their labels use the right language.
+            this.unsubscribeLocale = startLocaleSync();
             this.addSettingTab(new LongformSettingsTab(this.app, this));
             this.storeVaultSync = new StoreVaultSync(this.app);
             this.app.workspace.onLayoutReady(this.postLayoutInit.bind(this));
@@ -40728,6 +52135,16 @@ class LongformPlugin extends obsidian.Plugin {
                 }
             }));
             addCommands(this);
+            // Render {{Variable}} placeholders in reading mode from the project's
+            // metadata.json, with double-click-to-edit.
+            registerVariablePostProcessor(this);
+            // One-time hint that PDF export exists and how to set it up.
+            this.app.workspace.onLayoutReady(() => {
+                if (!get_store_value(pluginSettings).pandocSetupDismissed) {
+                    new obsidian.Notice(translate("notice.pdfExport"), 12000);
+                    pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocSetupDismissed: true })));
+                }
+            });
             // Dynamically style longform scenes
             this.registerEvent(this.app.workspace.on("layout-change", () => {
                 this.styleLongformLeaves();
@@ -40739,6 +52156,9 @@ class LongformPlugin extends obsidian.Plugin {
         });
     }
     onunload() {
+        var _a, _b;
+        (_a = this.unsubscribeLocale) === null || _a === void 0 ? void 0 : _a.call(this);
+        (_b = this.paperBell) === null || _b === void 0 ? void 0 : _b.destroy();
         this.userScriptObserver.destroy();
         this.storeVaultSync.destroy();
         this.unsubscribeSettings();
@@ -40767,8 +52187,18 @@ class LongformPlugin extends obsidian.Plugin {
             yield this.userScriptObserver.loadUserSteps();
             let _workflows = settings["workflows"];
             if (!_workflows) {
-                console.log("[Longform] No workflows found; adding default workflow.");
-                _workflows = DEFAULT_WORKFLOWS;
+                console.log("[PaperOut] No workflows found; adding default workflows.");
+                _workflows = Object.assign({}, DEFAULT_WORKFLOWS);
+            }
+            else {
+                // Back-fill built-in workflows added in newer versions (e.g. PaperBell
+                // Cover Letter) into an existing vault, without touching the user's own or
+                // customized workflows. Idempotent, so it also self-heals on every load.
+                const { workflows: merged, added } = mergeMissingWorkflows(_workflows, DEFAULT_WORKFLOWS);
+                if (added.length > 0) {
+                    console.log(`[PaperOut] Adding missing built-in workflows: ${added.join(", ")}.`);
+                    _workflows = merged;
+                }
             }
             const deserializedWorkflows = {};
             Object.entries(_workflows).forEach(([key, value]) => {
@@ -40856,7 +52286,7 @@ class LongformPlugin extends obsidian.Plugin {
                     let file = null;
                     if (this.cachedSettings.sessionStorage === "plugin-folder") {
                         if (!this.manifest.dir) {
-                            console.error(`[Longform] No manifest.dir for saving sessions.`);
+                            console.error(`[PaperOut] No manifest.dir for saving sessions.`);
                             return;
                         }
                         file = obsidian.normalizePath(`${this.manifest.dir}/sessions.json`);
@@ -40909,12 +52339,32 @@ class LongformPlugin extends obsidian.Plugin {
                     if (target &&
                         !this.writingSessionTracker.goalsNotifiedFor.has(target)) {
                         this.writingSessionTracker.goalsNotifiedFor.add(target);
-                        new obsidian.Notice("Writing goal met!");
+                        new obsidian.Notice(translate("notice.goalMet"));
                     }
                 }
             });
+            this.detachLegacyExplorerLeaves();
             this.initLeaf();
+            refreshPandocTemplates(this.app);
+            // Optional PaperBell host integration. Standalone-safe: this no-ops if the
+            // PaperBell plugin isn't installed, and connects (now or on its ready event)
+            // if it is. See src/paperbell/.
+            this.paperBell = new PaperBellClient(this);
+            this.paperBell.init();
             initialized.set(true);
+        });
+    }
+    /**
+     * Detach any explorer leaves left over from a build that used the old shared
+     * view type, so users don't see an orphaned "plugin no longer active" tab after
+     * updating. One-time cleanup; harmless once no such leaves remain.
+     */
+    detachLegacyExplorerLeaves() {
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            var _a;
+            if (((_a = leaf.getViewState()) === null || _a === void 0 ? void 0 : _a.type) === LEGACY_VIEW_TYPE_LONGFORM_EXPLORER) {
+                leaf.detach();
+            }
         });
     }
     initLeaf() {

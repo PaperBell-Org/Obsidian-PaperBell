@@ -1,0 +1,33 @@
+## response-letter.yaml —— 审稿人意见与回复信（XeLaTeX → PDF）
+## 作者用 Obsidian callout 写审稿意见与回复，responseletter.lua 转成 LaTeX，
+## 经 responseletter.template.tex + responseletter.sty 渲染出彩色卡片/徽章/草稿-终稿版。
+##
+## 变量约定：${.} = 本 defaults 目录；${USERDATA} = data-dir = pandoc 目录。
+## responseletter.sty 由插件 env 的 TEXINPUTS 指向 templates/ 目录被 XeLaTeX 找到（零安装）。
+
+standalone: true
+from: markdown
+pdf-engine: xelatex
+data-dir: ${.}/..
+
+## 模板：注入 papertitle/authors/journal/doi/type/draft 等（取自笔记 frontmatter）
+template: ${USERDATA}/templates/responseletter.template.tex
+
+## 引文库（与其它 PaperBell preset 一致，供回复信里的 [@cite] 使用）
+# bibliography: ${USERDATA}/../../mybib.bib  # (commented by sync: plugin injects --bibliography)
+
+filters:
+  - ${USERDATA}/filters/manuscript_include.lua #! ```manuscript 里写 @id → 从手稿 scene 的 <!--ms:id-->…<!--/ms:id--> 拉取当前原文（单一真相源、自动同步）。必须最先跑
+  - ${USERDATA}/filters/xlsx_table.lua        #! ```xlsx-table 块 → booktabs 三线表（与正文/补充材料同一表格源，编号手动写在题注里）
+  - ${USERDATA}/filters/manuscript_cite.lua   #! 把残留的手贴 ```manuscript 引文块在 citeproc 之前展开成 Div（引文打开），让块内 [@key] 也进同一份参考文献
+  - citeproc                                   #! 必须在 responseletter.lua 之前：否则 [@key] 会被 \AR/\RC/\manuscript 提前转成裸文本，citeproc 就看不到引文、也不会生成参考文献
+  - ${USERDATA}/filters/responseletter.lua   #! Obsidian callout → \RC / \AR / \manuscript / \zh
+
+metadata:
+  ## 文稿类型：author-response（默认，含 AR 图例）或 reviewer-comments（可在笔记 frontmatter 覆盖）
+  type: author-response
+  link-citations: false
+
+## draft 不在此设置：由两条导出 preset 分别用 --metadata=draft:true/false 传入
+##   草稿(draft=true)  显示难度/状态徽章、\zh 中文对照、\note 批注，供自己核对
+##   终稿(draft=false) 全部隐藏，仅留 RC/AR 正文，供投稿

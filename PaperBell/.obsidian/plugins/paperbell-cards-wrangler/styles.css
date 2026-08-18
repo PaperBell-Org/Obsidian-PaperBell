@@ -1,0 +1,94 @@
+/* PaperBell Cards Wrangler — Cards panel */
+
+.pbcw-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin-bottom: 10px;
+}
+
+.pbcw-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
+}
+
+.pbcw-count {
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+	margin-bottom: 8px;
+}
+
+.pbcw-list {
+	display: flex;
+	flex-direction: column;
+	gap: 2px;
+}
+
+.pbcw-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 2px 0;
+}
+
+.pbcw-star {
+	cursor: pointer;
+	color: var(--text-accent);
+	width: 1em;
+	flex: 0 0 auto;
+}
+
+.pbcw-name {
+	cursor: pointer;
+}
+
+/* Settings — collapsible sections (LLM provider, developer) */
+.pbcw-section {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 0 10px;
+	margin: 10px 0;
+}
+
+.pbcw-section-summary {
+	cursor: pointer;
+	padding: 10px 0;
+	font-weight: var(--font-semibold);
+	color: var(--text-normal);
+}
+
+.pbcw-section-body {
+	padding-bottom: 6px;
+}
+
+.pbcw-source-note {
+	color: var(--text-warning);
+	margin: 6px 0;
+}
+
+/* Settings — domain guidance */
+.pbcw-guidance-input {
+	width: 100%;
+	font-family: var(--font-monospace);
+}
+
+/* Query modal */
+.pbcw-query-input {
+	width: 100%;
+}
+
+.pbcw-query-output {
+	margin: 8px 0;
+	max-height: 50vh;
+	overflow-y: auto;
+	padding: 8px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+}
+
+.pbcw-query-output:empty {
+	display: none;
+}

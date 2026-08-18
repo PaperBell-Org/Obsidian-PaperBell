@@ -1,0 +1,35 @@
+formulas:
+  金额: if(amount, amount + " " + currency, "")
+  倒计时: if(end, (date(end) - today()).days, "")
+  打开: link(file.path, "↗")
+properties:
+  note.name:
+    displayName: 资助
+  note.agency:
+    displayName: 机构
+  note.status:
+    displayName: 状态
+  formula.金额:
+    displayName: 金额
+  formula.倒计时:
+    displayName: 距截止(天)
+  formula.打开:
+    displayName: 打开
+views:
+  - type: table
+    name: 资助
+    filters:
+      and:
+        - file.hasTag("grant")
+        - file.hasLink(this.file)
+    order:
+      - name
+      - agency
+      - status
+      - formula.金额
+      - end
+      - formula.倒计时
+      - formula.打开
+    sort:
+      - property: status
+        direction: ASC

@@ -1,8 +1,9 @@
 {
   "version": 3,
+  "language": "auto",
   "projects": {},
-  "selectedDraftVaultPath": "Outputs/paper-demo/Manuscript/Index.md",
-  "userScriptFolder": "40 - Obsidian/脚本/longform",
+  "selectedDraftVaultPath": "50 - Outputs/Longform/paper-demo/supplementary/Supplementary (Index).md",
+  "userScriptFolder": "",
   "sessionStorage": "file",
   "sessions": [],
   "showWordCountInStatusBar": true,
@@ -14,109 +15,50 @@
   "keepSessionCount": 30,
   "sessionFile": "longform-sessions.json",
   "numberScenes": true,
-  "sceneTemplate": "40 - Obsidian/模板/学术长文本模板 Longform academic template.md",
+  "sceneTemplate": "00 - Obsidian/模板/学术长文本模板 Longform academic template.md",
   "waitForSync": false,
   "fallbackWaitEnabled": true,
   "fallbackWaitTime": 5,
   "writeProperty": false,
+  "pandocAssetsUrl": "",
+  "pandocAssetsFolder": "00 - Obsidian/pandoc",
+  "pandocOutputFolder": "",
+  "pandocBinary": "pandoc",
+  "pandocExtraBinFolders": "",
+  "pandocBibliography": "",
+  "pandocGlobalBibliography": "",
+  "pandocSetupDismissed": true,
+  "pandocMarketIndexUrl": "",
   "workflows": {
-    "CompileWithTitledFormatters": {
-      "name": "CompileWithTitledFormatters",
-      "description": "",
+    "PaperBell Manuscript": {
+      "name": "PaperBell Manuscript",
+      "description": "Compile the main manuscript to PDF, then harvest line/figure numbers so a response letter can cite it.",
       "steps": [
         {
           "id": "strip-frontmatter",
           "optionValues": {}
         },
         {
-          "id": "remove-links",
-          "optionValues": {
-            "remove-wikilinks": true,
-            "remove-external-links": true
-          }
-        },
-        {
-          "id": "40 - Obsidian/脚本/longform/使用title属性作为章节名.js",
-          "optionValues": {
-            "property_name": "scene_alias"
-          }
-        },
-        {
-          "id": "prepend-title",
-          "optionValues": {
-            "format": "$3{#} $1",
-            "separator": ""
-          }
-        },
-        {
           "id": "concatenate-text",
           "optionValues": {
-            "separator": "\\n\\n-----\\n\\n"
+            "separator": "\\n\\n"
           }
         },
         {
-          "id": "40 - Obsidian/脚本/longform/编译后增加头文件.js",
+          "id": "remove-comments",
           "optionValues": {
-            "note-name": "Index",
-            "author-name": "用户作者",
-            "lineno": false,
-            "csl-style": "",
-            "target-journal": "",
-            "acronym": "",
-            "figures-at-end": false,
-            "template": ""
+            "remove-markdown-comments": true,
+            "remove-html-comments": false
           }
         },
         {
-          "id": "write-to-note",
+          "id": "replace-json-placeholders",
           "optionValues": {
-            "target": "一篇论文",
-            "open-after": true
+            "json-file": "metadata.json, results.json",
+            "start-delim": "{{",
+            "end-delim": "}}",
+            "error-on-missing": false
           }
-        }
-      ]
-    },
-    "PaperBell-Standard": {
-      "name": "PaperBell-Standard",
-      "description": "Research, to be connected.",
-      "steps": [
-        {
-          "id": "strip-frontmatter",
-          "optionValues": {}
-        },
-        {
-          "id": "remove-links",
-          "optionValues": {
-            "remove-wikilinks": true,
-            "remove-external-links": true
-          }
-        },
-        {
-          "id": "40 - Obsidian/脚本/longform/使用title属性作为章节名.js",
-          "optionValues": {
-            "property_name": ""
-          }
-        },
-        {
-          "id": "prepend-title",
-          "optionValues": {
-            "format": "$3{##} $1",
-            "separator": "\\n"
-          }
-        },
-        {
-          "id": "concatenate-text",
-          "optionValues": {
-            "separator": "\\n"
-          }
-        },
-        {
-          "id": "40 - Obsidian/脚本/longform/去除手稿多余空行并强制标题前空行.js",
-          "optionValues": {}
-        },
-        {
-          "id": "40 - Obsidian/脚本/longform/去除手稿注释.js",
-          "optionValues": {}
         },
         {
           "id": "add-zenodo-frontmatter",
@@ -130,6 +72,195 @@
           "optionValues": {
             "target": "$1_$2.md",
             "open-after": true
+          }
+        },
+        {
+          "id": "run-pandoc-export",
+          "optionValues": {
+            "template": "",
+            "dry-run": false,
+            "open-after": true,
+            "filename": "{acronym}_{date}"
+          }
+        },
+        {
+          "id": "harvest-manuscript-lines",
+          "optionValues": {
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "PaperBell Supplementary": {
+      "name": "PaperBell Supplementary",
+      "description": "Compile the Supplementary Information (S-numbered figures/tables) to PDF and harvest its line/figure numbers.",
+      "steps": [
+        {
+          "id": "strip-frontmatter",
+          "optionValues": {}
+        },
+        {
+          "id": "concatenate-text",
+          "optionValues": {
+            "separator": "\\n\\n"
+          }
+        },
+        {
+          "id": "remove-comments",
+          "optionValues": {
+            "remove-markdown-comments": true,
+            "remove-html-comments": false
+          }
+        },
+        {
+          "id": "replace-json-placeholders",
+          "optionValues": {
+            "json-file": "metadata.json, results.json",
+            "start-delim": "{{",
+            "end-delim": "}}",
+            "error-on-missing": false
+          }
+        },
+        {
+          "id": "add-zenodo-frontmatter",
+          "optionValues": {
+            "metadata-file": "metadata.json",
+            "error-on-missing-file": true
+          }
+        },
+        {
+          "id": "supplementary-info",
+          "optionValues": {
+            "abstract": true,
+            "summarize-sections": true
+          }
+        },
+        {
+          "id": "write-to-note",
+          "optionValues": {
+            "target": "$1_$2.md",
+            "open-after": true
+          }
+        },
+        {
+          "id": "run-pandoc-export",
+          "optionValues": {
+            "template": "",
+            "dry-run": false,
+            "open-after": true,
+            "filename": "{acronym}_SI_{date}"
+          }
+        },
+        {
+          "id": "harvest-manuscript-lines",
+          "optionValues": {
+            "enabled": true
+          }
+        }
+      ]
+    },
+    "PaperBell Response Letter": {
+      "name": "PaperBell Response Letter",
+      "description": "Compile a response letter that cites the manuscript/SI (```manuscript / @id) with synced text, line numbers, and figure numbers from the latest Manuscript/SI compile.",
+      "steps": [
+        {
+          "id": "strip-frontmatter",
+          "optionValues": {}
+        },
+        {
+          "id": "concatenate-text",
+          "optionValues": {
+            "separator": "\\n\\n"
+          }
+        },
+        {
+          "id": "add-zenodo-frontmatter",
+          "optionValues": {
+            "metadata-file": "metadata.json",
+            "error-on-missing-file": false
+          }
+        },
+        {
+          "id": "write-to-note",
+          "optionValues": {
+            "target": "$1_Response.md",
+            "open-after": true
+          }
+        },
+        {
+          "id": "run-pandoc-export",
+          "optionValues": {
+            "template": "response-letter",
+            "dry-run": false,
+            "open-after": true,
+            "filename": "{acronym}_Response_{date}"
+          }
+        }
+      ]
+    },
+    "PaperBell Cover Letter": {
+      "name": "PaperBell Cover Letter",
+      "description": "Export a single-file cover letter to PDF via the cover_letter preset (moderncv letterhead). Keeps the note's own to/date/manuscript/enclosure frontmatter; journal/title/corresponding author come from metadata.json via cover_letter.lua.",
+      "steps": [
+        {
+          "id": "run-pandoc-export",
+          "optionValues": {
+            "template": "cover_letter",
+            "dry-run": false,
+            "open-after": true,
+            "filename": "{acronym}_Cover_{date}"
+          }
+        }
+      ]
+    },
+    "Default Workflow": {
+      "name": "Default Workflow",
+      "description": "A starter workflow. Feel free to edit, rename, or delete it and create your own.",
+      "steps": [
+        {
+          "id": "strip-frontmatter",
+          "optionValues": {}
+        },
+        {
+          "id": "remove-links",
+          "optionValues": {
+            "remove-wikilinks": true,
+            "remove-external-links": true
+          }
+        },
+        {
+          "id": "prepend-title",
+          "optionValues": {
+            "format": "$3{#} $1",
+            "separator": "\n\n"
+          }
+        },
+        {
+          "id": "concatenate-text",
+          "optionValues": {
+            "separator": "\\n\\n---\\n\\n"
+          }
+        },
+        {
+          "id": "write-to-note",
+          "optionValues": {
+            "target": "manuscript.md",
+            "open-after": true
+          }
+        }
+      ]
+    },
+    "Quick Export": {
+      "name": "Quick Export",
+      "description": "Export the note you have open — any markdown file, no project needed — via Pandoc. The preset decides the format: by default a general-purpose PDF, or set `template: <preset>` in the note's frontmatter to pick another (a `to: docx` preset gives you Word); `csl:` there picks the citation style. The file lands next to the note, named after it, and re-exporting overwrites it.",
+      "steps": [
+        {
+          "id": "run-pandoc-export",
+          "optionValues": {
+            "template": "",
+            "dry-run": false,
+            "open-after": true,
+            "filename": ""
           }
         }
       ]

@@ -1,0 +1,36 @@
+{
+  "title": "PaperBell：基于 Obsidian 的学术写作管理系统 — 补充材料",
+  "publication_date": "2026-06-06",
+  "upload_type": "publication",
+  "publication_type": "article",
+  "description": "主手稿的补充材料。共享主手稿的元信息，但通过 supplementary: true 让图表编号加上 S 前缀。",
+  "creators": [
+    {
+      "name": "Chen, Yan",
+      "affiliation": "Qiming Institute, China",
+      "orcid": "0000-0000-0000-0000",
+      "email": "yan.chen@example.edu"
+    },
+    {
+      "name": "Fang, Yu",
+      "affiliation": "Wenlan University, China",
+      "email": "yu.fang@wenlan.edu"
+    }
+  ],
+  "keywords": [
+    "academic writing",
+    "Obsidian",
+    "Longform",
+    "Pandoc",
+    "knowledge management"
+  ],
+  "journal_title": "PaperBell Documentation",
+  "version": "v1.0",
+  "_longform": {
+    "acronym": "DEMO",
+    "csl": "nature",
+    "template": "paperbell",
+    "corresponding": ["Chen, Yan"],
+    "extra_yaml": "supplementary: true\nnumbersections: true\n"
+  }
+}

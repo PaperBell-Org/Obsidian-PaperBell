@@ -1,0 +1,88 @@
+formulas:
+  金额: if(amount, amount + " " + currency, "")
+  倒计时: if(end, (date(end) - today()).days, "")
+  打开: link(file.path, "↗")
+properties:
+  note.agency:
+    displayName: 机构
+  note.status:
+    displayName: 状态
+  formula.金额:
+    displayName: 金额
+  formula.倒计时:
+    displayName: 距截止(天)
+  note.apply_date:
+    displayName: 申请日
+  note.result_date:
+    displayName: 结果日
+  formula.打开:
+    displayName: 打开
+views:
+  - type: table
+    name: 按状态
+    filters:
+      and:
+        - file.hasTag("grant")
+    groupBy:
+      property: status
+      direction: ASC
+    order:
+      - file.name
+      - agency
+      - formula.金额
+      - apply_date
+      - result_date
+      - start
+      - end
+      - formula.倒计时
+      - project
+      - formula.打开
+  - type: table
+    name: 全部
+    filters:
+      and:
+        - file.hasTag("grant")
+    order:
+      - file.name
+      - agency
+      - status
+      - formula.金额
+      - grant_no
+      - start
+      - end
+      - project
+      - formula.打开
+  - type: table
+    name: 在研经费
+    filters:
+      and:
+        - file.hasTag("grant")
+        - status == "已获批"
+    groupBy:
+      property: currency
+      direction: ASC
+    order:
+      - file.name
+      - agency
+      - amount
+      - currency
+      - end
+      - formula.倒计时
+      - project
+  - type: cards
+    name: Pipeline
+    filters:
+      and:
+        - file.hasTag("grant")
+        - or:
+            - status == "撰写中"
+            - status == "申请中"
+    order:
+      - file.name
+      - agency
+      - status
+      - formula.金额
+      - apply_date
+    sort:
+      - property: apply_date
+        direction: ASC

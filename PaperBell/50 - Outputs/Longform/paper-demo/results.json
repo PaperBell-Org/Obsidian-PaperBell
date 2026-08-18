@@ -1,0 +1,12 @@
+{
+  "summary": {
+    "n_plugins": 8,
+    "n_workflows": 4,
+    "unit": "个"
+  },
+  "export": {
+    "median_seconds": 12,
+    "formats": "PDF / Word"
+  },
+  "computed_date": "2026-06-06"
+}

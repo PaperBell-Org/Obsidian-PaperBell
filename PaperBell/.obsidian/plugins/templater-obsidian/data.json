@@ -1,55 +1,41 @@
 {
+  "data_version": 2,
   "command_timeout": 5,
-  "templates_folder": "40 - Obsidian/模板",
-  "templates_pairs": [
-    [
-      "",
-      ""
-    ]
-  ],
-  "trigger_on_file_creation": true,
+  "templates_folder": "00 - Obsidian/模板",
+  "templates_pairs": [],
+  "trigger_on_file_creation_mode": "folder",
   "auto_jump_to_cursor": false,
-  "enable_system_commands": false,
+  "jump_to_cursor_after_file_name": false,
   "shell_path": "",
-  "user_scripts_folder": "40 - Obsidian/脚本/templator",
-  "enable_folder_templates": true,
+  "user_scripts_folder": "",
   "folder_templates": [
     {
-      "folder": "Cards",
-      "template": "40 - Obsidian/模板/术语模板-手动.md"
+      "folder": "10 - Cards",
+      "template": "00 - Obsidian/模板/术语模板-手动.md"
     },
     {
-      "folder": "00 - 每日日记/DailyNote",
-      "template": "40 - Obsidian/模板/每日日记模板.md"
+      "folder": "30 - Metadata/DailyNote",
+      "template": "00 - Obsidian/模板/每日日记模板.md"
     },
     {
-      "folder": "Projects",
-      "template": "40 - Obsidian/模板/项目模板.md"
+      "folder": "40 - Projects",
+      "template": "00 - Obsidian/模板/项目模板.md"
     },
     {
-      "folder": "Persons",
-      "template": "40 - Obsidian/模板/学者模板.md"
+      "folder": "30 - Metadata/Scholars",
+      "template": "00 - Obsidian/模板/学者模板.md"
     },
     {
-      "folder": "Drafts",
-      "template": "40 - Obsidian/模板/输出笔记模板.md"
+      "folder": "50 - Outputs/Drafts",
+      "template": "00 - Obsidian/模板/输出笔记模板.md"
     }
   ],
-  "enable_file_templates": false,
-  "file_templates": [
-    {
-      "regex": ".*",
-      "template": ""
-    }
-  ],
+  "file_templates": [],
   "syntax_highlighting": true,
   "syntax_highlighting_mobile": false,
-  "enabled_templates_hotkeys": [
-    ""
-  ],
-  "startup_templates": [
-    ""
-  ],
-  "intellisense_render": 1,
+  "enabled_templates_hotkeys": [],
+  "startup_templates": [],
+  "intellisense_render": "1",
+  "ignore_folders_on_creation": [],
   "enable_ribbon_icon": true
 }

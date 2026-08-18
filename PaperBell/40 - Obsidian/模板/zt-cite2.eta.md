@@ -1,1 +1,0 @@
-<%= it.map(lit => `@${lit.citekey}`).join("; ") %>

@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "profile": {
+    "name": "用户",
+    "title": "研究者",
+    "email": "user@example.com",
+    "institution": "研究机构",
+    "avatar": ""
+  },
+  "folders": {
+    "papers": "20 - Inputs/Zotero",
+    "literature": "20 - Inputs/Zotero",
+    "books": "20 - Inputs/Books"
+  },
+  "basePaths": {
+    "papers": null,
+    "experiments": null,
+    "tasks": null,
+    "resources": null,
+    "books": null
+  },
+  "components": {
+    "academicOverview": {
+      "title": "学术概览",
+      "description": "展示学术研究的整体概况和统计信息"
+    },
+    "todayFocus": {
+      "title": "今日聚焦",
+      "description": "显示今天的写作、阅读和专注数据"
+    },
+    "recentLiterature": {
+      "title": "最近文献",
+      "description": "展示最近阅读和收集的学术文献"
+    },
+    "researchFocusMap": {
+      "title": "研究焦点地图",
+      "description": "可视化展示研究领域和关注重点"
+    },
+    "papersManager": {
+      "title": "研究论文",
+      "description": "论文写作、审核状态和发表进度管理"
+    },
+    "experimentsManager": {
+      "title": "实验数据",
+      "description": "实验设计、数据收集和结果分析"
+    },
+    "tasksManager": {
+      "title": "科研课题",
+      "description": "课题管理、任务分解和进度跟踪"
+    },
+    "resourcesManager": {
+      "title": "学术资源",
+      "description": "文献、工具、数据集和参考资料"
+    },
+    "bookShelf": {
+      "title": "书架",
+      "description": "展示个人图书收藏和阅读进度"
+    }
+  },
+  "researchFocus": {
+    "trackingTags": [
+      "research",
+      "study",
+      "paper",
+      "note",
+      "想法",
+      "project"
+    ],
+    "gridSize": 50,
+    "borderRadius": 4
+  },
+  "pomodoro": {
+    "workDuration": 25,
+    "shortBreakDuration": 5,
+    "longBreakDuration": 15,
+    "longBreakInterval": 4,
+    "enableNotifications": true,
+    "enableStatusBar": true,
+    "autoStartBreaks": false,
+    "autoStartWork": false
+  }
+}

@@ -1,10 +1,17 @@
 {
   "registrationId": "",
-  "noteLocation": "Locations/Institutes",
-  "institutionNoteTemplate": "40 - Obsidian/模板/机构模板pro",
+  "llm": {
+    "providerId": "openai",
+    "api": "openai",
+    "baseUrl": "",
+    "model": "",
+    "providers": []
+  },
+  "noteLocation": "30 - Metadata/Institutes",
+  "institutionNoteTemplate": "00 - Obsidian/模板/机构模板pro",
   "autoGenerateInstitutionNotes": true,
   "openInstitutionAfterCreation": true,
-  "listenToFileCreatedInPath": "Persons/Scholars",
+  "listenToFileCreatedInPath": "30 - Metadata/Scholars",
   "enableUpdater": false,
   "landing": {
     "firstLoad": false,
@@ -19,6 +26,94 @@
       },
       "customizeTheme": false
     }
+  },
+  "updater": {
+    "repository": "PaperBell-Org/longform-maintaining",
+    "targetPluginId": "longform-paperbell",
+    "excludePatterns": [],
+    "autoUpdate": false,
+    "minAppVersion": "4.0.2",
+    "customReplacements": {},
+    "updateScope": {
+      "regularFiles": true,
+      "obsidianCore": true,
+      "plugins": true,
+      "themes": true,
+      "snippets": true,
+      "pluginData": false
+    },
+    "obsidianConflictHandling": {
+      "settings": "prompt",
+      "themes": "prompt",
+      "snippets": "prompt",
+      "plugins": "prompt"
+    }
+  },
+  "userProfile": {
+    "name": "PaperBell",
+    "title": "Scholar",
+    "email": "user@example.com",
+    "institution": "PaperBell Pro",
+    "avatar": ""
+  },
+  "themeColors": {
+    "light": {
+      "primary": "#648EC0",
+      "secondary": "#B0D2EC",
+      "muted": "#B5ACA3",
+      "muted-foreground": "#849DBB",
+      "foreground": "#533A33",
+      "background": "#ffffff",
+      "ticket-bg-start": "#FFF4E6",
+      "ticket-bg-end": "#FFE7CC",
+      "ticket-border": "#fed7aa",
+      "ticket-accent": "#FFB86A",
+      "ticket-text": "#92400e",
+      "ticket-text-muted": "#9ca3af"
+    },
+    "dark": {
+      "primary": "#8b5cf6",
+      "secondary": "#3730a3",
+      "muted": "#262640",
+      "muted-foreground": "#94a3b8",
+      "foreground": "#e2e8f0",
+      "background": "#0f0f23",
+      "ticket-bg-start": "#262640",
+      "ticket-bg-end": "#1a1a35",
+      "ticket-border": "#374151",
+      "ticket-accent": "#8b5cf6",
+      "ticket-text": "#e2e8f0",
+      "ticket-text-muted": "#94a3b8"
+    }
+  },
+  "themeModePreference": "system",
+  "darkMode": false,
+  "aiSkills": {
+    "agentType": "claude-code",
+    "skillsDirectory": ".claude/skills",
+    "builtinSkillStates": {},
+    "marketplaceSkills": []
+  },
+  "agentAutoExec": {
+    "enabled": false,
+    "rules": [],
+    "binaryPaths": {},
+    "globalMaxConcurrent": 2,
+    "showNoticeOnTrigger": true,
+    "maxOutputLinesPerRun": 5000,
+    "maxHistoryRuns": 50
+  },
+  "cimpoFolders": {
+    "concepts": "10 - Cards",
+    "inputs": "20 - Inputs",
+    "metadata": "30 - Metadata",
+    "projects": "40 - Projects",
+    "outputs": "50 - Outputs"
+  },
+  "aiQuota": {
+    "day": "",
+    "used": 0,
+    "noticedDay": ""
   },
   "componentDataSources": {
     "academicOverview": {
@@ -38,10 +133,10 @@
         "draftsFrontmatter": "published: false",
         "publishedFrontmatter": "published: true",
         "progressSource": "folder",
-        "progressFolderPath": "Outputs"
+        "progressFolderPath": "50 - Outputs"
       },
       "recursive": true,
-      "folderPath": "Inputs/Zotero"
+      "folderPath": "20 - Inputs/Zotero"
     },
     "todayFocus": {
       "type": "folder",
@@ -71,14 +166,14 @@
       "maxAge": 30,
       "refreshInterval": 300000,
       "cacheTimeout": 60000,
-      "literatureFolderPath": "Inputs/Zotero",
+      "literatureFolderPath": "20 - Inputs/Zotero",
       "literatureDisplaySettings": {
         "titleWrap": true,
         "authorWrap": true,
         "keywordsWrap": true,
         "tagsWrap": true
       },
-      "folderPath": "Inputs/Zotero"
+      "folderPath": "20 - Inputs/Zotero"
     },
     "researchFocusMap": {
       "type": "folder",
@@ -94,7 +189,7 @@
       ],
       "gridSize": 50,
       "borderRadius": 4,
-      "folderPath": "Cards/Concepts",
+      "folderPath": "10 - Cards/Concepts",
       "recursive": true
     },
     "projectBaseManager": {
@@ -134,7 +229,7 @@
         "👀浏览",
         "🤔精读"
       ],
-      "folderPath": "Inputs/Zotero",
+      "folderPath": "20 - Inputs/Zotero",
       "tagIdentifier": "read"
     },
     "experimentsManager": {
@@ -178,7 +273,7 @@
         "task",
         "research-task"
       ],
-      "folderPath": "Projects"
+      "folderPath": "40 - Projects"
     },
     "resourcesManager": {
       "type": "folder",
@@ -197,8 +292,8 @@
       "identifyMode": "folder",
       "frontmatterKey": "source",
       "typeValues": [],
-      "filePath": "Inputs/scholar_links.md",
-      "folderPath": "Inputs/Links",
+      "filePath": "",
+      "folderPath": "",
       "tagIdentifier": "source"
     },
     "bookShelf": {
@@ -217,7 +312,7 @@
       },
       "refreshInterval": 0,
       "cacheTimeout": 30000,
-      "folderPath": "Inputs/Books"
+      "folderPath": "20 - Inputs/Books"
     },
     "todoManager": {
       "type": "folder",
@@ -268,46 +363,17 @@
       "avatar": ""
     },
     "dataSources": {
-      "booksFolder": "Books",
-      "projectsFolder": "Projects",
-      "papersFolder": "Papers",
-      "notesFolder": "Notes",
-      "literatureFolder": "Inputs/Zotero",
-      "experimentsFolder": "Drafts",
-      "resourcesFolder": "Inputs",
+      "booksFolder": "20 - Inputs/Books",
+      "projectsFolder": "40 - Projects",
+      "papersFolder": "20 - Inputs/Zotero",
+      "notesFolder": "10 - Cards/Concepts",
+      "literatureFolder": "20 - Inputs/Zotero",
+      "experimentsFolder": "50 - Outputs/Drafts",
+      "resourcesFolder": "20 - Inputs",
       "todosSource": "dataview",
-      "todosFolder": "Tasks"
+      "todosFolder": "40 - Projects"
     },
     "componentSettings": {}
-  },
-  "updater": {
-    "repository": "PaperBell-Org/longform-maintaining",
-    "targetPluginId": "longform",
-    "excludePatterns": [],
-    "autoUpdate": false,
-    "minAppVersion": "4.0.2",
-    "customReplacements": {},
-    "updateScope": {
-      "regularFiles": true,
-      "obsidianCore": true,
-      "plugins": true,
-      "themes": true,
-      "snippets": true,
-      "pluginData": false
-    },
-    "obsidianConflictHandling": {
-      "settings": "prompt",
-      "themes": "prompt",
-      "snippets": "prompt",
-      "plugins": "prompt"
-    }
-  },
-  "userProfile": {
-    "name": "PaperBell",
-    "title": "Scholar",
-    "email": "user@example.com",
-    "institution": "PaperBell Pro",
-    "avatar": "https://avatars.githubusercontent.com/u/196615410?s=400&u=7f34975ce8ebc7e3247d85ab1a0c560012ec4892&v=4"
   },
   "componentSettings": {
     "academicOverview": {
@@ -352,38 +418,6 @@
       "showGoals": true
     }
   },
-  "themeColors": {
-    "light": {
-      "primary": "#648EC0",
-      "secondary": "#B0D2EC",
-      "muted": "#B5ACA3",
-      "muted-foreground": "#849DBB",
-      "foreground": "#533A33",
-      "background": "#ffffff",
-      "ticket-bg-start": "#FFF4E6",
-      "ticket-bg-end": "#FFE7CC",
-      "ticket-border": "#fed7aa",
-      "ticket-accent": "#FFB86A",
-      "ticket-text": "#92400e",
-      "ticket-text-muted": "#9ca3af"
-    },
-    "dark": {
-      "primary": "#8b5cf6",
-      "secondary": "#3730a3",
-      "muted": "#262640",
-      "muted-foreground": "#94a3b8",
-      "foreground": "#e2e8f0",
-      "background": "#0f0f23",
-      "ticket-bg-start": "#262640",
-      "ticket-bg-end": "#1a1a35",
-      "ticket-border": "#374151",
-      "ticket-accent": "#8b5cf6",
-      "ticket-text": "#e2e8f0",
-      "ticket-text-muted": "#94a3b8"
-    }
-  },
-  "themeModePreference": "system",
-  "darkMode": false,
   "pomodoroSettings": {
     "workDuration": 25,
     "shortBreakDuration": 5,
@@ -402,21 +436,6 @@
     "resources": null,
     "books": null,
     "literature": null
-  },
-  "aiSkills": {
-    "agentType": "claude-code",
-    "skillsDirectory": ".claude/skills",
-    "builtinSkillStates": {},
-    "marketplaceSkills": []
-  },
-  "agentAutoExec": {
-    "enabled": false,
-    "rules": [],
-    "binaryPaths": {},
-    "globalMaxConcurrent": 2,
-    "showNoticeOnTrigger": true,
-    "maxOutputLinesPerRun": 5000,
-    "maxHistoryRuns": 50
   },
   "ZotLitColors": {
     "enabled": true,
@@ -452,5 +471,42 @@
         "callout": "Question"
       }
     }
-  }
+  },
+  "pluginGrants": [
+    {
+      "sourceId": "paper-in-bell",
+      "sourceName": "Inputs Bell",
+      "scopes": [
+        "config"
+      ],
+      "grantedAt": 1783780630961
+    },
+    {
+      "sourceId": "paperbell-project-manager",
+      "sourceName": "PaperBell Project Manager",
+      "scopes": [
+        "config"
+      ],
+      "grantedAt": 1783780631682
+    },
+    {
+      "sourceId": "paperbell-cards-wrangler",
+      "sourceName": "PaperBell Cards Wrangler",
+      "scopes": [
+        "config",
+        "llm-invoke"
+      ],
+      "grantedAt": 1783780632211
+    },
+    {
+      "sourceId": "papersearch",
+      "sourceName": "PaperSearch",
+      "scopes": [
+        "activation",
+        "download-ticket",
+        "llm-credentials"
+      ],
+      "grantedAt": 1784229150000
+    }
+  ]
 }

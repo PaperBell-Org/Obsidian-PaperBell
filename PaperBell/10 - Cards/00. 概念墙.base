@@ -1,0 +1,48 @@
+filters:
+  and:
+    - file.inFolder("10 - Cards/Concepts")
+    - '!file.name.startsWith("00.")'
+formulas:
+  挂靠数: if(keywords, keywords.length, 0)
+properties:
+  note.featured:
+    displayName: 精选
+  note.category:
+    displayName: 分类
+views:
+  - type: cards
+    name: 概念墙
+    order:
+      - file.name
+      - file.tags
+      - file.ctime
+    cardSize: 270
+  - type: table
+    name: 精选概念
+    filters:
+      and:
+        - featured == true
+    order:
+      - file.name
+      - ch
+      - category
+      - formula.挂靠数
+    sort:
+      - property: formula.挂靠数
+        direction: DESC
+    columnSize:
+      file.name: 140
+  - type: table
+    name: 概念挂靠词
+    order:
+      - file.name
+      - ch
+      - featured
+      - formula.挂靠数
+      - keywords
+      - aliases
+    sort:
+      - property: formula.挂靠数
+        direction: DESC
+    columnSize:
+      file.name: 140

@@ -35,10 +35,10 @@
     },
     "translation": {
       "type": "translation",
-      "color": "97, 204, 191",
+      "color": "rgb(97, 204, 191)",
       "icon": {
         "name": "language",
-        "type": "font-awesome"
+        "type": "fas"
       },
       "command": false,
       "title": "翻译",
@@ -58,10 +58,10 @@
     },
     "bot": {
       "type": "bot",
-      "color": "181, 69, 69",
+      "color": "rgb(181, 69, 69)",
       "icon": {
         "name": "robot",
-        "type": "font-awesome"
+        "type": "fas"
       },
       "command": false,
       "title": "Bot",
@@ -72,19 +72,20 @@
   },
   "syntaxHighlight": false,
   "copyButton": false,
-  "version": "11.0.3",
+  "version": "12.0.5",
   "autoCollapse": false,
   "defaultCollapseType": "open",
   "injectColor": true,
   "parseTitles": true,
   "dropShadow": true,
   "hideEmpty": false,
-  "icons": [],
-  "useFontAwesome": true,
+  "icons": [
+    "fas"
+  ],
   "rpgDownloadedOnce": false,
-  "msDocConverted": false,
   "useSnippet": false,
   "snippetPath": "custom-admonitions.c21169",
+  "useFontAwesome": false,
   "open": {
     "admonitions": true,
     "icons": true,

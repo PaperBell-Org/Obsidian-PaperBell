@@ -1,0 +1,24 @@
+filters:
+  and:
+    - file.path.startsWith("20 - Inputs/Movies")
+views:
+  - type: cards
+    name: 电影墙
+    sort:
+      - property: file.ctime
+        direction: DESC
+    cardSize: 150
+    image: note.cover
+    imageAspectRatio: 1.1
+  - type: cards
+    name: 高分电影
+    filters:
+      and:
+        - star == 5
+        - rating >= 8.5
+    sort:
+      - property: file.ctime
+        direction: DESC
+    cardSize: 150
+    image: note.cover
+    imageAspectRatio: 1.1

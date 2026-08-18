@@ -1,0 +1,36 @@
+formulas:
+  稿件: if(note.longform.draftTitle, note.longform.draftTitle, "主稿")
+  打开: link(file.path, "↗")
+properties:
+  formula.稿件:
+    displayName: 稿件
+  formula.打开:
+    displayName: 打开
+  note.title:
+    displayName: 标题
+  note.target:
+    displayName: 目标期刊
+  note.status:
+    displayName: 状态
+views:
+  - type: table
+    name: 交付物
+    filters:
+      and:
+        - file.path.startsWith("50 - Outputs")
+        - file.hasProperty("longform")
+        - note.longform != true
+        - note.longform != false
+        - note.archived != true
+        - project == this.acronym
+    order:
+      - title
+      - formula.稿件
+      - status
+      - target
+      - formula.打开
+    sort:
+      - property: file.name
+        direction: ASC
+    columnSize:
+      note.title: 360

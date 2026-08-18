@@ -1,0 +1,536 @@
+/*
+ * PaperBell Project Manager — project cards for Bases.
+ *
+ * Every colour resolves from an Obsidian theme variable, so the view follows the user's
+ * theme in both light and dark. No web fonts are loaded: the plugin must work offline and
+ * inherit the vault's typography. The card's one "display voice" is the acronym, set in the
+ * theme's monospace face with wide tracking — an archive label rather than a headline.
+ */
+
+.pbpm-root {
+	container-type: inline-size;
+	padding: var(--size-4-3);
+}
+
+.pbpm-empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	padding: var(--size-4-6) var(--size-4-3);
+	text-align: center;
+}
+
+/* ── toolbar ─────────────────────────────────────────────────────────────── */
+
+.pbpm-toolbar {
+	display: flex;
+	justify-content: flex-end;
+	margin-bottom: var(--size-4-2);
+}
+
+.pbpm-new-project {
+	align-items: center;
+	cursor: pointer;
+	display: flex;
+	font-size: var(--font-ui-smaller);
+	gap: var(--size-2-1);
+}
+
+.pbpm-group {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: var(--font-semibold);
+	letter-spacing: 0.08em;
+	margin: var(--size-4-4) 0 var(--size-4-2);
+	text-transform: uppercase;
+}
+
+.pbpm-grid {
+	display: grid;
+	gap: var(--size-4-3);
+	grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+/* Bases views also live in the narrow right sidebar; size to the container, not the viewport. */
+@container (max-width: 420px) {
+	.pbpm-grid {
+		grid-template-columns: 1fr;
+	}
+}
+
+/* ── card ────────────────────────────────────────────────────────────────── */
+
+.pbpm-card {
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	cursor: pointer;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+
+	animation: pbpm-enter 260ms ease both;
+	animation-delay: var(--pbpm-stagger, 0ms);
+}
+
+.pbpm-card:hover {
+	border-color: var(--background-modifier-border-hover);
+	box-shadow: var(--shadow-s);
+	transform: translateY(-1px);
+}
+
+.pbpm-card:focus-visible {
+	box-shadow: 0 0 0 2px var(--color-accent);
+	outline: none;
+}
+
+@keyframes pbpm-enter {
+	from {
+		opacity: 0;
+		transform: translateY(6px);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
+
+/* ── cover band ──────────────────────────────────────────────────────────── */
+
+/*
+ * A 21:9 band, not a full-bleed hero: the cover is an accent, and the body keeps the space.
+ *
+ * The scrim must be *theme-independent* dark. An earlier version faded to
+ * `--background-primary`, which is white in the light theme — putting white text on a white
+ * scrim. The acronym is likewise a literal #fff rather than `--text-on-accent`, which is dark
+ * whenever the user's accent colour is light.
+ */
+.pbpm-cover {
+	aspect-ratio: 21 / 9;
+	background: var(--background-secondary);
+	display: flex;
+	overflow: hidden;
+	position: relative;
+}
+
+.pbpm-cover-img {
+	height: 100%;
+	object-fit: cover;
+	width: 100%;
+}
+
+.pbpm-cover-scrim {
+	background: linear-gradient(
+		to top,
+		rgba(0, 0, 0, 0.75) 0%,
+		rgba(0, 0, 0, 0.45) 40%,
+		rgba(0, 0, 0, 0.05) 100%
+	);
+	inset: 0;
+	position: absolute;
+}
+
+/* #fff on the 0.75-black scrim floor is ~15:1 even over a white photo. */
+.pbpm-acronym {
+	bottom: var(--size-4-2);
+	color: #fff;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-bold);
+	left: var(--size-4-3);
+	letter-spacing: 0.14em;
+	position: absolute;
+	text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+	text-transform: uppercase;
+}
+
+/* Revealed on hover/focus so the card stays calm at rest, but never keyboard-inaccessible. */
+.pbpm-edit {
+	align-items: center;
+	background: var(--background-primary);
+	border-radius: var(--radius-s);
+	cursor: pointer;
+	display: flex;
+	height: 26px;
+	justify-content: center;
+	opacity: 0;
+	padding: 0;
+	position: absolute;
+	right: var(--size-2-2);
+	top: var(--size-2-2);
+	transition: opacity 120ms ease;
+	width: 26px;
+}
+
+.pbpm-card:hover .pbpm-edit,
+.pbpm-card:focus-within .pbpm-edit,
+.pbpm-edit:focus-visible {
+	opacity: 1;
+}
+
+.pbpm-edit:focus-visible {
+	box-shadow: 0 0 0 2px var(--color-accent);
+	outline: none;
+}
+
+/* ── body ────────────────────────────────────────────────────────────────── */
+
+.pbpm-body {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-2);
+	padding: var(--size-4-3);
+}
+
+.pbpm-pills {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-2-1);
+}
+
+/* Colour is decoration: each pill always carries its label, so it reads without colour. */
+.pbpm-pill {
+	background: var(--background-modifier-hover);
+	border-radius: var(--radius-s);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.6;
+	padding: 0 var(--size-2-2);
+	white-space: nowrap;
+}
+
+.pbpm-pill[data-tone='green'] {
+	background: rgba(var(--color-green-rgb), 0.14);
+	color: var(--color-green);
+}
+.pbpm-pill[data-tone='blue'] {
+	background: rgba(var(--color-blue-rgb), 0.14);
+	color: var(--color-blue);
+}
+.pbpm-pill[data-tone='orange'] {
+	background: rgba(var(--color-orange-rgb), 0.14);
+	color: var(--color-orange);
+}
+.pbpm-pill[data-tone='purple'] {
+	background: rgba(var(--color-purple-rgb), 0.14);
+	color: var(--color-purple);
+}
+
+.pbpm-title {
+	color: var(--text-normal);
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
+	line-height: 1.3;
+}
+
+.pbpm-subtitle {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-style: italic;
+	line-height: 1.4;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pbpm-meta {
+	color: var(--text-faint);
+	display: flex;
+	flex-wrap: wrap;
+	font-size: var(--font-ui-smaller);
+	gap: var(--size-2-1);
+}
+
+.pbpm-meta-sep {
+	opacity: 0.5;
+}
+
+/* ── milestone rail ──────────────────────────────────────────────────────── */
+
+/*
+ * One cell per milestone rather than a single filled bar: the reader sees completion *and*
+ * how many milestones exist. Cancelled cells are drawn but dimmed, mirroring the progress
+ * rule that drops them from the denominator.
+ */
+.pbpm-rail-section {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	margin-top: var(--size-2-1);
+}
+
+.pbpm-rail-head {
+	align-items: baseline;
+	cursor: pointer;
+	display: flex;
+	justify-content: space-between;
+	list-style: none;
+}
+
+/* Suppress the native disclosure triangle in both engines. */
+.pbpm-rail-head::-webkit-details-marker {
+	display: none;
+}
+
+.pbpm-rail-head:focus-visible {
+	box-shadow: 0 0 0 2px var(--color-accent);
+	border-radius: var(--radius-s);
+	outline: none;
+}
+
+.pbpm-rail-label {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.pbpm-rail-count {
+	color: var(--text-muted);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+}
+
+.pbpm-rail {
+	display: flex;
+	gap: 2px;
+}
+
+.pbpm-rail-cell {
+	background: transparent;
+	border: 1px solid var(--background-modifier-border-hover);
+	border-radius: 1px;
+	flex: 1 1 0;
+	height: 6px;
+	min-width: 3px;
+}
+
+.pbpm-rail-cell[data-status='done'] {
+	background: var(--color-accent);
+	border-color: var(--color-accent);
+}
+
+.pbpm-rail-cell[data-status='in-progress'] {
+	background: linear-gradient(to right, var(--color-accent) 50%, transparent 50%);
+	border-color: var(--color-accent);
+}
+
+.pbpm-rail-cell[data-status='cancelled'] {
+	border-style: dashed;
+	opacity: 0.4;
+}
+
+.pbpm-rail-empty {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+/* ── expanded milestone detail ───────────────────────────────────────────── */
+
+.pbpm-milestone-list {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	margin-top: var(--size-2-2);
+}
+
+.pbpm-milestone {
+	border-left: 2px solid var(--background-modifier-border-hover);
+	display: flex;
+	flex-direction: column;
+	font-size: var(--font-ui-smaller);
+	padding-left: var(--size-2-2);
+}
+
+.pbpm-milestone[data-status='in-progress'] {
+	border-left-color: var(--color-accent);
+}
+
+.pbpm-milestone-text {
+	color: var(--text-muted);
+}
+
+.pbpm-milestone-due {
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+}
+
+.pbpm-milestone-empty {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	margin-top: var(--size-2-2);
+}
+
+/* ── deliverables / grants ───────────────────────────────────────────────── */
+
+.pbpm-refs {
+	border-top: 1px solid var(--background-modifier-border);
+	display: flex;
+	gap: var(--size-4-4);
+	margin-top: var(--size-2-2);
+	padding-top: var(--size-2-2);
+}
+
+.pbpm-ref {
+	align-items: baseline;
+	display: flex;
+	gap: var(--size-2-1);
+}
+
+.pbpm-ref-value {
+	color: var(--text-normal);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+	font-weight: var(--font-semibold);
+}
+
+.pbpm-ref-label {
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+/* ── keywords ────────────────────────────────────────────────────────────── */
+
+.pbpm-keywords {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--size-2-1);
+}
+
+.pbpm-keyword {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	padding: 0 var(--size-2-2);
+}
+
+/* ── settings ────────────────────────────────────────────────────────────── */
+
+.pbpm-settings-section > summary,
+.pbpm-form-section > summary {
+	cursor: pointer;
+	font-weight: var(--font-semibold);
+	margin: var(--size-4-3) 0 var(--size-2-2);
+}
+
+/* ── project form ────────────────────────────────────────────────────────── */
+
+.pbpm-form .setting-item {
+	border-top: none;
+	padding: var(--size-2-2) 0;
+}
+
+.pbpm-form-error {
+	color: var(--text-error);
+	font-size: var(--font-ui-smaller);
+	min-height: 1.2em;
+	margin-top: var(--size-2-2);
+}
+
+.pbpm-readonly {
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-smaller);
+}
+
+/* ── rename preview ──────────────────────────────────────────────────────── */
+
+.pbpm-retag-summary {
+	color: var(--text-normal);
+	margin-bottom: var(--size-4-2);
+}
+
+.pbpm-retag-empty {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+}
+
+.pbpm-retag-list {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	max-height: 40vh;
+	overflow-y: auto;
+	padding: var(--size-2-2);
+}
+
+.pbpm-retag-row {
+	align-items: baseline;
+	display: flex;
+	gap: var(--size-2-2);
+	padding: var(--size-2-1) 0;
+}
+
+.pbpm-retag-row label {
+	align-items: baseline;
+	cursor: pointer;
+	display: flex;
+	flex: 1;
+	gap: var(--size-2-2);
+	justify-content: space-between;
+	min-width: 0;
+}
+
+.pbpm-retag-path {
+	font-size: var(--font-ui-smaller);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.pbpm-retag-chips {
+	display: flex;
+	flex-shrink: 0;
+	gap: var(--size-2-1);
+}
+
+.pbpm-retag-chip {
+	background: var(--background-modifier-hover);
+	border-radius: var(--radius-s);
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	padding: 0 var(--size-2-2);
+	white-space: nowrap;
+}
+
+/* Irreversible, vault-wide: say so where the eye lands before the button. */
+.pbpm-retag-warning {
+	color: var(--text-warning);
+	font-size: var(--font-ui-smaller);
+	margin-top: var(--size-4-2);
+}
+
+.pbpm-retag-chip.mod-warning {
+	background: rgba(var(--color-orange-rgb), 0.14);
+	color: var(--color-orange);
+}
+
+/* ── stage promotion gate ────────────────────────────────────────────────── */
+
+.pbpm-promotion-lede {
+	color: var(--text-muted);
+	margin-bottom: var(--size-4-3);
+}
+
+/* Deliberately unhurried: the questions are the point, not the button. */
+.pbpm-promotion-question {
+	align-items: flex-start;
+	display: flex;
+	gap: var(--size-2-3);
+	margin-bottom: var(--size-4-2);
+}
+
+.pbpm-promotion-question label {
+	cursor: pointer;
+	line-height: 1.5;
+}
+
+/* ── motion ──────────────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+	.pbpm-card {
+		animation: none;
+		transition: none;
+	}
+	.pbpm-card:hover {
+		transform: none;
+	}
+}

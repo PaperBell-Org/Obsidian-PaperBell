@@ -1,0 +1,48 @@
+## cover_letter.yaml —— 投稿信 / 修订投稿信（XeLaTeX → PDF）
+## 由 simple_cover_letter.tex（moderncv classic/green + xeCJK）迁入本 vault 管道。
+## 作者用 Markdown 写信正文，cover_letter.latex 提供 moderncv 抬头/署名骨架，
+## cover_letter.lua 从同目录 metadata.json 自动补齐 标题/期刊/通讯作者/邮箱。
+##
+## 变量约定：${.} = 本 defaults 目录；${USERDATA} = data-dir = pandoc 目录。
+## logo / 签名 / reviewers.csv 放在 templates/cover_letter/，
+## 靠插件 env 的 TEXINPUTS 指向 templates/ 被 XeLaTeX 找到（零安装）。
+
+standalone: true
+embed-resources: true
+wrap: none          #! 防止 pandoc 折行把注入的绝对资源路径（含空格）截断
+from: markdown+tex_math_single_backslash+wikilinks_title_after_pipe+mark+autolink_bare_uris+pipe_tables
+to: latex
+pdf-engine: xelatex
+data-dir: ${.}/..
+
+## 模板：moderncv 抬头 + $body$ + 署名（变量来自下方 variables / cover_letter.lua）
+template: ${USERDATA}/templates/cover_letter.latex
+
+## 引文库（与其它 PaperBell preset 一致，供信里偶尔 [@cite] 使用；信一般不引文）
+# bibliography: ${USERDATA}/../../mybib.bib  # (commented by sync: plugin injects --bibliography)
+
+filters:
+  - ${USERDATA}/filters/cover_letter.lua   #! 读同目录 metadata.json → PaperTitle/JournalName/AuthorName/AuthorEmail
+  - citeproc
+
+metadata:
+  ## 字体（与 paperbell.yaml 一致）
+  CJKmainfont: Songti SC
+  CJKsansfont: Heiti SC
+  CJKmonofont: STFangsong
+  mainfont: Times New Roman
+  sansfont: Arial
+  monofont: Courier New
+  link-citations: true
+
+variables:
+  ## 静态作者身份（metadata.json 里没有这些字段，故写死；改人换机构时改这里）
+  AuthorInstitution: "Qiming Institute"
+  AuthorAddress: "1 Example Road, 100000 Beijing, China"
+  AuthorPhone: "+00 0000 000000"
+  AuthorOrcid: "0000-0000-0000-0000"
+  ## assets 只写文件名；绝对目录由 cover_letter.lua 注入的 AssetDir + 模板 \graphicspath 解析
+  LogoPath: "logo_placeholder.pdf"
+  LogoScale: "0.80"
+  SignaturePath: "signature_placeholder.png"
+  MaxReviewers: "5"

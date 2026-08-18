@@ -1,0 +1,423 @@
+%% responseletter.sty — a modern, reusable LaTeX package for journal response letters
+%% ----------------------------------------------------------------------------------
+%% Engine: XeLaTeX (required, for CJK 中文 rendering via xeCJK).
+%%
+%% Quick start:
+%%   \documentclass{article}
+%%   \usepackage[type=author-response, draft]{responseletter}
+%%   \ResponseSetup{papertitle={...}, authors={...}, journal={...}, doi={...}}
+%%   \begin{document}
+%%   \makeletterhead
+%%   \begin{RC}[difficulty=hard, status=todo]
+%%     Reviewer's comment in English. \zh{中文对照} \note{自己的批注}
+%%   \end{RC}
+%%   \AR  Author response...
+%%   \AR* Unlabeled continuation...
+%%   \begin{manuscript}[page=5, sline=158, eline=160] Revised text. \end{manuscript}
+%%   \end{document}
+%%
+%% Options:
+%%   type=author-response | reviewer-comments   (default: author-response)
+%%   draft  — show difficulty badges, status pills, \zh and \note (for self-editing)
+%%   final  — hide all of the above (for submission)
+%% ----------------------------------------------------------------------------------
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{responseletter}[2026/06/03 v1.0 Modern response letter template]
+
+% ---------------------------------------------------------------------------
+% Package options
+% ---------------------------------------------------------------------------
+\RequirePackage{kvoptions}
+\SetupKeyvalOptions{family=rl, prefix=rl@}
+\DeclareStringOption[author-response]{type}
+\DeclareBoolOption[true]{draft}                 % draft mode on by default
+\DeclareComplementaryOption{final}{draft}       % [final] => draft=false
+\ProcessKeyvalOptions*
+
+% ---------------------------------------------------------------------------
+% Page geometry
+% ---------------------------------------------------------------------------
+\RequirePackage[top=22mm, bottom=22mm, left=25mm, right=25mm, footskip=12mm]{geometry}
+
+% ---------------------------------------------------------------------------
+% Fonts (XeLaTeX): Libertinus for Latin, xeCJK for 中文
+% ---------------------------------------------------------------------------
+\RequirePackage{amsmath}
+\RequirePackage{amssymb}
+\IfFileExists{libertinus-otf.sty}{%
+  \RequirePackage[mono=false]{libertinus-otf}%
+}{%
+  \RequirePackage{fontspec}%
+  \setmainfont{TeX Gyre Termes}%
+  \setsansfont{TeX Gyre Heros}%
+}
+\RequirePackage{microtype}
+
+% libertinus-otf pulls in unicode-math.  If "Libertinus Math" isn't installed,
+% unicode-math falls back to the text font for math letters — which lacks the
+% mathematical-Greek block, so e.g. $\Delta$ silently goes missing.  When that
+% happens, point math at a complete font that is present (STIX Two ships with
+% macOS; Latin Modern Math ships with TeX Live).  Only when unicode-math is in
+% play and Libertinus Math is absent, so the intended look is otherwise kept.
+\@ifpackageloaded{unicode-math}{%
+  \IfFontExistsTF{Libertinus Math}{}{%
+    \IfFontExistsTF{STIX Two Math}{\setmathfont{STIX Two Math}}{%
+      \IfFontExistsTF{Latin Modern Math}{\setmathfont{Latin Modern Math}}{}}}%
+}{}
+
+\RequirePackage{xeCJK}
+% Default CJK fonts — overridable via \ResponseSetup{cjkfont=..., cjksffont=...}
+\providecommand{\rl@cjkmain}{Songti SC}
+\providecommand{\rl@cjksans}{PingFang SC}
+\setCJKmainfont{\rl@cjkmain}
+\setCJKsansfont{\rl@cjksans}
+
+% 弯引号 ‘ ’ “ ” 属 East-Asian「歧义宽度」，xeCJK 默认当成 CJK 标点排，会把紧随其后的
+% 英文词粘住、丢空格（如 'levee effect'in）。声明为 Default 类 → 按西文字体/间距排，
+% 英文引号空格恢复正常。（先统一英文；日后要中文全角引号再移除此行。）
+\xeCJKDeclareCharClass{Default}{"2018, "2019, "201C, "201D}
+
+% ---------------------------------------------------------------------------
+% Colour palette (slate-indigo base; edit here to re-theme)
+% ---------------------------------------------------------------------------
+\RequirePackage{xcolor}
+\definecolor{rlprimary}{HTML}{1F3A5F}   % titles, RC card frame, AR label
+\definecolor{rlcardbg}{HTML}{F4F6F9}    % RC card background
+\definecolor{rltext}{HTML}{1A1A1A}
+\definecolor{rlauxrule}{HTML}{C9D2DE}   % thin separators inside cards
+\definecolor{rleasy}{HTML}{2E9E5B}      % difficulty: easy
+\definecolor{rlmedium}{HTML}{D99100}    % difficulty: medium
+\definecolor{rlhard}{HTML}{D64545}      % difficulty: hard
+\definecolor{rltodo}{HTML}{6B7785}      % status: todo
+\definecolor{rlwip}{HTML}{2D6CDF}       % status: wip
+\definecolor{rldone}{HTML}{2E9E5B}      % status: done
+\definecolor{rlnote}{HTML}{B5731A}      % \note annotation accent
+\definecolor{rlmsframe}{HTML}{8A949E}   % manuscript box frame
+\definecolor{rlmsbg}{HTML}{FCFCFD}      % manuscript box background
+
+% ---------------------------------------------------------------------------
+% Core packages
+% ---------------------------------------------------------------------------
+\RequirePackage{graphicx}
+% pandoc >= 3.1.13 wraps every \includegraphics in \pandocbounded (scales an image
+% to fit the text block). This standalone template doesn't inherit pandoc's default
+% header, so define it here; \providecommand keeps it harmless if pandoc supplies it.
+% (No \makeatletter/\makeatother: inside a .sty, @ is already a letter — toggling it
+%  would break the \rl@... internals defined further down.)
+\providecommand\pandocbounded[1]{%
+  \begingroup
+  \sbox0{#1}%
+  \ifdim\wd0>\linewidth
+    \resizebox{\linewidth}{!}{\usebox0}%
+  \else
+    \usebox0%
+  \fi
+  \endgroup}
+\RequirePackage{booktabs}
+\RequirePackage{tabularx}
+\RequirePackage{longtable}   % pandoc 把带题注的表渲成 longtable；standalone 模板需自行加载
+\RequirePackage{pdflscape}   % xlsx-table landscape:true 用 \begin{landscape}（拉手稿宽表进回复信时需要）
+\RequirePackage{adjustbox}
+
+% ---------------------------------------------------------------------------
+% 回复信自有的图/表（正文和 SI 都没有、只在回复信里出现）编号为 Figure R1 / Table R1 …
+% 从手稿拉进来的图由 manuscript_include.lua 在本地把 \thefigure 覆盖成真实号
+% （Figure 1 / S1），并把计数器减回，不占用 R 序号。
+% ---------------------------------------------------------------------------
+\AtBeginDocument{%
+  \renewcommand{\thefigure}{R\arabic{figure}}%
+  \renewcommand{\thetable}{R\arabic{table}}%
+}
+\RequirePackage{soul}
+\RequirePackage{xstring}
+\RequirePackage[hidelinks]{hyperref}
+\RequirePackage{xr-hyper}               % enables \linkexternal (harmless if unused)
+\RequirePackage[skins,breakable]{tcolorbox}
+\RequirePackage{tikz}
+
+% ---------------------------------------------------------------------------
+% Paragraph & section styling
+% ---------------------------------------------------------------------------
+\setlength{\parskip}{0.6\baselineskip}
+\setlength{\parindent}{0pt}
+
+\RequirePackage{titlesec}
+\titleformat{\section}
+  {\normalfont\large\sffamily\bfseries\color{rlprimary}}
+  {\makebox[0pt][r]{\thesection.\hspace{4mm}}}{0em}{}
+\titleformat{\subsection}
+  {\normalfont\sffamily\bfseries\color{rlprimary}}
+  {\makebox[0pt][r]{\thesubsection.\hspace{4mm}}}{0em}{}
+\titlespacing{\subsection}{0em}{1em}{-0.3em}
+
+% ---------------------------------------------------------------------------
+% Badge helper: a rounded coloured pill (used for difficulty & status)
+% ---------------------------------------------------------------------------
+\newcommand{\rl@badge}[2]{%
+  \tikz[baseline=(b.base)]{%
+    \node[fill=#1, text=white, font=\sffamily\bfseries\footnotesize,
+          rounded corners=2pt, inner xsep=5pt, inner ysep=1.5pt,
+          anchor=base] (b) {\strut #2};}%
+}
+
+% ---------------------------------------------------------------------------
+% Reviewer Comment (RC) — a card with optional difficulty/status + \zh/\note
+% ---------------------------------------------------------------------------
+\pgfkeys{
+  /rl/rc/.cd,
+  difficulty/.is choice,
+  difficulty/none/.code={\def\rl@rcdiff{}},
+  difficulty/easy/.code={\def\rl@rcdiff{\rl@badge{rleasy}{Easy}}},
+  difficulty/medium/.code={\def\rl@rcdiff{\rl@badge{rlmedium}{Medium}}},
+  difficulty/hard/.code={\def\rl@rcdiff{\rl@badge{rlhard}{Hard}}},
+  status/.is choice,
+  status/none/.code={\def\rl@rcstatus{}},
+  status/todo/.code={\def\rl@rcstatus{\rl@badge{rltodo}{TODO}}},
+  status/wip/.code={\def\rl@rcstatus{\rl@badge{rlwip}{WIP}}},
+  status/done/.code={\def\rl@rcstatus{\rl@badge{rldone}{DONE}}},
+}
+
+\newtcolorbox{rl@rcbox}[1][]{%
+  enhanced, breakable, sharp corners=northwest,
+  colback=rlcardbg, colframe=rlprimary, colbacktitle=rlprimary,
+  coltitle=white, fonttitle=\sffamily\bfseries,
+  boxrule=0.6pt, leftrule=3pt, arc=3pt,
+  left=10pt, right=10pt, top=6pt, bottom=6pt, toptitle=2pt, bottomtitle=2pt,
+  #1%
+}
+
+% Hanging "RC:" label for final mode (mirrors \rl@arlabel)
+\newcommand{\rl@rclabel}{\sffamily\bfseries\color{rlprimary}RC:}
+
+% draft : boxed card with optional difficulty/status badges + \zh/\note
+% final : plain italic text with a hanging "RC:" label — a clean English Q&A,
+%         so that only \begin{manuscript} keeps a box in the submission version.
+\newenvironment{RC}[1][]{%
+  \def\rl@rcdiff{}\def\rl@rcstatus{}%
+  \pgfkeys{/rl/rc/.cd,difficulty=none,status=none,#1}%
+  \ifrl@draft
+    \edef\rl@rctitle{\noexpand RC\noexpand\hfill
+      \noexpand\rl@rcdiff\noexpand\hspace{4pt}\noexpand\rl@rcstatus}%
+    \begin{rl@rcbox}[title={\rl@rctitle}]%
+    \itshape\color{rltext}%
+  \else
+    % hang "RC:" on the first paragraph of the body.  The body arrives as a
+    % separate pandoc block (a blank line after \begin{RC}), so we attach the
+    % label via \everypar instead of inline — otherwise the blank line's \par
+    % would strand "RC:" alone on its own line.
+    \par\addvspace{2pt}\setlength{\parindent}{0pt}%
+    \itshape\color{rltext}%
+    \everypar{\makebox[0pt][r]{\normalfont\rl@rclabel\hspace{1em}}\everypar{}}%
+  \fi
+}{%
+  \ifrl@draft
+    \end{rl@rcbox}%
+  \else
+    \everypar{}\par
+  \fi
+}
+
+% Auxiliary draft-only block inside an RC card (used by \zh and \note)
+\newcommand{\rl@auxblock}[3]{%
+  \par\addvspace{5pt}%
+  \noindent{\color{rlauxrule}\rule{\linewidth}{0.4pt}}\par\nobreak\addvspace{4pt}%
+  \noindent\rl@badge{#1}{#2}\hspace{0.6em}%
+  \begingroup\upshape\color{rltext}#3\par\endgroup
+}
+\ifrl@draft
+  \newcommand{\zh}[1]{\rl@auxblock{rlprimary}{中文}{#1}}
+  \newcommand{\note}[1]{\rl@auxblock{rlnote}{批注}{#1}}
+  % a draft-only placeholder for a not-yet-inserted figure (e.g. ![[fig.png]])
+  \newcommand{\figplaceholder}[1]{%
+    \par\addvspace{6pt}%
+    \begin{center}%
+      \setlength{\fboxsep}{10pt}%
+      \fcolorbox{rlmsframe}{rlmsbg}{%
+        \makebox[0.7\linewidth][c]{\sffamily\small\color{rlmsframe} Figure: #1}%
+      }%
+    \end{center}%
+    \addvspace{6pt}%
+  }
+\else
+  \newcommand{\zh}[1]{}
+  \newcommand{\note}[1]{}
+  \newcommand{\figplaceholder}[1]{}
+\fi
+
+% pandoc emits \tightlist for tight bullet/ordered lists; define it if the
+% document is built via pandoc with this .sty as the whole preamble.
+\providecommand{\tightlist}{%
+  \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
+
+% ---------------------------------------------------------------------------
+% Author Response (AR) — hanging "AR:" label; starred = unlabeled continuation
+% ---------------------------------------------------------------------------
+\newcommand{\rl@arlabel}{\sffamily\bfseries\color{rlprimary}AR:}
+\newcommand{\AR}{\@ifstar\rl@ARcont\rl@AR}
+\newcommand{\rl@AR}{\par\noindent\makebox[0pt][r]{\rl@arlabel\hspace{1em}}\ignorespaces}
+\newcommand{\rl@ARcont}{\par\noindent\ignorespaces}
+
+% ---------------------------------------------------------------------------
+% Manuscript text — a framed quote with page/line metadata
+% ---------------------------------------------------------------------------
+\pgfkeys{
+  /rl/ms/.cd,
+  page/.store in=\rl@mspage,
+  sline/.store in=\rl@mssline,
+  eline/.store in=\rl@mseline,
+  fig/.store in=\rl@msfig,          % 引自图注的片段没有行号，改标图号（"· Figure 2"）
+  src/.store in=\rl@mssrc,          % 盒子标题：默认 Manuscript，SI 引用传 Supplementary Information
+}
+
+\newtcolorbox{rl@msbox}[1][]{%
+  enhanced, breakable,
+  colback=rlmsbg, colframe=rlmsframe, colbacktitle=rlmsframe,
+  coltitle=white, fonttitle=\sffamily\bfseries\small,
+  boxrule=0.6pt, arc=2pt,
+  left=10pt, right=10pt, top=6pt, bottom=6pt, toptitle=2pt, bottomtitle=2pt,
+  #1%
+}
+
+\newcommand{\rl@mstitle}{%
+  \rl@mssrc%
+  \ifx\rl@msfig\empty
+    \ifx\rl@mspage\empty
+      % no page given (e.g. a fenced ```manuscript block) → just the source label
+    \else
+      \ifx\rl@mseline\empty
+        \IfInteger{\rl@mspage}{ \textnormal{·} Page \rl@mspage, Line \rl@mssline}%
+                              { \textnormal{·} \rl@mspage}%
+      \else
+        \ \textnormal{·} Page \rl@mspage, Line \rl@mssline--\rl@mseline%
+      \fi
+    \fi
+  \else
+    \ \textnormal{·} Figure \rl@msfig%
+  \fi
+}
+
+\newenvironment{manuscript}[1][]{%
+  \def\rl@mspage{}\def\rl@mssline{}\def\rl@mseline{}\def\rl@msfig{}\def\rl@mssrc{Manuscript}%
+  \pgfkeys{/rl/ms/.cd,#1}%
+  \begin{rl@msbox}[title={\rl@mstitle}]%
+}{%
+  \end{rl@msbox}%
+}
+
+% Backward-compatible alias: \begin{quote}[page=..,sline=..,eline=..]
+\renewenvironment{quote}[1][]{\begin{manuscript}[#1]}{\end{manuscript}}
+
+% ---------------------------------------------------------------------------
+% Optional cross-references to an external manuscript / supplement
+%   \linkexternal{MS}{../main/manuscript}  then use \ref{MS-somelabel}
+% ---------------------------------------------------------------------------
+\newcommand{\linkexternal}[2]{\externaldocument[#1-]{#2}}
+
+% ---------------------------------------------------------------------------
+% Metadata + letter head
+% ---------------------------------------------------------------------------
+\def\rl@papertitle{Paper Title}
+\def\rl@authors{Authors}
+\def\rl@journal{}
+\def\rl@doi{}
+\def\rl@lettertitle{}   % empty => derived from package option `type`
+
+\pgfkeys{
+  /rl/setup/.cd,
+  papertitle/.store in=\rl@papertitle,
+  authors/.store in=\rl@authors,
+  journal/.store in=\rl@journal,
+  doi/.store in=\rl@doi,
+  lettertitle/.store in=\rl@lettertitle,
+  cjkfont/.code={\setCJKmainfont{#1}},
+  cjksffont/.code={\setCJKsansfont{#1}},
+}
+\newcommand{\ResponseSetup}[1]{\pgfkeys{/rl/setup/.cd,#1}}
+
+% Default letter title and legend, driven by the `type` option
+\newcommand{\rl@defaultlettertitle}{%
+  \IfStrEq{\rl@type}{reviewer-comments}%
+    {Reviewer Comments to the Manuscript}%
+    {Author Response to Reviews of}%
+}
+\newcommand{\rl@legend}{%
+  \hfill
+  {\bfseries RC:} \textit{Reviewer Comment}%
+  \IfStrEq{\rl@type}{reviewer-comments}{}{,\quad {\bfseries AR:} Author Response}%
+  ,\quad\fcolorbox{rlmsframe}{rlmsbg}{\rule{0pt}{1.4ex}\hspace{0.6em}} Manuscript text%
+}
+
+\newcommand{\makeletterhead}{%
+  \begingroup
+  \setlength{\parskip}{0pt}%
+  {\Large\sffamily\bfseries\color{rlprimary}%
+    \ifx\rl@lettertitle\empty\rl@defaultlettertitle\else\rl@lettertitle\fi}\\[0.8em]
+  {\huge\bfseries \rl@papertitle}\\[0.8em]
+  {\rl@authors}\\[0.3em]
+  \ifx\rl@journal\empty\else{\itshape \rl@journal}\fi
+  \ifx\rl@doi\empty\else{\quad\texttt{\rl@doi}}\fi
+  \par\vspace{0.6em}
+  {\color{rlprimary}\hrule height 1pt}%
+  \par\vspace{0.4em}
+  {\small\rl@legend\par}%
+  \endgroup
+  \vspace{1em}
+}
+
+% ---------------------------------------------------------------------------
+% latexdiff support (kept; harmless when not using latexdiff output)
+% ---------------------------------------------------------------------------
+\RequirePackage[normalem]{ulem}
+\providecommand{\DIFadd}[1]{{\protect\color{blue}\uwave{#1}}}
+\providecommand{\DIFdel}[1]{{\protect\color{red}\sout{#1}}}
+\providecommand{\DIFaddbegin}{}
+\providecommand{\DIFaddend}{}
+\providecommand{\DIFdelbegin}{}
+\providecommand{\DIFdelend}{}
+\providecommand{\DIFaddFL}[1]{\DIFadd{#1}}
+\providecommand{\DIFdelFL}[1]{\DIFdel{#1}}
+\providecommand{\DIFaddbeginFL}{}
+\providecommand{\DIFaddendFL}{}
+\providecommand{\DIFdelbeginFL}{}
+\providecommand{\DIFdelendFL}{}
+
+% ---------------------------------------------------------------------------
+% citeproc (CSL) reference list — this minimal template does not pull in the
+% definitions pandoc's default template provides, so [@key] citations would
+% otherwise fail (\begin{CSLReferences} undefined). Block copied verbatim from
+% `pandoc -D`/citeproc output (pandoc 3.8) so the bibliography renders.
+% ---------------------------------------------------------------------------
+\NewDocumentCommand\citeproctext{}{}
+\NewDocumentCommand\citeproc{mm}{%
+  \begingroup\def\citeproctext{#2}\cite{#1}\endgroup}
+\makeatletter
+ % allow citations to break across lines
+ \let\@cite@ofmt\@firstofone
+ % avoid brackets around text for \cite:
+ \def\@biblabel#1{}
+ \def\@cite#1#2{{#1\if@tempswa , #2\fi}}
+\makeatother
+\newlength{\cslhangindent}
+\setlength{\cslhangindent}{1.5em}
+\newlength{\csllabelwidth}
+\setlength{\csllabelwidth}{3em}
+\newenvironment{CSLReferences}[2] % #1 hanging-indent, #2 entry-spacing
+ {\begin{list}{}{%
+  \setlength{\itemindent}{0pt}
+  \setlength{\leftmargin}{0pt}
+  \setlength{\parsep}{0pt}
+  % turn on hanging indent if param 1 is 1
+  \ifodd #1
+   \setlength{\leftmargin}{\cslhangindent}
+   \setlength{\itemindent}{-1\cslhangindent}
+  \fi
+  % set entry spacing
+  \setlength{\itemsep}{#2\baselineskip}}}
+ {\end{list}}
+\usepackage{calc}
+\newcommand{\CSLBlock}[1]{\hfill\break\parbox[t]{\linewidth}{\strut\ignorespaces#1\strut}}
+\newcommand{\CSLLeftMargin}[1]{\parbox[t]{\csllabelwidth}{\strut#1\strut}}
+\newcommand{\CSLRightInline}[1]{\parbox[t]{\linewidth - \csllabelwidth}{\strut#1\strut}}
+\newcommand{\CSLIndent}[1]{\hspace{\cslhangindent}#1}
+
+\endinput

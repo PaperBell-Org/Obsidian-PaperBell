@@ -11,11 +11,11 @@
     "margin": "2",
     "downscalePercent": 100
   },
-  "attachmentFolderPath": "40 - Obsidian/附件",
+  "attachmentFolderPath": "00 - Obsidian/附件",
   "showInlineTitle": false,
   "propertiesInDocument": "visible",
   "newFileLocation": "current",
-  "newFileFolderPath": "Cards/Concepts",
+  "newFileFolderPath": "10 - Cards/Concepts",
   "defaultViewMode": "preview",
   "readableLineLength": true
 }

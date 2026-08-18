@@ -1,0 +1,34 @@
+{
+  "uiLanguage": "zh",
+  "uiLanguageMode": "follow",
+  "watchFolder": "20 - Inputs",
+  "scriptsFolder": "00 - Obsidian/InputsBell",
+  "processMode": "auto",
+  "enabledScripts": [
+    "normalize-frontmatter",
+    "localize-images",
+    "move-by-frontmatter",
+    "link-institution"
+  ],
+  "scriptParams": {
+    "localize-images": {
+      "assetsFolder": "20 - Inputs/_assets",
+      "refererRules": "doubanio.com => https://www.douban.com/"
+    },
+    "verify-zotero": {
+      "apiUrl": "http://localhost:23119",
+      "protectedFields": "read, source, important, keywords",
+      "tagIgnore": "",
+      "onlyWithKey": true
+    },
+    "move-by-frontmatter": {
+      "baseFolder": "20 - Inputs",
+      "rules": "has:zotero-key => Zotero\nhas:citekey => Zotero\nurl:movie.douban.com => Movies\nurl:book.douban.com => Books\ntag:电影 => Movies\ntag:reading => Books\ntag:scholar => /30 - Metadata/Scholars\ntag:clip => Clippings"
+    },
+    "link-institution": {
+      "institutesFolder": "30 - Metadata/Institutes",
+      "useAiFallback": false,
+      "templatePath": "00 - Obsidian/模板/机构模板pro"
+    }
+  }
+}

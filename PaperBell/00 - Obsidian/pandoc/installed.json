@@ -1,0 +1,67 @@
+{
+  "paperbell": {
+    "id": "paperbell",
+    "version": "1.0.0",
+    "kind": "bundle",
+    "files": [
+      "filters/manuscript_linelabel.lua",
+      "filters/link.lua",
+      "filters/preamble.lua",
+      "filters/xlsx_table.lua",
+      "filters/image.lua",
+      "filters/promote_figures.lua",
+      "filters/block_ids.lua",
+      "filters/mute.lua",
+      "filters/div.lua",
+      "filters/lineno_default.lua",
+      "filters/quotes-i18n.lua",
+      "filters/math.lua",
+      "filters/callout.lua",
+      "filters/codeblock.lua",
+      "filters/shift_headings.lua",
+      "filters/highlight.lua",
+      "defaults/crossref.yaml",
+      "defaults/paperbell.yaml",
+      "templates/paperbell.latex"
+    ],
+    "installedAt": "2026-07-12T08:20:58.314Z"
+  },
+  "csl/nature.csl": {
+    "id": "csl/nature.csl",
+    "version": "1.0.0",
+    "kind": "asset",
+    "files": [
+      "csl/nature.csl"
+    ],
+    "installedAt": "2026-07-12T08:22:14.822Z"
+  },
+  "response-letter": {
+    "id": "response-letter",
+    "version": "1.0.0",
+    "kind": "bundle",
+    "files": [
+      "filters/manuscript_cite.lua",
+      "filters/xlsx_table.lua",
+      "filters/manuscript_include.lua",
+      "filters/responseletter.lua",
+      "defaults/response-letter.yaml",
+      "templates/responseletter.template.tex",
+      "templates/responseletter.sty"
+    ],
+    "installedAt": "2026-07-12T08:28:33.219Z"
+  },
+  "cover_letter": {
+    "id": "cover_letter",
+    "version": "1.0.0",
+    "kind": "bundle",
+    "files": [
+      "filters/cover_letter.lua",
+      "defaults/cover_letter.yaml",
+      "templates/cover_letter/README.md",
+      "templates/cover_letter/signature_placeholder.png",
+      "templates/cover_letter/logo_placeholder.pdf",
+      "templates/cover_letter.latex"
+    ],
+    "installedAt": "2026-07-12T08:28:37.961Z"
+  }
+}

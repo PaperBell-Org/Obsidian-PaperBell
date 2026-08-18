@@ -4,11 +4,11 @@
     "lastVersion": "9.13.1"
   },
   "progressBarDisplayMode": "both",
-  "supportHoverToShowProgressInfo": true,
+  "supportHoverToShowProgressInfo": false,
   "addProgressBarToNonTaskBullet": false,
-  "addTaskProgressBarToHeading": true,
+  "addTaskProgressBarToHeading": false,
   "addProgressBarToProjectsView": false,
-  "enableProgressbarInReadingMode": true,
+  "enableProgressbarInReadingMode": false,
   "notifications": {
     "enabled": false,
     "dailySummary": {
@@ -32,27 +32,27 @@
     {
       "min": 0,
       "max": 20,
-      "text": "刚刚开始 {{PROGRESS}}%"
+      "text": "Just started {{PROGRESS}}%"
     },
     {
       "min": 20,
       "max": 40,
-      "text": "正在进行中 {{PROGRESS}}% "
+      "text": "Making progress {{PROGRESS}}% "
     },
     {
       "min": 40,
       "max": 60,
-      "text": "完成一半 {{PROGRESS}}% "
+      "text": "Half way {{PROGRESS}}% "
     },
     {
       "min": 60,
       "max": 80,
-      "text": "进展良好 {{PROGRESS}}% "
+      "text": "Good progress {{PROGRESS}}% "
     },
     {
       "min": 80,
       "max": 100,
-      "text": "即将完成 {{PROGRESS}}% "
+      "text": "Almost there {{PROGRESS}}% "
     }
   ],
   "allowCustomProgressGoal": false,
@@ -122,7 +122,7 @@
     }
   ],
   "enableTaskGeniusIcons": false,
-  "enablePriorityPicker": true,
+  "enablePriorityPicker": false,
   "enablePriorityKeyboardShortcuts": false,
   "enableDatePicker": false,
   "recurrenceDateBase": "due",
@@ -131,14 +131,14 @@
     "presetTaskFilters": []
   },
   "taskGutter": {
-    "enableTaskGutter": true
+    "enableTaskGutter": false
   },
   "completedTaskMover": {
     "enableCompletedTaskMover": false,
     "taskMarkerType": "date",
     "versionMarker": "version 1.0",
-    "dateMarker": "归档于 {{date}}",
-    "customMarker": "已移动 {{DATE:YYYY-MM-DD HH:mm}}",
+    "dateMarker": "archived on {{date}}",
+    "customMarker": "moved {{DATE:YYYY-MM-DD HH:mm}}",
     "treatAbandonedAsCompleted": false,
     "completeAllMovedTasks": true,
     "withCurrentFileLink": true,
@@ -149,8 +149,8 @@
     "enableIncompletedTaskMover": true,
     "incompletedTaskMarkerType": "date",
     "incompletedVersionMarker": "version 1.0",
-    "incompletedDateMarker": "移动于 {{date}}",
-    "incompletedCustomMarker": "已移动 {{DATE:YYYY-MM-DD HH:mm}}",
+    "incompletedDateMarker": "moved on {{date}}",
+    "incompletedCustomMarker": "moved {{DATE:YYYY-MM-DD HH:mm}}",
     "withCurrentFileLinkForIncompleted": true,
     "enableIncompletedAutoMove": false,
     "incompletedDefaultTargetFile": "Backlog.md",
@@ -159,47 +159,55 @@
   },
   "quickCapture": {
     "enableQuickCapture": true,
-    "targetFile": "Inbox/Tasks",
-    "placeholder": "您今天想做什么？...",
+    "targetFile": "QuickCapture.md",
+    "placeholder": "Capture your thoughts...",
     "appendToFile": "append",
     "targetType": "daily-note",
     "targetHeading": "",
     "dailyNoteSettings": {
       "format": "YYYY年MM月DD日",
-      "folder": "00 - 每日日记/DailyNote",
-      "template": "40 - Obsidian/模板/每日日记模板"
+      "folder": "30 - Metadata/DailyNote",
+      "template": "00 - Obsidian/模板/每日日记模板"
     },
-    "enableMinimalMode": true,
-    "createFileMode": {
-      "defaultFolder": "",
-      "useTemplate": false,
-      "templateFile": ""
+    "enableMinimalMode": false,
+    "minimalModeSettings": {
+      "suggestTrigger": "/"
     },
+    "keepOpenAfterCapture": false,
+    "rememberLastMode": true,
+    "lastUsedMode": "checkbox",
+    "defaultFileNameTemplate": "{{DATE:YYYY-MM-DD}} - Task",
+    "defaultFileLocation": "",
     "fileNameTemplates": [
       {
-        "name": "Daily Note",
+        "name": "{{DATE:YYYY-MM-DD}}",
         "template": "{{DATE:YYYY-MM-DD}}"
       },
       {
-        "name": "Meeting",
+        "name": "{{DATE:YYYY-MM-DD}} - Meeting",
         "template": "{{DATE:YYYY-MM-DD}} - Meeting"
       },
       {
-        "name": "Task",
+        "name": "{{DATE:YYYY-MM-DD}} - Task",
         "template": "{{DATE:YYYY-MM-DD}} - Task"
       },
       {
-        "name": "Project",
+        "name": "Project - {{DATE:YYYY-MM}}",
         "template": "Project - {{DATE:YYYY-MM}}"
       },
       {
-        "name": "Notes",
+        "name": "Notes - {{DATE:YYYY-MM-DD-HHmm}}",
         "template": "Notes - {{DATE:YYYY-MM-DD-HHmm}}"
       }
     ],
-    "minimalModeSettings": {
-      "suggestTrigger": "/"
-    }
+    "createFileMode": {
+      "defaultFolder": "",
+      "useTemplate": false,
+      "templateFolder": "",
+      "templateFile": "",
+      "writeContentTagsToFrontmatter": false
+    },
+    "autoStartTimer": false
   },
   "workflow": {
     "enableWorkflow": false,
@@ -214,28 +222,28 @@
     "definitions": [
       {
         "id": "project_workflow",
-        "name": "项目工作流",
-        "description": "标准项目管理工作流",
+        "name": "Project Workflow",
+        "description": "Standard project management workflow",
         "stages": [
           {
             "id": "planning",
-            "name": "规划中",
+            "name": "Planning",
             "type": "linear",
             "next": "in_progress"
           },
           {
             "id": "in_progress",
-            "name": "进行中",
+            "name": "In Progress",
             "type": "cycle",
             "subStages": [
               {
                 "id": "development",
-                "name": "开发中",
+                "name": "Development",
                 "next": "testing"
               },
               {
                 "id": "testing",
-                "name": "测试中",
+                "name": "Testing",
                 "next": "development"
               }
             ],
@@ -246,7 +254,7 @@
           },
           {
             "id": "review",
-            "name": "回顾",
+            "name": "Review",
             "type": "cycle",
             "canProceedTo": [
               "in_progress",
@@ -255,12 +263,12 @@
           },
           {
             "id": "completed",
-            "name": "已完成",
+            "name": "Completed",
             "type": "terminal"
           },
           {
             "id": "cancelled",
-            "name": "已取消",
+            "name": "Cancelled",
             "type": "terminal"
           }
         ],
@@ -272,10 +280,10 @@
       }
     ]
   },
-  "useDailyNotePathAsDate": true,
+  "useDailyNotePathAsDate": false,
   "dailyNoteFormat": "yyyy-MM-dd",
   "useAsDateType": "due",
-  "dailyNotePath": "00 - 每日日记",
+  "dailyNotePath": "",
   "preferMetadataFormat": "tasks",
   "projectTagPrefix": {
     "tasks": "project",
@@ -291,7 +299,7 @@
   },
   "fileMetadataInheritance": {
     "enabled": true,
-    "inheritFromFrontmatter": false,
+    "inheritFromFrontmatter": true,
     "inheritFromFrontmatterForSubtasks": false
   },
   "projectConfig": {
@@ -300,28 +308,39 @@
     "metadataConfig": {
       "metadataKey": "project",
       "enabled": false,
-      "detectionMethods": []
+      "detectionMethods": [
+        {
+          "type": "metadata",
+          "propertyKey": "project",
+          "enabled": false
+        },
+        {
+          "type": "tag",
+          "propertyKey": "project",
+          "enabled": false
+        },
+        {
+          "type": "link",
+          "propertyKey": "category",
+          "linkFilter": "",
+          "enabled": false
+        }
+      ]
     },
     "configFile": {
       "fileName": "project.md",
       "searchRecursively": false,
       "enabled": false
     },
-    "metadataMappings": [
-      {
-        "sourceKey": "status",
-        "targetKey": "",
-        "enabled": false
-      }
-    ],
+    "metadataMappings": [],
     "defaultProjectNaming": {
-      "strategy": "foldername",
+      "strategy": "filename",
       "stripExtension": false,
-      "enabled": true
+      "enabled": false
     }
   },
   "fileParsingConfig": {
-    "enableFileMetadataParsing": true,
+    "enableFileMetadataParsing": false,
     "metadataFieldsToParseAsTasks": [
       "dueDate",
       "todo",
@@ -337,22 +356,19 @@
     ],
     "taskContentFromMetadata": "title",
     "defaultTaskStatus": " ",
-    "enableWorkerProcessing": true
+    "enableWorkerProcessing": true,
+    "enableMtimeOptimization": true,
+    "mtimeCacheSize": 10000
   },
-  "useRelativeTimeForDate": true,
+  "useRelativeTimeForDate": false,
   "ignoreHeading": "",
   "focusHeading": "",
   "enableIndexer": true,
   "enableView": true,
   "enableInlineEditor": true,
-  "enableDynamicMetadataPositioning": true,
+  "enableDynamicMetadataPositioning": false,
   "defaultViewMode": "list",
-  "globalFilterRules": {
-    "advancedFilter": {
-      "rootCondition": "any",
-      "filterGroups": []
-    }
-  },
+  "globalFilterRules": {},
   "viewConfiguration": [
     {
       "id": "today",
@@ -378,7 +394,7 @@
     },
     {
       "id": "inbox",
-      "name": "收件箱",
+      "name": "Inbox",
       "icon": "inbox",
       "type": "default",
       "visible": true,
@@ -388,8 +404,18 @@
       "region": "top"
     },
     {
+      "id": "working-on",
+      "name": "Working On",
+      "icon": "timer",
+      "type": "default",
+      "visible": true,
+      "hideCompletedAndAbandonedTasks": true,
+      "filterRules": {},
+      "filterBlanks": false
+    },
+    {
       "id": "forecast",
-      "name": "预测",
+      "name": "Forecast",
       "icon": "calendar-days",
       "type": "default",
       "visible": true,
@@ -403,7 +429,7 @@
     },
     {
       "id": "projects",
-      "name": "项目",
+      "name": "Projects",
       "icon": "folders",
       "type": "default",
       "visible": true,
@@ -413,7 +439,7 @@
     },
     {
       "id": "tags",
-      "name": "标签",
+      "name": "Tags",
       "icon": "tag",
       "type": "default",
       "visible": true,
@@ -423,7 +449,7 @@
     },
     {
       "id": "flagged",
-      "name": "已标记",
+      "name": "Flagged",
       "icon": "flag",
       "type": "default",
       "visible": true,
@@ -434,7 +460,7 @@
     },
     {
       "id": "review",
-      "name": "回顾",
+      "name": "Review",
       "icon": "eye",
       "type": "default",
       "visible": true,
@@ -444,27 +470,32 @@
     },
     {
       "id": "calendar",
-      "name": "事件",
+      "name": "Events",
       "icon": "calendar",
       "type": "default",
       "visible": true,
       "hideCompletedAndAbandonedTasks": false,
       "filterRules": {},
       "filterBlanks": false,
+      "region": "bottom",
       "specificConfig": {
         "viewType": "calendar",
-        "hideWeekends": false
+        "hideWeekends": false,
+        "showWorkingHoursOnly": false,
+        "workingHoursStart": 9,
+        "workingHoursEnd": 18
       }
     },
     {
       "id": "kanban",
-      "name": "状态",
+      "name": "Status",
       "icon": "kanban",
       "type": "default",
       "visible": true,
       "hideCompletedAndAbandonedTasks": false,
       "filterRules": {},
       "filterBlanks": false,
+      "region": "bottom",
       "specificConfig": {
         "viewType": "kanban",
         "showCheckbox": true,
@@ -476,13 +507,14 @@
     },
     {
       "id": "gantt",
-      "name": "计划",
+      "name": "Plan",
       "icon": "chart-gantt",
       "type": "default",
       "visible": true,
       "hideCompletedAndAbandonedTasks": false,
       "filterRules": {},
       "filterBlanks": false,
+      "region": "bottom",
       "specificConfig": {
         "viewType": "gantt",
         "showTaskLabels": true,
@@ -491,17 +523,18 @@
     },
     {
       "id": "habit",
-      "name": "习惯",
+      "name": "Habit",
       "icon": "calendar-clock",
       "type": "default",
       "visible": true,
       "hideCompletedAndAbandonedTasks": false,
       "filterRules": {},
-      "filterBlanks": false
+      "filterBlanks": false,
+      "region": "bottom"
     },
     {
       "id": "table",
-      "name": "表格",
+      "name": "Table",
       "icon": "table",
       "type": "default",
       "visible": true,
@@ -583,69 +616,51 @@
           "notUrgentNotImportant": "#6c757d"
         }
       }
-    },
-    {
-      "id": "working-on",
-      "name": "进行中",
-      "icon": "timer",
-      "type": "default",
-      "visible": true,
-      "hideCompletedAndAbandonedTasks": true,
-      "filterRules": {},
-      "filterBlanks": false
     }
   ],
-  "reviewSettings": {
-    "PaperBell": {
-      "frequency": "weekly",
-      "reviewedTaskIds": [
-        "Projects/PaperBell.md-L24",
-        "Projects/PaperBell.md-L25",
-        "Projects/PaperBell.md-L26",
-        "Projects/PaperBell.md-L27",
-        "Projects/PaperBell.md-L28",
-        "00 - 每日日记/DailyNote/2025年06月30日.md-L15",
-        "00 - 每日日记/DailyNote/2025年06月30日.md-L16"
-      ],
-      "lastReviewed": 1758915663945
-    }
-  },
+  "reviewSettings": {},
   "rewards": {
-    "enableRewards": true,
+    "enableRewards": false,
     "rewardItems": [
       {
+        "id": "reward-tea",
+        "name": "Drink a cup of good tea",
+        "occurrence": "common",
+        "inventory": -1
+      },
+      {
         "id": "reward-series-episode",
-        "name": "观看一集喜欢的剧集",
-        "occurrence": "普通",
-        "inventory": 18
+        "name": "Watch an episode of a favorite series",
+        "occurrence": "rare",
+        "inventory": 20
       },
       {
         "id": "reward-champagne-project",
-        "name": "我的论文肯定能发 Top 期刊！",
-        "occurrence": "稀有",
+        "name": "Play a game",
+        "occurrence": "legendary",
         "inventory": 1,
-        "condition": "#project"
+        "condition": "#project AND #milestone"
       },
       {
         "id": "reward-chocolate-quick",
-        "name": "项目推进顺利，你就是学术新星",
-        "occurrence": "传奇",
+        "name": "Eat a piece of chocolate",
+        "occurrence": "common",
         "inventory": 10,
-        "condition": "#project",
+        "condition": "#quickwin",
         "imageUrl": ""
       }
     ],
     "occurrenceLevels": [
       {
-        "name": "普通",
+        "name": "common",
         "chance": 70
       },
       {
-        "name": "稀有",
+        "name": "rare",
         "chance": 25
       },
       {
-        "name": "传奇",
+        "name": "legendary",
         "chance": 5
       }
     ],
@@ -657,50 +672,7 @@
   },
   "filterConfig": {
     "enableSavedFilters": true,
-    "savedConfigs": [
-      {
-        "id": "filter-config-1751310842607-ynssu4u3f",
-        "name": "未完成",
-        "description": "不包含x, p, i, X",
-        "filterState": {
-          "rootCondition": "any",
-          "filterGroups": [
-            {
-              "id": "id-1751310461472-awt9erkpp",
-              "groupCondition": "all",
-              "filters": [
-                {
-                  "id": "id-1751310461474-nnmljanzj",
-                  "property": "status",
-                  "condition": "doesNotContain",
-                  "value": "p"
-                },
-                {
-                  "id": "id-1751310745697-j0zukyyns",
-                  "property": "status",
-                  "condition": "doesNotContain",
-                  "value": "x"
-                },
-                {
-                  "id": "id-1751310752846-zlzazx8pv",
-                  "property": "status",
-                  "condition": "doesNotContain",
-                  "value": "X"
-                },
-                {
-                  "id": "id-1751310805765-udsz641yd",
-                  "property": "content",
-                  "condition": "doesNotContain",
-                  "value": "I"
-                }
-              ]
-            }
-          ]
-        },
-        "createdAt": "2025-06-30T19:14:02.607Z",
-        "updatedAt": "2025-06-30T19:14:02.607Z"
-      }
-    ]
+    "savedConfigs": []
   },
   "sortTasks": true,
   "sortCriteria": [
@@ -748,30 +720,24 @@
     "defaultEventColor": "#3b82f6"
   },
   "timelineSidebar": {
-    "enableTimelineSidebar": true,
-    "autoOpenOnStartup": true,
-    "showCompletedTasks": false,
-    "focusModeByDefault": true,
-    "maxEventsToShow": 100
+    "enableTimelineSidebar": false,
+    "autoOpenOnStartup": false,
+    "showCompletedTasks": true,
+    "focusModeByDefault": false,
+    "maxEventsToShow": 100,
+    "quickInputCollapsed": false,
+    "quickInputDefaultHeight": 150,
+    "quickInputAnimationDuration": 300,
+    "quickInputCollapseOnCapture": false,
+    "quickInputShowQuickActions": true
   },
   "fileFilter": {
-    "enabled": true,
+    "enabled": false,
     "mode": "blacklist",
-    "rules": [
-      {
-        "type": "folder",
-        "path": "40 - Obsidian/模板",
-        "enabled": true
-      },
-      {
-        "type": "folder",
-        "path": "40 - Obsidian",
-        "enabled": false
-      }
-    ],
+    "rules": [],
     "scopeControls": {
       "inlineTasksEnabled": true,
-      "fileTasksEnabled": false
+      "fileTasksEnabled": true
     }
   },
   "onCompletion": {
@@ -835,7 +801,30 @@
     },
     "removeOriginalText": true,
     "perLineProcessing": true,
-    "realTimeReplacement": true
+    "realTimeReplacement": true,
+    "timePatterns": {
+      "singleTime": [
+        {},
+        {}
+      ],
+      "timeRange": [
+        {},
+        {}
+      ],
+      "rangeSeparators": [
+        "-",
+        "~",
+        "～",
+        " - ",
+        " ~ ",
+        " ～ "
+      ]
+    },
+    "timeDefaults": {
+      "preferredFormat": "24h",
+      "defaultPeriod": "AM",
+      "midnightCrossing": "next-day"
+    }
   },
   "taskTimer": {
     "enabled": false,
@@ -854,7 +843,7 @@
   "customDateFormats": [],
   "onboarding": {
     "completed": false,
-    "version": "9.7.7",
+    "version": "9.13.1",
     "configMode": "beginner",
     "skipOnboarding": true,
     "completedAt": ""
@@ -883,20 +872,18 @@
       },
       "templates": {
         "enabled": false,
-        "templatePaths": [
-          "Templates/Task Template.md"
-        ],
+        "templatePaths": [],
         "checkTemplateMetadata": true
       },
       "paths": {
         "enabled": false,
         "taskPaths": [
-          "Projects/",
-          "Tasks/"
+          "40 - Projects/"
         ],
         "matchMode": "prefix"
       }
     },
+    "metadataMappings": [],
     "fileTaskProperties": {
       "contentSource": "filename",
       "stripExtension": true,
@@ -962,1611 +949,19 @@
     "useWorkspaceSideLeaves": false
   },
   "customCalendarViews": [],
-  "experimental": {},
-  "enhancedProjectData": {
-    "fileProjectMap": {
-      "Inputs/Zotero/tsvetkova2024a.md": {
-        "project": "Zotero",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Zotero/Song2019b.md": {
-        "project": "Zotero",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Zotero/song2024c.md": {
-        "project": "Zotero",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Zotero/ortman2015a.md": {
-        "project": "Zotero",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Zotero/Improving representation of collective memory in socio‐hydrological models and new insights into .md": {
-        "project": "Zotero",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Zotero/Quantifying the effects of institutional shifts on water governance in the Yellow River Basin.md": {
-        "project": "Zotero",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Zotero/Identifying Regime Transitions for Water Governance in the Yellow River Basin, China.md": {
-        "project": "Zotero",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Zotero/Decreased virtual water outflows from the Yellow River basin are increasingly critical to China.md": {
-        "project": "Zotero",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Zotero/Decoupling of SDGs followed by re-coupling as sustainable development progresses.md": {
-        "project": "Zotero",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Clippings/十二月河畔探戈.md": {
-        "project": "Clippings",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Books/科学革命的结构.md": {
-        "project": "Books",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Inputs/Books/逃避主义.md": {
-        "project": "Books",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/demo/一篇论文.md": {
-        "project": "demo",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/demo/第一个笔记.md": {
-        "project": "demo",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/demo/引言.md": {
-        "project": "demo",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/demo/Index.md": {
-        "project": "demo",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/用户答疑/地理视图.md": {
-        "project": "用户答疑",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/用户答疑/和 Zotero 的联动.md": {
-        "project": "用户答疑",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/用户答疑/使用示例仓库.md": {
-        "project": "用户答疑",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/设计理念/核心设计理念.md": {
-        "project": "设计理念",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/设计理念/未来功能规划.md": {
-        "project": "设计理念",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/设计理念/最后的碎碎念.md": {
-        "project": "设计理念",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/设计理念/是否适用于你.md": {
-        "project": "设计理念",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/进阶订制/自定义外观.md": {
-        "project": "进阶订制",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/进阶订制/笔记导出模板.md": {
-        "project": "进阶订制",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/进阶订制/笔记关联逻辑.md": {
-        "project": "进阶订制",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/进阶订制/文献笔记属性.md": {
-        "project": "进阶订制",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/功能介绍/日常记录.md": {
-        "project": "功能介绍",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/功能介绍/追踪学者和组织.md": {
-        "project": "功能介绍",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/功能介绍/管理科研项目.md": {
-        "project": "功能介绍",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/功能介绍/撰写长文本.md": {
-        "project": "功能介绍",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/功能介绍/文献阅读笔记.md": {
-        "project": "功能介绍",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/功能介绍/导出学术文档.md": {
-        "project": "功能介绍",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/功能介绍/撰写输出笔记.md": {
-        "project": "功能介绍",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/PaperBell用户手册.md": {
-        "project": "PaperBell用户文档",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/index.md": {
-        "project": "PaperBell用户文档",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/插件一览/插件及其作用.md": {
-        "project": "插件一览",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Outputs/PaperBell用户文档/插件一览/PaperBell专属插件.md": {
-        "project": "插件一览",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Persons/Scholars/武旭同.md": {
-        "project": "Scholars",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Persons/Scholars/宋爽.md": {
-        "project": "Scholars",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Projects/PaperBell.md": {
-        "project": "Projects",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Projects/ABSESpy.md": {
-        "project": "Projects",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Drafts/草稿测试.md": {
-        "project": "Drafts",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Locations/Places/Cotacachi.md": {
-        "project": "Places",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Locations/Institutes/中山大学.md": {
-        "project": "Institutes",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Locations/Institutes/北京师范大学.md": {
-        "project": "Institutes",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Locations/Institutes/Max Planck Institute of Geoanthropology.md": {
-        "project": "Institutes",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Cards/Concepts/交付成果.md": {
-        "project": "Concepts",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Cards/Concepts/科研项目.md": {
-        "project": "Concepts",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Cards/Concepts/agent-based model.md": {
-        "project": "Concepts",
-        "source": "foldername",
-        "readonly": true
-      },
-      "Cards/Concepts/Social ecological system.md": {
-        "project": "Concepts",
-        "source": "foldername",
-        "readonly": true
-      },
-      "40 - Obsidian/主页/00. 文件管理.md": {
-        "project": "主页",
-        "source": "foldername",
-        "readonly": true
-      },
-      "40 - Obsidian/主页/00. 导航.md": {
-        "project": "主页",
-        "source": "foldername",
-        "readonly": true
-      },
-      "40 - Obsidian/主页/00. 主页.md": {
-        "project": "主页",
-        "source": "foldername",
-        "readonly": true
-      },
-      "40 - Obsidian/脚本/Obsidian活动汇总.md": {
-        "project": "脚本",
-        "source": "foldername",
-        "readonly": true
-      },
-      "40 - Obsidian/脚本/每日总结汇总20220606.md": {
-        "project": "脚本",
-        "source": "foldername",
-        "readonly": true
-      },
-      "40 - Obsidian/脚本/修复项目统计20220530.md": {
-        "project": "脚本",
-        "source": "foldername",
-        "readonly": true
-      },
-      "40 - Obsidian/脚本/tasksCalendar/任务面板.md": {
-        "project": "tasksCalendar",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年03月27日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年06月02日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年06月30日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年02月11日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年04月01日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年03月01日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年02月04日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2024年08月07日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年02月02日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2024年06月02日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年02月01日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2025年01月21日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2024年08月13日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2024年05月15日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2024年05月14日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2024年05月12日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2024年05月13日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2024年05月11日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2023年09月07日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2023年08月27日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2023年08月29日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2023年08月28日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2023年06月22日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      },
-      "00 - 每日日记/DailyNote/2023年05月19日.md": {
-        "project": "DailyNote",
-        "source": "foldername",
-        "readonly": true
-      }
-    },
-    "fileMetadataMap": {
-      "Inputs/Zotero/tsvetkova2024a.md": {
-        "zotero-key": "VGREBJU6",
-        "zt-attachments": [
-          "20179"
-        ],
-        "title": "A new sociology of humans and machines",
-        "citekey": "tsvetkova2024a",
-        "tags": [
-          "paper",
-          "B",
-          "G"
-        ],
-        "cate": "论文",
-        "concepts": [
-          "cooperation",
-          "collective",
-          "⭐⭐",
-          "AI"
-        ],
-        "read": [
-          "👀浏览"
-        ],
-        "source": [
-          "💻更新"
-        ],
-        "authors": [
-          "Milena Tsvetkova",
-          "Taha Yasseri",
-          "Niccolo Pescetelli",
-          "Tobias Werner"
-        ],
-        "journal": "Nature Human Behaviour",
-        "paper_date": 2024,
-        "date": "2025-06-09",
-        "important": false
-      },
-      "Inputs/Zotero/Song2019b.md": {
-        "zotero-key": "88UF95RY",
-        "zt-attachments": [
-          "2935"
-        ],
-        "title": "社会—生态系统适应性治理研究进展与展望",
-        "citekey": "Song2019b",
-        "tags": [
-          "paper",
-          "project/PaperBell",
-          "🔤有英译🔤"
-        ],
-        "cate": "论文",
-        "concepts": [
-          "SES"
-        ],
-        "read": [
-          "🤔精读"
-        ],
-        "source": [
-          "📚推荐"
-        ],
-        "authors": [
-          "爽 宋",
-          "帅 王",
-          "伯杰 傅",
-          "海滨 陈",
-          "焱序 刘",
-          "文武 赵"
-        ],
-        "journal": "地理学报",
-        "paper_date": 2019,
-        "date": "2025-05-18",
-        "important": false,
-        "abstract": "社会—生态系统(SES)由社会子系统、生态子系统及两者的交互作用构成,具有不同于社会系统或生态系统单独具有的结构、功能和复杂特征。社会—生态系统适应性治理旨在通过适应性的社会权利分配与行为决策机制,使社会—生态系统能够在动态条件下可持续地保障人类福祉。适应性治理理论的形成受到\"公共池塘资源管理\"\"韧性\"和\"治理\"3方面理论的影响,并为\"转型治理\"与\"协作治理\"提供了建构基础。该理论具有以下3个主要目的:①理解和应对社会—生态系统多稳态、非线性、不确定性、整体性以及复杂性;②建立非对抗性的社会结构、权利分配制度以及行为决策体系,匹配社会子系统与自然子系统;③通过综合方法管理生态系统,使其可持续提供生态系统服务。因此,面对人类行为主导地表过程的\"人类世\",实现适应性治理有助于应对社会—生态系统的复杂性与不确定性。鉴于中国的生态环境正处于迅速变化时期,且中国与世界各国间的相互影响日益复杂,未来研究可重点关注以下3个方面:①理解耦合系统的多元互动过程,增强适应能力;②强调社会—生态系统的整体性研究;③提高环境变化背景下理解和预测系统动态的能力。\n"
-      },
-      "Inputs/Zotero/song2024c.md": {
-        "zotero-key": "4RJD7HVV",
-        "zt-attachments": [
-          "13322"
-        ],
-        "title": "ABSESpy: An agent-based modeling framework for social-ecological systems",
-        "citekey": "song2024c",
-        "tags": [
-          "paper",
-          "project/PaperBell"
-        ],
-        "cate": "论文",
-        "concepts": [
-          "⭐⭐",
-          "corr:2"
-        ],
-        "read": "✅初读",
-        "source": "💻更新",
-        "authors": [
-          "Shuang Song",
-          "Shuai Wang",
-          "Chentai Jiao",
-          "Elías José Mantilla Ibarra"
-        ],
-        "journal": "Journal of Open Source Software",
-        "paper_date": 2024,
-        "date": "2025-03-01",
-        "important": true,
-        "abstract": "Song et al., (2024). ABSESpy: An agent-based modeling framework for social-ecological systems. Journal of Open Source Software, 9(96), 6298, https://doi.org/10.21105/joss.06298"
-      },
-      "Inputs/Zotero/ortman2015a.md": {
-        "zotero-key": "PEDZAEC5",
-        "zt-attachments": [
-          "18941"
-        ],
-        "title": "Settlement scaling and increasing returns in an ancient society",
-        "citekey": "ortman2015a",
-        "tags": [
-          "paper",
-          "C/archaeology",
-          "P/Chris"
-        ],
-        "cate": "论文",
-        "concepts": [
-          "to-read",
-          "scale",
-          "city",
-          "⭐⭐"
-        ],
-        "read": "👀浏览",
-        "source": "📚推荐",
-        "authors": [
-          "Scott G. Ortman",
-          "Andrew H. F. Cabaniss",
-          "Jennie O. Sturm",
-          "Luís M. A. Bettencourt"
-        ],
-        "journal": "Science Advances",
-        "paper_date": 2015,
-        "date": "2025-02-08",
-        "important": false,
-        "abstract": "A key property of modern cities is increasing returns to scale—the finding that many socioeconomic outputs increase more rapidly than their population size. Recent theoretical work proposes that this phenomenon is the result of general network effects typical of human social networks embedded in space and, thus, is not necessarily limited to modern settlements. We examine the extent to which increasing returns are apparent in archaeological settlement data from the pre-Hispanic Basin of Mexico. We review previous work on the quantitative relationship between population size and average settled area in this society and then present a general analysis of their patterns of monument construction and house sizes. Estimated scaling parameter values and residual statistics support the hypothesis that increasing returns to scale characterized various forms of socioeconomic production available in the archaeological record and are found to be consistent with key expectations from settlement scaling theory. As a consequence, these results provide evidence that the essential processes that lead to increasing returns in contemporary cities may have characterized human settlements throughout history, and demonstrate that increasing returns do not require modern forms of political or economic organization."
-      },
-      "Inputs/Zotero/Improving representation of collective memory in socio‐hydrological models and new insights into .md": {
-        "zotero-key": "QZWXM3EV",
-        "zt-attachments": [
-          "2939"
-        ],
-        "title": "Improving representation of collective memory in socio‐hydrological models and new insights into flood risk management",
-        "citekey": "song2021a",
-        "tags": [
-          "paper",
-          "SC/PM/003",
-          "SC/PM/016",
-          "project/PaperBell"
-        ],
-        "cate": "论文",
-        "concepts": [
-          "modelling",
-          "memory"
-        ],
-        "read": "✅初读",
-        "source": "🔍检索",
-        "authors": [
-          "Shuang Song",
-          "Shuai Wang",
-          "Bojie Fu",
-          "Yuxiang Dong",
-          "Yanxu Liu",
-          "Haibin Chen",
-          "Yaping Wang"
-        ],
-        "journal": "Journal of Flood Risk Management",
-        "paper_date": 2021,
-        "date": "2024-04-25",
-        "important": true,
-        "abstract": "Collective memory plays a controlling role in adaptation to potential flood risks, by learning from past disasters. However, with little quantitative empirical data, previous socio-hydrological models have conceptualized the decaying process of flood memory in an oversimple approach. Here, based on survey data of 683 respondents on Ningxia Floodplain, we confirmed that flood memory decays overtime via two channels: oral communication (communicative memory) and physical recording of information (cultural memory). Using the Universal Decay Model (UDM) proposed by previous researchers provides better fitting of results to the decay of flooding memory (adjusted R2 coefficient are 0.97, 0.90, 0.95 when data of all, rural or urban respondents used, respectively) compared with the original exponential model (adjusted R2 coefficient are 0.91, 0.74, 0.59, corresponding). Then, significantly reduced losses for the same flood sequence predicted by integrating the UDM into a sociohydrological model by 16% and the differences between different clusters (urban and rural respondents) can even reach 22.81%. These differences suggest that previous socio-hydrological models have been too simplistic in their conceptualizations of decaying processes associated with collective memory, which may have limited deeper insights into flood risk management."
-      },
-      "Inputs/Zotero/Quantifying the effects of institutional shifts on water governance in the Yellow River Basin.md": {
-        "zotero-key": "L3298VD7",
-        "zt-attachments": [
-          "12970"
-        ],
-        "title": "Quantifying the effects of institutional shifts on water governance in the Yellow River Basin: A social-ecological system perspective",
-        "citekey": "song2024c",
-        "tags": [
-          "paper",
-          "P/宋爽",
-          "SC/PM/分水政策效应",
-          "project/PaperBell"
-        ],
-        "cate": "论文",
-        "concepts": [],
-        "read": "🤔精读",
-        "source": "📚推荐",
-        "authors": [
-          "Shuang Song",
-          "Huiyu Wen",
-          "Shuai Wang",
-          "Xutong Wu",
-          "Graeme S. Cumming",
-          "Bojie Fu"
-        ],
-        "journal": "Journal of Hydrology",
-        "paper_date": 2024,
-        "date": "2024-05-13",
-        "important": true,
-        "abstract": "Water governance in river basins worldwide faces challenges due to complex socio-economic and environmental factors. In the Yellow River Basin (YRB), two major institutional shifts, the 1987 Water Allocation Scheme (87-WAS) and the 1998 Unified Basin Regulation (98-UBR), aimed to address water allocation and usage issues. This study quantifies the net effects of these institutional shifts on water use within the YRB and analyzes the underlying reasons for their success or failure. We employ a Differenced Synthetic Control method to assess the impacts of the institutional shifts. Our analysis suggests that the 87-WAS unexpectedly increased water use by 5.75%, while the 98-UBR successfully reduced water use as anticipated. Our research highlights the role of institutional structures in governance policies, demonstrating that the mismatched structure of the 87-WAS led to increased competition and exploitation of water resources, while the 98-UBR, basin-wide authority and stronger connections between stakeholders, resulted in improved water governance. Our study underscores the importance of designing institutions that are consistent with the scale of the ecological system, promote cooperation among stakeholders, and adapt to changing social-ecological system (SES) contexts. As outdated and inflexible water quotas may no longer meet the demands of sustainable development in the YRB, policymakers must consider the potential consequences of institutional shifts and their impact on water use and sustainability."
-      },
-      "Inputs/Zotero/Identifying Regime Transitions for Water Governance in the Yellow River Basin, China.md": {
-        "zotero-key": "VBADD8CI",
-        "zt-attachments": [
-          "12924"
-        ],
-        "title": "Identifying Regime Transitions for Water Governance in the Yellow River Basin, China",
-        "citekey": "song2023a",
-        "tags": [
-          "paper",
-          "project/PaperBell"
-        ],
-        "cate": "论文",
-        "concepts": [],
-        "read": "✅初读",
-        "source": "📚推荐",
-        "authors": [
-          "Shuang Song",
-          "Shuai Wang",
-          "Xutong Wu",
-          "Yongping Wei",
-          "Graeme S. Cumming",
-          "Yue Qin",
-          "Xilin Wu",
-          "Bojie Fu"
-        ],
-        "journal": "Water Resources Research",
-        "paper_date": 2023,
-        "date": "2024-03-03",
-        "important": true,
-        "abstract": "Water governance determines “who gets water, when, and how” in most large river basins. Shifts in water governance regimes from natural to social-ecological or “hydrosocial” carry profound implications for human wellbeing; identifying regime changes in water governance is critical to navigating social-ecological transitions and guiding sustainability. We characterized water governance along with the three main aspects—stress, purpose, and allocation—to develop a quantitative integrated water governance index (IWGI) at a basin scale. Applying the IWGI to the rapidly changing Yellow River Basin (YRB) in China clarifies shifts in water governance between massive supply, transformation governance, and adaptation-oriented regimes. In the YRB, the underlying causes of regime shifts were increasing water supply and demand before the governance transformation and re-allocation and regulation after the change. The IWGI offers a comprehensive and straightforward approach to linking water governance regimes to sustainability, providing valuable insights into hydrosocial transitions."
-      },
-      "Inputs/Zotero/Decreased virtual water outflows from the Yellow River basin are increasingly critical to China.md": {
-        "zotero-key": "Z46ZSU7C",
-        "zt-attachments": [
-          "3477"
-        ],
-        "title": "Decreased virtual water outflows from the Yellow River basin are increasingly critical to China",
-        "citekey": "song2022a",
-        "tags": [
-          "paper",
-          "SC/PM/黄河分水模型",
-          "project/PaperBell"
-        ],
-        "cate": "论文",
-        "concepts": [
-          "water"
-        ],
-        "read": "👀浏览",
-        "source": "📚推荐",
-        "authors": [
-          "Shuang Song",
-          "Shuai Wang",
-          "Xutong Wu",
-          "Yongyuan Huang",
-          "Bojie Fu"
-        ],
-        "journal": "Hydrology and Earth System Sciences",
-        "paper_date": 2022,
-        "date": "2024-05-06",
-        "important": true,
-        "abstract": "Abstract.</strong> Water scarcity is an emerging threat to food security and socio-economic prosperity, and it is crucial to assess crop production response to water scarcity in large river basins. The water footprint, which considers water use in supply chains, provides a powerful tool for assessing the contributions of water resources within a certain region by tracking the volume and structure of virtual water flows. In this study of the structure of the water footprint network from a complexity perspective, we reassessed the significance of water resources for crop services in a large river basin with a severe water shortage – the Yellow River basin (YRB) of China. The temporal increase of the complexity index indicated that the virtual water outflows (VWFs) from the YRB were becoming increasingly critical to China; i.e. the ability of YRB to produce crops boosted the difficulty of its water being replaced by water exporting from other basins. Decomposition of complexity suggested that during the 1980s to 2000s, the temporally increased complexity was due mainly to the lack of competitors and the increasing uniqueness of crops supporting VWFs. This complexity deeply embedded the YRB into the footprints of a water network that facilitated further development with constrained water resources. Still, it also reinforced reliance from other regions on YRB's scarce water. Based on this analysis, we suggest that resource regulation should be carried out appropriately to ensure ecological sustainability and high-quality development of river basins."
-      },
-      "Inputs/Zotero/Decoupling of SDGs followed by re-coupling as sustainable development progresses.md": {
-        "zotero-key": "JM3T7KEC",
-        "zt-attachments": [
-          "1834"
-        ],
-        "title": "Decoupling of SDGs followed by re-coupling as sustainable development progresses",
-        "citekey": "wu2022b",
-        "tags": [
-          "paper",
-          "project/PaperBell"
-        ],
-        "cate": "论文",
-        "concepts": [
-          "social-ecological system"
-        ],
-        "read": "🤔精读",
-        "source": "📚推荐",
-        "authors": [
-          "Xutong Wu",
-          "Bojie Fu",
-          "Shuai Wang",
-          "Shuang Song",
-          "Yingjie Li",
-          "Zhenci Xu",
-          "Yongping Wei",
-          "Jianguo Liu"
-        ],
-        "journal": "Nature Sustainability",
-        "paper_date": 2022,
-        "date": "2024-04-30",
-        "important": true
-      },
-      "Inputs/Clippings/十二月河畔探戈.md": {
-        "title": "十二月|河畔探戈 | Twist",
-        "source": "https://www.songshgeo.com/2024/12/21/yue_guang/he_pan_tan_ge/",
-        "author": null,
-        "published": null,
-        "created": "2025-02-04",
-        "description": "A geographer who also travels.",
-        "tags": [
-          "clippings"
-        ]
-      },
-      "Inputs/Books/科学革命的结构.md": {
-        "name": "科学革命的结构",
-        "cover": "https://img1.doubanio.com/view/subject/l/public/s24227318.jpg",
-        "tags": [
-          "reading",
-          "SC/职业"
-        ],
-        "douban_url": "https://book.douban.com/subject/20376550/",
-        "author": "[美]托马斯·库恩/[美]伊安·哈金(导读)",
-        "isbn": 9787301214268,
-        "rating": 9,
-        "banner": "https://img1.doubanio.com/view/subject/l/public/s24227318.jpg",
-        "banner_icon": "📚",
-        "publish": "北京大学出版社",
-        "pagecount": 252,
-        "date": "2023-09-06",
-        "star": 5,
-        "banner_y": 0.5
-      },
-      "Inputs/Books/逃避主义.md": {
-        "name": "逃避主义",
-        "cover": "https://img2.doubanio.com/view/subject/l/public/s1455241.jpg",
-        "tags": [
-          "reading",
-          "L"
-        ],
-        "douban_url": "https://book.douban.com/subject/1438462/",
-        "author": "段义孚",
-        "isbn": 9787543456853,
-        "rating": 8.5,
-        "banner": "https://img2.doubanio.com/view/subject/l/public/s1455241.jpg",
-        "banner_icon": "📚",
-        "publish": "河北教育出版社",
-        "pagecount": 327,
-        "date": "2023-09-07",
-        "star": 5
-      },
-      "Outputs/demo/一篇论文.md": {
-        "title": "论文题目",
-        "date": "2025-03-01",
-        "author": "用户作者"
-      },
-      "Outputs/demo/第一个笔记.md": {
-        "cate": "引言",
-        "date": "2025-03-01",
-        "tags": [
-          "output",
-          "project/#project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/引言.jpg",
-        "longform": true
-      },
-      "Outputs/demo/引言.md": {
-        "cate": "引言",
-        "date": "2025-03-01",
-        "tags": [
-          "output",
-          "project/#project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/引言.jpg",
-        "longform": true
-      },
-      "Outputs/demo/Index.md": {
-        "longform": {
-          "format": "scenes",
-          "title": "demo",
-          "workflow": "CompileWithTitledFormatters",
-          "sceneFolder": "/",
-          "scenes": [],
-          "ignoredFiles": []
-        }
-      },
-      "Outputs/PaperBell用户文档/用户答疑/地理视图.md": {
-        "cate": "讨论",
-        "date": "2024-09-29",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/讨论.jpg",
-        "longform": true,
-        "title": "Map View 地理视图"
-      },
-      "Outputs/PaperBell用户文档/用户答疑/和 Zotero 的联动.md": {
-        "cate": "方法",
-        "date": "2024-06-12",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "author": [
-          "Shuang Song"
-        ],
-        "longform": false,
-        "title": "关于和 Zotero 的联动问题",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/用户答疑/使用示例仓库.md": {
-        "cate": "方法",
-        "date": "2024-06-12",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "author": [
-          "Shuang Song"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": false,
-        "title": "关于如何使用示例仓库的问题",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/设计理念/核心设计理念.md": {
-        "cate": "结果",
-        "date": "2024-05-13",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "author": [
-          "Shuang Song"
-        ],
-        "banner": "40 - Obsidian/img/结果.jpg",
-        "longform": false,
-        "title": "核心设计理念",
-        "banner_icon": "🎯"
-      },
-      "Outputs/PaperBell用户文档/设计理念/未来功能规划.md": {
-        "cate": "方法",
-        "date": "2025-02-04",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/讨论.jpg",
-        "longform": false,
-        "banner_icon": "🧭",
-        "title": "未来功能规划"
-      },
-      "Outputs/PaperBell用户文档/设计理念/最后的碎碎念.md": {
-        "cate": "讨论",
-        "date": "2024-05-13",
-        "tags": [
-          "output",
-          "project/PaperBell",
-          "SC/职业"
-        ],
-        "banner": "40 - Obsidian/img/讨论.jpg",
-        "longform": false,
-        "title": "写在最后的碎碎念",
-        "banner_icon": "💬"
-      },
-      "Outputs/PaperBell用户文档/设计理念/是否适用于你.md": {
-        "cate": "引言",
-        "date": "2023-09-20",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/引言.jpg",
-        "author": [
-          "Shuang Song"
-        ],
-        "longform": false,
-        "title": "是否适用于你？",
-        "banner_icon": "🤔"
-      },
-      "Outputs/PaperBell用户文档/进阶订制/自定义外观.md": {
-        "cate": "方法",
-        "date": "2024-06-12",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "author": [
-          "Shuang Song"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": false,
-        "title": "订制示例库外观",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/进阶订制/笔记导出模板.md": {
-        "cate": "方法",
-        "date": "2025-01-21",
-        "tags": [
-          "output",
-          "project/PaperBell",
-          "输出系统"
-        ],
-        "author": [
-          "Shuang Song"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": false,
-        "title": "订制笔记导出模板",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/进阶订制/笔记关联逻辑.md": {
-        "cate": "方法",
-        "date": "2024-06-12",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "author": [
-          "Shuang Song"
-        ],
-        "longform": false,
-        "title": "修改笔记间关联逻辑",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/进阶订制/文献笔记属性.md": {
-        "cate": "方法",
-        "date": "2025-01-21",
-        "author": [
-          "Shuang Song"
-        ],
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "title": "自定义标签系统",
-        "longform": false,
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/功能介绍/日常记录.md": {
-        "cate": "方法",
-        "date": "2024-05-14",
-        "author": [
-          "Shuang Song"
-        ],
-        "tags": [
-          "output",
-          "project/PaperBell",
-          "输入系统"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "title": "日常记录",
-        "longform": true,
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/功能介绍/追踪学者和组织.md": {
-        "cate": "方法",
-        "date": "2024-05-13",
-        "author": [
-          "Shuang Song"
-        ],
-        "tags": [
-          "output",
-          "project/PaperBell",
-          "输入系统"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": true,
-        "title": "追踪学术组织",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/功能介绍/管理科研项目.md": {
-        "cate": "方法",
-        "date": "2024-05-13",
-        "author": [
-          "Shuang Song"
-        ],
-        "tags": [
-          "output",
-          "project/PaperBell",
-          "管理系统"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": true,
-        "title": "管理科研项目",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/功能介绍/撰写长文本.md": {
-        "cate": "方法",
-        "date": "2024-08-20",
-        "tags": [
-          "output",
-          "project/PaperBell",
-          "输出系统"
-        ],
-        "author": [
-          "Shuang Song"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": true,
-        "title": "撰写长文本",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/功能介绍/文献阅读笔记.md": {
-        "cate": "方法",
-        "date": "2024-05-14",
-        "tags": [
-          "output",
-          "project/PaperBell",
-          "输入系统"
-        ],
-        "author": [
-          "Shuang Song"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": true,
-        "title": "文献阅读笔记",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/功能介绍/导出学术文档.md": {
-        "cate": "方法",
-        "date": "2024-08-20",
-        "tags": [
-          "output",
-          "project/PaperBell",
-          "输出系统"
-        ],
-        "author": [
-          "Shuang Song"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": true,
-        "title": "导出学术文档",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/功能介绍/撰写输出笔记.md": {
-        "cate": "方法",
-        "date": "2024-05-14",
-        "tags": [
-          "output",
-          "project/PaperBell",
-          "输出系统"
-        ],
-        "author": [
-          "Shuang Song"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": true,
-        "title": "撰写输出笔记",
-        "banner_icon": "🧭"
-      },
-      "Outputs/PaperBell用户文档/PaperBell用户手册.md": {
-        "title": "PaperBell用户手册",
-        "date": "2025-03-01",
-        "author": "Shuang Song"
-      },
-      "Outputs/PaperBell用户文档/index.md": {
-        "longform": {
-          "format": "scenes",
-          "title": "PaperBell用户文档",
-          "workflow": "CompileWithTitledFormatters",
-          "sceneFolder": "功能介绍",
-          "scenes": [],
-          "ignoredFiles": [
-            "PaperBell用户手册"
-          ]
-        },
-        "title": "PaperBell 用户文档"
-      },
-      "Outputs/PaperBell用户文档/插件一览/插件及其作用.md": {
-        "cate": "方法",
-        "date": "2024-08-21",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": true,
-        "banner_icon": "🔌",
-        "title": "使用的社区插件"
-      },
-      "Outputs/PaperBell用户文档/插件一览/PaperBell专属插件.md": {
-        "cate": "方法",
-        "date": "2025-02-04",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": true,
-        "banner_icon": "🔌",
-        "title": "PaperBell 专属插件"
-      },
-      "Persons/Scholars/武旭同.md": {
-        "aliases": [
-          "Xutong Wu"
-        ],
-        "gender": "男",
-        "birthday": null,
-        "email": [
-          "wuxutong@bnu.edu.cn"
-        ],
-        "title": [
-          "教授"
-        ],
-        "website": "https://www.researchgate.net/profile/Xutong-Wu",
-        "photo": "https://geot.bnu.edu.cn/Public/upload/2023/11/02/65431cd431162.JPG",
-        "tags": [
-          "scholar"
-        ],
-        "institute": [
-          "北京大学",
-          "北京师范大学"
-        ],
-        "name": "武旭同",
-        "following_date": "2024-05-15"
-      },
-      "Persons/Scholars/宋爽.md": {
-        "name": "宋爽",
-        "aliases": [
-          "SONG Shuang",
-          "爽 宋",
-          "Shuang Song"
-        ],
-        "gender": "男",
-        "birthday": "1996-12-24",
-        "email": [
-          "songshgeo@bnu.edu.cn"
-        ],
-        "title": [
-          "博士"
-        ],
-        "website": "https://www.songshgeo.com/",
-        "photo": "https://avatars.githubusercontent.com/u/45836839?v=4",
-        "institute": [
-          "北京师范大学",
-          "中山大学",
-          "Max Planck Institute of Geoanthropology"
-        ],
-        "abstract": "宋爽是一名 Max Planck Institute of Geoanthropology （马普所-地球人类学所）的博士后",
-        "motto": "A geographer who also travels.",
-        "cssclasses": null,
-        "tags": [
-          "scholar"
-        ]
-      },
-      "Projects/PaperBell.md": {
-        "tags": [
-          "project/open",
-          "project/index"
-        ],
-        "target": "tasks",
-        "status": "进行中",
-        "start": "2023-09-27",
-        "end": null,
-        "workload": 3,
-        "duty": "负责人",
-        "url": "[🔗链接](obsidian://advanced-uri?vault=PaperBell&commandid=obsidian-projects%253Ashow%253A677c0e1a-7e67-453d-aa4e-24d9a2a5514f)"
-      },
-      "Projects/ABSESpy.md": {
-        "tags": [
-          "project/open",
-          "project/index"
-        ],
-        "target": "tasks",
-        "status": "已完成",
-        "start": "2024-05-13",
-        "end": null,
-        "workload": 5,
-        "duty": "负责人",
-        "url": "[🔗链接](obsidian://advanced-uri?vault=PaperBell&commandid=obsidian-projects%253Ashow%253A268552b6-58ed-4e55-922a-024f6e13b57c)"
-      },
-      "Drafts/草稿测试.md": {
-        "cate": "方法",
-        "date": "2025-03-26",
-        "tags": [
-          "output",
-          "project/PaperBell"
-        ],
-        "banner": "40 - Obsidian/img/方法.jpg",
-        "longform": false
-      },
-      "Locations/Places/Cotacachi.md": {
-        "location": [
-          0.3005297707253397,
-          -78.26421272091355
-        ],
-        "name": "Cotacachi",
-        "banner": "40 - Obsidian/附件/banners/global-tracking-banner.jpg",
-        "banner_icon": "🌍",
-        "aliases": [
-          "科塔卡奇"
-        ],
-        "tags": [
-          "city",
-          "trip"
-        ]
-      },
-      "Locations/Institutes/中山大学.md": {
-        "abbr": "SYSU",
-        "aliases": [
-          "Sun-Yat Sen University"
-        ],
-        "website": "https://www.sysu.edu.cn",
-        "location": [
-          23.125711291254156,
-          113.29663110686461
-        ],
-        "name": "中山大学",
-        "tags": [
-          "university"
-        ],
-        "logo": "https://pic1.zhimg.com/80/v2-23c1c0f458f1b11c826bf03f3a56da48_1440w.webp"
-      },
-      "Locations/Institutes/北京师范大学.md": {
-        "abbr": "BNU",
-        "aliases": [
-          "Běijīng Shīfàn Dàxué",
-          "北京师范大学"
-        ],
-        "website": "https://www.bnu.edu.cn",
-        "location": [
-          39.9075,
-          116.39723
-        ],
-        "logo": "https://vipyidiancom.oss-cn-beijing.aliyuncs.com/vipyidian.com/article/14908402371799772.jpg",
-        "name": "北京师范大学",
-        "tags": [
-          "university"
-        ]
-      },
-      "Locations/Institutes/Max Planck Institute of Geoanthropology.md": {
-        "abbr": "MPI-GEA",
-        "aliases": [
-          null
-        ],
-        "website": "https://www.gea.mpg.de/",
-        "location": [
-          50.92878,
-          11.5899
-        ],
-        "logo": "https://songshgeo-picgo-1302043007.cos.ap-beijing.myqcloud.com/uPic/Max-Planck-Gesellschaft-logo-F65A54F835-seeklogo.com.png",
-        "name": "Max Planck Institute of Geoanthropology",
-        "tags": [
-          "university"
-        ]
-      },
-      "Cards/Concepts/交付成果.md": {
-        "name": "交付成果",
-        "aliases": [
-          "Outputs"
-        ],
-        "ch": "交付成果",
-        "tags": [
-          "concept"
-        ]
-      },
-      "Cards/Concepts/科研项目.md": {
-        "name": "科研项目",
-        "aliases": [
-          "Research Project"
-        ],
-        "ch": "科研项目",
-        "tags": [
-          "concept"
-        ]
-      },
-      "Cards/Concepts/agent-based model.md": {
-        "aliases": [
-          "multi-agents model",
-          "Agent-based modelling",
-          "多主体模型",
-          "多主体建模"
-        ],
-        "ch": "多主体模型",
-        "tags": [
-          "concept"
-        ]
-      },
-      "Cards/Concepts/Social ecological system.md": {
-        "name": "social ecological system",
-        "aliases": [
-          "social-ecological system",
-          "社会-生态系统"
-        ],
-        "ch": "社会-生态系统",
-        "tags": [
-          "concept"
-        ]
-      },
-      "40 - Obsidian/主页/00. 文件管理.md": {
-        "searchTerm": "reading",
-        "searchType": "tags",
-        "searchDate": "2023-08-24"
-      },
-      "40 - Obsidian/主页/00. 导航.md": {
-        "cssclass": "rightlane"
-      },
-      "40 - Obsidian/主页/00. 主页.md": {
-        "cssclasses": [
-          "myhome"
-        ],
-        "status": "进行中",
-        "banner": "https://images.unsplash.com/photo-1488702953093-ac0820558db2?q=80&w=2670&auto=format&fit=crop&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
-        "banner_icon": "🏖️",
-        "banner_x": 0.48916,
-        "banner_y": 0.8,
-        "birthday": "2025-01-01"
-      },
-      "40 - Obsidian/脚本/tasksCalendar/任务面板.md": {
-        "cssclass": "rightlane max"
-      },
-      "00 - 每日日记/DailyNote/2025年03月27日.md": {
-        "date": "2025-03-27",
-        "tags": "DailyNote",
-        "week": "2025-13"
-      },
-      "00 - 每日日记/DailyNote/2025年06月02日.md": {
-        "date": "2025-06-02",
-        "tags": "DailyNote",
-        "week": "2025-23"
-      },
-      "00 - 每日日记/DailyNote/2025年06月30日.md": {
-        "date": "2025-06-30",
-        "tags": "DailyNote",
-        "week": "2025-27"
-      },
-      "00 - 每日日记/DailyNote/2025年02月11日.md": {
-        "date": "2025-02-11",
-        "tags": "DailyNote",
-        "week": "2025-07"
-      },
-      "00 - 每日日记/DailyNote/2025年04月01日.md": {
-        "date": "2025-04-01",
-        "tags": "DailyNote",
-        "week": "2025-14"
-      },
-      "00 - 每日日记/DailyNote/2025年03月01日.md": {
-        "date": "2025-03-01",
-        "tags": "DailyNote",
-        "week": "2025-09"
-      },
-      "00 - 每日日记/DailyNote/2025年02月04日.md": {
-        "date": "2025-02-04",
-        "tags": "DailyNote",
-        "week": "2025-06"
-      },
-      "00 - 每日日记/DailyNote/2024年08月07日.md": {
-        "date": "2024-08-07",
-        "tags": "DailyNote",
-        "week": "2024-32"
-      },
-      "00 - 每日日记/DailyNote/2025年02月02日.md": {
-        "date": "2025-02-02",
-        "tags": "DailyNote",
-        "week": "2025-05"
-      },
-      "00 - 每日日记/DailyNote/2024年06月02日.md": {
-        "date": "2024-06-02",
-        "tags": "DailyNote",
-        "week": "2024-22"
-      },
-      "00 - 每日日记/DailyNote/2025年02月01日.md": {
-        "date": "2025-02-01",
-        "tags": "DailyNote",
-        "week": "2025-05"
-      },
-      "00 - 每日日记/DailyNote/2025年01月21日.md": {
-        "date": "2025-01-21",
-        "tags": "DailyNote",
-        "week": "2025-04"
-      },
-      "00 - 每日日记/DailyNote/2024年08月13日.md": {
-        "date": "2024-08-13",
-        "tags": "DailyNote",
-        "week": "2024-33"
-      },
-      "00 - 每日日记/DailyNote/2024年05月15日.md": {
-        "date": "2024-05-15",
-        "tags": "DailyNote",
-        "week": "2024-20"
-      },
-      "00 - 每日日记/DailyNote/2024年05月14日.md": {
-        "date": "2024-05-14",
-        "tags": "DailyNote",
-        "week": "2024-20"
-      },
-      "00 - 每日日记/DailyNote/2024年05月12日.md": {
-        "date": "2024-05-12",
-        "tags": "DailyNote",
-        "week": "2024-20"
-      },
-      "00 - 每日日记/DailyNote/2024年05月13日.md": {
-        "date": "2024-05-13",
-        "tags": "DailyNote",
-        "week": "2024-20"
-      },
-      "00 - 每日日记/DailyNote/2024年05月11日.md": {
-        "date": "2024-05-11",
-        "tags": "DailyNote",
-        "week": "2024-20"
-      },
-      "00 - 每日日记/DailyNote/2023年09月07日.md": {
-        "date": "2023-09-07",
-        "tags": "DailyNote",
-        "week": "2023-36"
-      },
-      "00 - 每日日记/DailyNote/2023年08月27日.md": {
-        "date": "2023-08-27",
-        "tags": "DailyNote",
-        "week": "2023-34"
-      },
-      "00 - 每日日记/DailyNote/2023年08月29日.md": {
-        "date": "2023-08-29",
-        "tags": "DailyNote",
-        "week": "2023-35"
-      },
-      "00 - 每日日记/DailyNote/2023年08月28日.md": {
-        "date": "2023-08-28",
-        "tags": "DailyNote",
-        "week": "2023-35"
-      },
-      "00 - 每日日记/DailyNote/2023年06月22日.md": {
-        "date": "2023-09-07",
-        "tags": "DailyNote",
-        "week": "2023-36"
-      },
-      "00 - 每日日记/DailyNote/2023年05月19日.md": {
-        "date": "2023-09-07",
-        "tags": "DailyNote",
-        "week": "2023-36"
-      }
-    },
-    "projectConfigMap": {}
-  },
   "workspaces": {
     "version": 2,
-    "defaultWorkspaceId": "ws_1764410067355_a3rl1g5fn",
-    "activeWorkspaceId": "ws_1764410067355_a3rl1g5fn",
+    "defaultWorkspaceId": "ws_1784228973064_4w07to4xu",
+    "activeWorkspaceId": "ws_1784228973064_4w07to4xu",
     "order": [
-      "ws_1764410067355_a3rl1g5fn"
+      "ws_1784228973064_4w07to4xu"
     ],
     "byId": {
-      "ws_1764410067355_a3rl1g5fn": {
-        "id": "ws_1764410067355_a3rl1g5fn",
+      "ws_1784228973064_4w07to4xu": {
+        "id": "ws_1784228973064_4w07to4xu",
         "name": "Default",
-        "updatedAt": 1775390113606,
-        "settings": {
-          "fluentFilterState": {
-            "projects": {
-              "filters": {},
-              "selectedProject": "PaperBell",
-              "advancedFilter": {
-                "rootCondition": "all",
-                "filterGroups": [
-                  {
-                    "id": "fluent-proj-group-1775390113105",
-                    "groupCondition": "all",
-                    "filters": [
-                      {
-                        "id": "fluent-proj-filter-1775390113105",
-                        "property": "project",
-                        "condition": "is",
-                        "value": "PaperBell"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "viewMode": "tree"
-            },
-            "upcoming": {
-              "filters": {},
-              "selectedProject": "PaperBell",
-              "advancedFilter": {
-                "rootCondition": "all",
-                "filterGroups": [
-                  {
-                    "id": "fluent-proj-group-1766300205522",
-                    "groupCondition": "all",
-                    "filters": [
-                      {
-                        "id": "fluent-proj-filter-1766300205522",
-                        "property": "project",
-                        "condition": "is",
-                        "value": "PaperBell"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "viewMode": "list"
-            },
-            "inbox": {
-              "filters": {},
-              "selectedProject": "PaperBell",
-              "advancedFilter": {
-                "rootCondition": "all",
-                "filterGroups": [
-                  {
-                    "id": "fluent-proj-group-1766300205522",
-                    "groupCondition": "all",
-                    "filters": [
-                      {
-                        "id": "fluent-proj-filter-1766300205522",
-                        "property": "project",
-                        "condition": "is",
-                        "value": "PaperBell"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "viewMode": "list"
-            },
-            "today": {
-              "filters": {},
-              "advancedFilter": {
-                "rootCondition": "all",
-                "filterGroups": []
-              },
-              "viewMode": "list"
-            },
-            "flagged": {
-              "filters": {},
-              "advancedFilter": {
-                "rootCondition": "all",
-                "filterGroups": []
-              },
-              "viewMode": "list"
-            },
-            "forecast": {
-              "filters": {},
-              "selectedProject": "PaperBell",
-              "advancedFilter": {
-                "rootCondition": "all",
-                "filterGroups": [
-                  {
-                    "id": "fluent-proj-group-1764572995748",
-                    "groupCondition": "all",
-                    "filters": [
-                      {
-                        "id": "fluent-proj-filter-1764572995748",
-                        "property": "project",
-                        "condition": "is",
-                        "value": "PaperBell"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "viewMode": "list"
-            },
-            "review": {
-              "filters": {},
-              "advancedFilter": {
-                "rootCondition": "all",
-                "filterGroups": []
-              },
-              "viewMode": "list"
-            },
-            "calendar": {
-              "filters": {},
-              "advancedFilter": {
-                "rootCondition": "all",
-                "filterGroups": []
-              },
-              "viewMode": "list"
-            },
-            "tags": {
-              "filters": {},
-              "selectedProject": "PaperBell",
-              "advancedFilter": {
-                "rootCondition": "all",
-                "filterGroups": [
-                  {
-                    "id": "fluent-proj-group-1766300205522",
-                    "groupCondition": "all",
-                    "filters": [
-                      {
-                        "id": "fluent-proj-filter-1766300205522",
-                        "property": "project",
-                        "condition": "is",
-                        "value": "PaperBell"
-                      }
-                    ]
-                  }
-                ]
-              },
-              "viewMode": "list"
-            }
-          },
-          "fluentActiveViewId": "projects"
-        }
+        "updatedAt": 1784228973064,
+        "settings": {}
       }
     }
   }

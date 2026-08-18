@@ -1,0 +1,64 @@
+formulas:
+  当前机构: list(institute)[0]
+  论文题目: file.asLink(title)
+properties:
+  note.journal:
+    displayName: 期刊
+  note.paper_date:
+    displayName: 年份
+  note.email:
+    displayName: 邮箱
+  note.cate:
+    displayName: 类型
+  formula.论文题目:
+    displayName: 论文
+  formula.当前机构:
+    displayName: 当前机构
+views:
+  - type: table
+    name: 相关论文
+    filters:
+      and:
+        - file.hasTag("paper")
+        - or:
+            - keywords.containsAny(this.keywords)
+            - keywords.containsAny(this.aliases)
+            - keywords.contains(this.name)
+            - keywords.contains(this.ch)
+    order:
+      - formula.论文题目
+      - journal
+      - paper_date
+    sort:
+      - property: paper_date
+        direction: DESC
+    rowHeight: medium
+  - type: table
+    name: 相关学者
+    filters:
+      and:
+        - file.hasTag("scholar")
+        - or:
+            - keywords.containsAny(this.keywords)
+            - keywords.containsAny(this.aliases)
+            - keywords.contains(this.name)
+            - keywords.contains(this.ch)
+    order:
+      - file.name
+      - formula.当前机构
+      - email
+    rowHeight: medium
+    columnSize:
+      file.name: 120
+  - type: table
+    name: 围绕的输出
+    filters:
+      and:
+        - file.hasLink(this.file)
+        - or:
+            - file.inFolder("50 - Outputs")
+            - file.inFolder("40 - Projects")
+    order:
+      - file.name
+      - cate
+    rowHeight: medium

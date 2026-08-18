@@ -109,10 +109,10 @@
   "addTagWithNewline": false,
   "chatViewStyle": "default",
   "MomentsBackgroundImage": "https://images.pexels.com/photos/531767/pexels-photo-531767.jpeg",
-  "MomentsIcon": "40 - Obsidian/img/PaperBell.jpg",
+  "MomentsIcon": "00 - Obsidian/img/PaperBell.jpg",
   "MomentsQuote": "编织思维星图",
   "DefaultThemeForThino": "modern",
-  "LastUpdatedVersion": "3.0.13",
+  "LastUpdatedVersion": "3.0.29",
   "ShareToThinoWithText": false,
   "ShareToThinoWithTextAppend": "",
   "ShareToThinoWithTextPrepend": "",
@@ -202,6 +202,7 @@
   },
   "general": {
     "tokenExpiresAt": 0,
-    "userInfo": null
+    "userInfo": null,
+    "thinoDevice": null
   }
 }

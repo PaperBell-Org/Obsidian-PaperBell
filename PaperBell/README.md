@@ -2,6 +2,18 @@
 
 本仓库用来同步 PaperBell 的核心配置，从而让用户能够自动更新。
 
+## ⚠️ 不要把 API Key 提交进来
+
+本仓库会提交 `.obsidian/plugins/*/data.json`。Cards Wrangler 需要一个 LLM，但**随仓库分发的配置里
+`apiKey` 必须为空**。请用下面两种方式之一提供密钥：
+
+- **走 PaperBell host**（默认）：`configSource: "paperbell"`，由 PaperBell 插件统一派发 LLM 调用，
+  密钥永远不经过本插件。
+- **走系统钥匙串**：在插件设置里选一个 `apiKeySecretId`，密钥存进 Obsidian 的 keychain，只留一个 id 在
+  `data.json` 里。host 不可用或你拒绝授权时，插件会自动回落到这份本地配置。
+
+**不要**直接往设置页的 `apiKey` 里粘贴密钥——那会被写进 `data.json`，进而被 obsidian-git 提交、推送出去。
+
 ## 前提条件
 
 - 本地已经安装了 git
@@ -72,7 +84,7 @@ git commit -m "Merge template/main, `PaperBell` is up-to-date (version: `git rev
 - 建议保留远程版本的文件：
   - `.obsidian/workspaces.json`: 工作区配置
   - `.obsidian/plugins/**/manifest.json`: 插件的核心功能
-  - `40 - Obsidian/.`: 该文件夹内保留的模板文件，通常是 `PaperBell` 核心工作流所调用的
+  - `00 - Obsidian/.`: 该文件夹内保留的模板文件，通常是 `PaperBell` 核心工作流所调用的
 - 本仓库不追踪，因为通常不会做更改，或者 obsidian 会自动生成的文件：
   - `.obsidian/graph.json`: 图谱文件
   - `.obsidian/hotkeys.json`: 快捷键

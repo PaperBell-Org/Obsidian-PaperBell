@@ -1,0 +1,136 @@
+filters:
+  and:
+    - file.hasTag("project/index")
+    - file.inFolder("40 - Projects")
+    - '!file.name.startsWith("00.")'
+    - '!file.name.startsWith("01.")'
+    - note.archived != true
+formulas:
+  官网: link(url, "🌐")
+properties:
+  note.stage:
+    displayName: 阶段
+  note.type:
+    displayName: 类型
+  note.duty:
+    displayName: 角色
+views:
+  - type: paperbell-project-cards
+    name: 项目卡片
+    groupBy:
+      property: stage
+      direction: ASC
+    acronymProperty: note.acronym
+    bannerProperty: note.banner
+    keywordsProperty: note.keywords
+    milestoneTag: milestone
+    outputsFolder: 50 - Outputs
+    grantsFolder: 30 - Metadata/Grants
+    showKeywords: true
+    showCrossRefs: true
+  - type: cards
+    name: 项目概览
+    groupBy:
+      property: type
+      direction: ASC
+    order:
+      - file.name
+      - project
+      - long_name
+      - type
+      - stage
+      - start
+      - end
+      - formula.官网
+    image: note.banner
+    imageAspectRatio: 0.55
+  - type: table
+    name: 详细列表
+    order:
+      - file.name
+      - project
+      - acronym
+      - long_name
+      - type
+      - stage
+      - start
+      - end
+      - duty
+      - priority
+      - related
+      - formula.官网
+    sort:
+      - property: file.name
+        direction: DESC
+    columnSize:
+      file.name: 125
+      note.type: 80
+      note.stage: 80
+      note.related: 232
+  - type: cards
+    name: 进行中
+    filters:
+      and:
+        - stage == "进行"
+    order:
+      - file.name
+      - type
+      - stage
+      - start
+      - priority
+      - duty
+    sort:
+      - property: priority
+        direction: DESC
+    cardSize: 200
+    image: note.banner
+    subtitle: |
+      {{type}} · {{stage}}
+      开始于 {{start}}
+  - type: table
+    name: 已完成
+    filters:
+      and:
+        - stage == "完成"
+    order:
+      - file.name
+      - project
+      - long_name
+      - start
+      - end
+    sort:
+      - property: end
+        direction: DESC
+  - type: table
+    name: 项目产出
+    filters:
+      and:
+        - file.path.startsWith("50 - Outputs/")
+        - file.hasProperty("longform")
+        - note.longform != true
+        - note.longform != false
+        - note.archived != true
+    groupBy:
+      property: project
+      direction: ASC
+    order:
+      - project
+      - file.name
+      - title
+      - target
+    columnSize:
+      file.name: 200
+      note.project: 100
+      note.title: 300
+  - type: task-genius-gantt
+    name: 甘特图
+    viewMode: gantt
+    taskContent: file.basename
+    taskStatus: note.stage
+    taskPriority: note.priority
+    taskProject: note.project
+    taskTags: note.tags
+    taskDueDate: note.end
+    taskStartDate: note.start
+    taskCompletedDate: note.completionDate
+    taskContext: note.context

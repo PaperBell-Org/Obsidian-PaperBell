@@ -1,0 +1,22 @@
+filters:
+  and:
+    - file.path.startsWith("30 - Metadata/Scholars")
+properties:
+  note.title:
+    displayName: 称呼
+  note.email:
+    displayName: 邮箱
+views:
+  - type: table
+    name: 机构筛选
+    filters:
+      or:
+        - institute.containsAny(this.aliases)
+        - institute.containsAny(this.name)
+    order:
+      - file.name
+      - title
+      - email
+      - file.ctime
+    columnSize:
+      file.name: 89

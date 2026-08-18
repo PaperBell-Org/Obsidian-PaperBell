@@ -1,0 +1,20 @@
+{
+  "uiLanguage": "zh",
+  "uiLanguageMode": "follow",
+  "projectsFolder": "40 - Projects",
+  "outputsFolder": "50 - Outputs",
+  "grantsFolder": "30 - Metadata/Grants",
+  "projectTemplatePath": "00 - Obsidian/模板/项目模板.md",
+  "projectIndexTag": "project/index",
+  "acronymTagPrefix": "project/",
+  "milestoneTag": "milestone",
+  "grantTag": "grant",
+  "acronymKey": "acronym",
+  "keywordsKey": "keywords",
+  "bannerKey": "banner",
+  "projectKey": "project",
+  "doneMarkers": "xX",
+  "cancelledMarkers": "-",
+  "cardClickTarget": "taskGenius",
+  "confirmStagePromotion": true
+}

@@ -16,7 +16,7 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "40 - Obsidian/主页/00. 主页.md",
+                    "file": "00 - Obsidian/主页/00. 主页.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -130,7 +130,7 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "40 - Obsidian/主页/00. 导航.md",
+                    "file": "00 - Obsidian/主页/00. 导航.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -171,7 +171,7 @@
                 "state": {
                   "type": "backlink",
                   "state": {
-                    "file": "40 - Obsidian/主页/00. 主页.md",
+                    "file": "00 - Obsidian/主页/00. 主页.md",
                     "collapseAll": false,
                     "extraContext": false,
                     "sortOrder": "alphabetical",
@@ -219,7 +219,7 @@
                 "state": {
                   "type": "outline",
                   "state": {
-                    "file": "40 - Obsidian/主页/00. 主页.md",
+                    "file": "00 - Obsidian/主页/00. 主页.md",
                     "followCursor": false,
                     "showSearch": false,
                     "searchQuery": ""
@@ -307,7 +307,7 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "40 - Obsidian/主页/00. 主页.md",
+                    "file": "00 - Obsidian/主页/00. 主页.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -323,28 +323,27 @@
                   "type": "fluent-task-genius-view",
                   "state": {
                     "currentWorkspace": "ws_1764410067355_a3rl1g5fn",
-                    "viewMode": "tree",
+                    "viewMode": "list",
                     "viewModeByViewId": {
-                      "projects": "tree"
+                      "inbox": "list"
                     },
                     "searchQuery": "",
                     "filters": {},
                     "filterInputValue": "",
-                    "selectedProject": "PaperBell",
-                    "currentViewId": "projects"
+                    "currentViewId": "inbox"
                   },
                   "icon": "task-genius",
                   "title": "Task Genius"
                 }
               },
               {
-                "id": "09485baf3a99e2db",
+                "id": "fa083bcf57c18fae",
                 "type": "leaf",
                 "state": {
-                  "type": "section-view",
+                  "type": "paperbell-section-view",
                   "state": {},
-                  "icon": "lucide-ghost",
-                  "title": "section-view"
+                  "icon": "layout-dashboard",
+                  "title": "PaperBell Section"
                 }
               },
               {
@@ -378,7 +377,9 @@
                   "type": "file-explorer",
                   "state": {
                     "sortOrder": "alphabetical",
-                    "autoReveal": false
+                    "autoReveal": false,
+                    "showSearch": false,
+                    "searchQuery": ""
                   },
                   "icon": "lucide-folder-closed",
                   "title": "文件列表"
@@ -418,7 +419,7 @@
                   "type": "recent-files",
                   "state": {},
                   "icon": "clock",
-                  "title": "Recent Files"
+                  "title": "Recent files"
                 }
               }
             ]
@@ -452,7 +453,7 @@
                 "state": {
                   "type": "markdown",
                   "state": {
-                    "file": "40 - Obsidian/主页/00. 导航.md",
+                    "file": "00 - Obsidian/主页/00. 导航.md",
                     "mode": "preview",
                     "source": false,
                     "backlinks": false
@@ -475,7 +476,7 @@
           {
             "id": "a7f8c3e63a62398a",
             "type": "tabs",
-            "dimension": 29.061976549413735,
+            "dimension": 34.375,
             "children": [
               {
                 "id": "07fe512d7fcb8e7a",
@@ -493,7 +494,7 @@
                 "state": {
                   "type": "backlink",
                   "state": {
-                    "file": "40 - Obsidian/主页/00. 主页.md",
+                    "file": "00 - Obsidian/主页/00. 主页.md",
                     "collapseAll": false,
                     "extraContext": false,
                     "sortOrder": "alphabetical",
@@ -541,7 +542,7 @@
                 "state": {
                   "type": "outline",
                   "state": {
-                    "file": "40 - Obsidian/主页/00. 主页.md",
+                    "file": "00 - Obsidian/主页/00. 主页.md",
                     "followCursor": false,
                     "showSearch": false,
                     "searchQuery": ""
@@ -555,31 +556,18 @@
           {
             "id": "734145f4e30be57d",
             "type": "tabs",
-            "dimension": 70.93802345058626,
+            "dimension": 65.625,
             "children": [
-              {
-                "id": "87e3f56e33a53aee",
-                "type": "leaf",
-                "state": {
-                  "type": "VIEW_TYPE_LONGFORM_EXPLORER",
-                  "state": {},
-                  "icon": "longform",
-                  "title": "Longform"
-                }
-              },
               {
                 "id": "5ee6d50790915b94",
                 "type": "leaf",
                 "state": {
                   "type": "zotero-annotation-view",
                   "state": {
-                    "file": "40 - Obsidian/主页/00. 主页.md",
-                    "itemId": -1,
-                    "attachmentId": -1,
-                    "follow": "zt-reader"
+                    "followMode": "note"
                   },
                   "icon": "highlighter",
-                  "title": "Zotero Annotations"
+                  "title": "Zotero 标注"
                 }
               },
               {
@@ -601,8 +589,19 @@
                   "icon": "bot",
                   "title": "Claudian"
                 }
+              },
+              {
+                "id": "fe7cb9cbbc48ddd0",
+                "type": "leaf",
+                "state": {
+                  "type": "paperout-explorer",
+                  "state": {},
+                  "icon": "paperout",
+                  "title": "PaperOut To-Authors"
+                }
               }
-            ]
+            ],
+            "currentTab": 3
           }
         ],
         "direction": "horizontal",
@@ -610,7 +609,12 @@
       },
       "left-ribbon": {
         "hiddenItems": {
-          "paperbell:打开视图仪表板": false,
+          "zotlit:打开 Zotero 标注": false,
+          "papersearch:PaperSearch 文献收集栏": false,
+          "papersearch:打开 PaperSearch": false,
+          "paper-in-bell:Run post-processing on current note": false,
+          "paperbell-cards-wrangler:PaperBell Cards": false,
+          "paperbell-section:Open PaperBell Section": false,
           "bases:新建数据库": false,
           "obsidian-memos:Thino Super": false,
           "obsidian42-brat:BRAT": false,
@@ -628,12 +632,12 @@
           "command-palette:打开命令面板": false,
           "markdown-importer:打开 Markdown 格式转换器": false,
           "workspaces:管理工作区布局": false,
-          "obsidian-task-progress-bar:打开 Task Genius 视图": false,
-          "realclaudian:Open Claudian": false
+          "realclaudian:Open Claudian": false,
+          "obsidian-task-progress-bar:打开 Task Genius 视图": false
         }
       },
       "active": "0fe3999b908523ec",
-      "mtime": "2026-06-06T16:13:17+02:00"
+      "mtime": "2026-08-01T13:01:44+02:00"
     }
   },
   "active": "主工作区"

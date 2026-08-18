@@ -1,0 +1,194 @@
+% =============================================================================
+% cover_letter.latex — pandoc template for cover letters
+% Adapted from ~/Documents/CodeBase/Overleaf/letters/CollMemo_cover_letter/
+%   simple_cover_letter.tex  (moderncv classic/green + xeCJK, xelatex).
+%
+% The letterhead / signature scaffolding lives here; the letter prose comes
+% from the Markdown body. Author identity + journal/title are filled from
+% pandoc variables (yaml defaults) and by filters/cover_letter.lua
+% (which reads the sibling metadata.json).
+%
+% Assets (logo, signature, reviewers.csv) live in templates/cover_letter/ and
+% are resolved via the global TEXINPUTS (…/pandoc/templates/).
+% =============================================================================
+\documentclass[11pt,a4paper,roman]{moderncv}
+\usepackage[english]{babel}
+\usepackage{ragged2e}
+\usepackage{float}
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage[l3]{csvsimple}
+\usepackage{microtype}   % 微调排版，改善断词
+\usepackage{hyphenat}    % 断词控制
+\usepackage{fontspec}    % 字体设置
+\usepackage{xeCJK}       % 中文支持
+\usepackage{xcolor}      % 颜色支持
+
+\moderncvstyle{classic}
+\moderncvcolor{green}
+
+% assets（logo/签名）目录：由 cover_letter.lua 注入的绝对路径，零依赖 TEXINPUTS
+$if(AssetDir)$\graphicspath{{$AssetDir$/}}$endif$
+
+% 字体设置 - 使用 Times New Roman
+\setmainfont{$if(mainfont)$$mainfont$$else$Times New Roman$endif$}
+\setsansfont{$if(sansfont)$$sansfont$$else$Arial$endif$}
+\setmonofont{$if(monofont)$$monofont$$else$Courier New$endif$}
+$if(CJKmainfont)$
+\setCJKmainfont{$CJKmainfont$}
+$endif$
+% 弯引号 ‘ ’ “ ” 属歧义宽度，xeCJK 默认当 CJK 标点排、会粘住后面的英文词丢空格。
+% 声明为 Default 类 → 按西文排，英文引号空格正常。（先统一英文。）
+\xeCJKDeclareCharClass{Default}{"2018, "2019, "201C, "201D}
+
+% 页面设置 - 更紧凑的边距
+\usepackage[left=2.2cm,right=2.2cm,top=2.0cm,bottom=2.0cm]{geometry}
+
+% 设置更紧凑的间距
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parskip}{0.2em}
+\setlength{\parindent}{0pt}
+
+% 强制两端对齐设置
+\raggedbottom
+\sloppy
+\hyphenpenalty=50
+\exhyphenpenalty=50
+\tolerance=1000
+\emergencystretch=3em
+
+% 调整列表间距
+\setlength{\topsep}{0.1em}
+\setlength{\partopsep}{0.05em}
+\setlength{\itemsep}{0.05em}
+\setlength{\parsep}{0.05em}
+
+% 防止孤行和寡行
+\clubpenalty=10000
+\widowpenalty=10000
+\displaywidowpenalty=10000
+\predisplaypenalty=10000
+\postdisplaypenalty=10000
+
+% 设置个人信息（变量来自 yaml defaults / cover_letter.lua）
+\name{$if(AuthorName)$$AuthorName$$else$ $endif$}{}
+$if(AuthorInstitution)$\address{$AuthorInstitution$}{$if(AuthorAddress)$$AuthorAddress$$endif$}$endif$
+$if(AuthorPhone)$\phone[mobile]{$AuthorPhone$}$endif$
+$if(AuthorEmail)$\email{$AuthorEmail$}$endif$
+
+% 调整头部位置，让地址更靠上
+\makeatletter
+\setlength{\headsep}{-0.2cm}
+\makeatother
+
+$if(csl-refs)$
+% definitions for citeproc citations（正文里出现 [@cite] 时才注入，抄自 paperbell.latex）
+\NewDocumentCommand\citeproctext{}{}
+\NewDocumentCommand\citeproc{mm}{%
+  \begingroup\def\citeproctext{#2}\cite{#1}\endgroup}
+\makeatletter
+ % allow citations to break across lines
+ \let\@cite@ofmt\@firstofone
+ % avoid brackets around text for \cite:
+ \def\@biblabel#1{}
+ \def\@cite#1#2{{#1\if@tempswa , #2\fi}}
+\makeatother
+\newlength{\cslhangindent}
+\setlength{\cslhangindent}{1.5em}
+\newlength{\csllabelwidth}
+\setlength{\csllabelwidth}{3em}
+\newenvironment{CSLReferences}[2] % #1 hanging-indent, #2 entry-spacing
+  {\begin{list}{}{%
+   \setlength{\itemindent}{0pt}
+   \setlength{\leftmargin}{0pt}
+   \setlength{\parsep}{0pt}
+   % turn on hanging indent if param 1 is 1
+   \ifodd #1
+    \setlength{\leftmargin}{\cslhangindent}
+    \setlength{\itemindent}{-1\cslhangindent}
+   \fi
+   % set entry spacing
+   \setlength{\itemsep}{#2\baselineskip}}}
+  {\end{list}}
+\usepackage{calc}
+\newcommand{\CSLBlock}[1]{\hfill\break\parbox[t]{\linewidth}{\strut\ignorespaces#1\strut}}
+\newcommand{\CSLLeftMargin}[1]{\parbox[t]{\csllabelwidth}{\strut#1\strut}}
+\newcommand{\CSLRightInline}[1]{\parbox[t]{\linewidth - \csllabelwidth}{\strut#1\strut}}
+\newcommand{\CSLIndent}[1]{\hspace{\cslhangindent}#1}
+$endif$
+
+\begin{document}
+
+% 强制两端对齐
+\let\raggedright\justifying
+\let\centering\justifying
+
+% 插入机构 Logo
+$if(LogoPath)$
+\begin{minipage}[t]{\textwidth}
+\includegraphics[width=$if(LogoScale)$$LogoScale$$else$0.80$endif$\textwidth]{$LogoPath$}
+\end{minipage}
+
+\vspace{1.5cm}
+$endif$
+
+% 收件人信息
+\recipient{$if(to)$$to$$else$Dear Editors$if(EditorName)$: $EditorName$$endif$$endif$}{}
+\opening{}
+\closing{Sincerely,}
+$if(enclosure)$\enclosure[Enclosures]{$enclosure$}$else$\enclosure[Enclosures]{Main manuscript, Appendix}$endif$
+\makelettertitle
+\vspace{-1.5cm}
+
+% ============================ 正文（来自 Markdown body） =====================
+$body$
+% ===========================================================================
+
+$if(reviewers)$
+% 推荐审稿人表（可选：frontmatter 里设 reviewers: true 时启用）
+\vspace{0.2cm}
+\textbf{Recommended reviewers (no conflicts of interest):}
+\vspace{0.05cm}
+
+\begin{center}
+\footnotesize
+\begin{longtable}{p{0.14\textwidth} p{0.26\textwidth} p{0.26\textwidth} p{0.34\textwidth}}
+\toprule
+  \textbf{Reviewer} & \textbf{Email} & \textbf{Institute} & \textbf{Recommendation} \\
+\midrule
+  \csvreader[
+    head to column names,
+    late after line=\\,
+    range={1-$if(MaxReviewers)$$MaxReviewers$$else$5$endif$}
+  ]{$if(AssetDir)$$AssetDir$/$endif$reviewers.csv}{
+    reviewer=\colA, email=\colB, institute=\colC, reason=\colD, link=\colE
+  }{
+    \href{\colE}{\textcolor{blue!70!black}{\colA}} & \colB & \colC & \colD
+  }
+\bottomrule
+\end{longtable}
+\end{center}
+$endif$
+
+% 落款
+\begin{spacing}{1.0}
+\textbf{$if(AuthorName)$$AuthorName$$endif$} (On behalf of the author team)
+
+$if(AuthorInstitution)$$AuthorInstitution$$endif$
+
+$if(AuthorAddress)$$AuthorAddress$$endif$
+
+$if(AuthorEmail)$Email: $AuthorEmail$$endif$
+
+$if(SignaturePath)$\includegraphics[height=1cm]{$SignaturePath$}$endif$
+
+\vspace{-0.2cm}
+$if(date)$$date$$else$\today$endif$
+
+$if(AuthorOrcid)$ORCID: $AuthorOrcid$$endif$
+\end{spacing}
+
+\end{document}

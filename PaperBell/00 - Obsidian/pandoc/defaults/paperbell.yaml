@@ -1,0 +1,63 @@
+---
+## General options
+standalone: true
+embed-resources: true
+from: markdown+tex_math_single_backslash+wikilinks_title_after_pipe+mark+autolink_bare_uris+pipe_tables
+output-file: output.pdf
+# pdf-engine: pdflatex                           #! use xelatex to support CJK and unicode
+pdf-engine: xelatex                           #! use xelatex to support CJK and unicode
+highlight-style: tango
+data-dir: ${.}/..                             #! custom data directory, the directory containing the filters, defaults, and tempaltes folders
+# toc: true
+
+
+## Templates
+template: ${USERDATA}/templates/paperbell.latex
+
+## Biliography
+# bibliography: ${USERDATA}/../../mybib.bib     #! custom bib file  # (commented by sync: plugin injects --bibliography)
+# csl: ${USERDATA}/PLACEHOLDER.csl            #! custom csl
+
+filters:
+  - ${USERDATA}/filters/lineno_default.lua  #! 行号默认开启 (lineno=true)，笔记 frontmatter 写 lineno: false 可关闭
+  - ${USERDATA}/filters/block_ids.lua       #! 剥掉段末 Obsidian 块 ID (^blockid)，供回复信 ![[场景#^blockid]] 整段引用
+  - ${USERDATA}/filters/manuscript_linelabel.lua  #! 默认 no-op；抓行号那趟 (manuscript-lines.sh，-M mslabels=true) 把 <!--ms:ID--> 变 \linelabel
+  - ${USERDATA}/filters/mute.lua
+  - ${USERDATA}/filters/quotes-i18n.lua  #! 中英混排引号本地化：中文句用全角贴紧、英文句用西文弯引号（修 pandoc smart 在 CJK 边界失败）
+  - ${USERDATA}/filters/promote_figures.lua  #! 把被上文粘住、退化成行内图的 ![cap](img){#fig:x} 还原成正常 Figure，否则丢 \caption/\label、后面图号全错位
+  - ${USERDATA}/filters/image.lua
+  - ${USERDATA}/filters/xlsx_table.lua  #! 把笔记里的 ```xlsx-table 块按 sheet 自动转成 booktabs 三线表 (纯 Lua, 用 pandoc.zip 解析 xlsx, 无外部依赖)
+  - ${USERDATA}/filters/codeblock.lua
+  - ${USERDATA}/filters/math.lua
+  - ${USERDATA}/filters/callout.lua
+  - ${USERDATA}/filters/shift_headings.lua
+  - ${USERDATA}/filters/link.lua
+  - ${USERDATA}/filters/div.lua
+  - ${USERDATA}/filters/preamble.lua
+  - ${USERDATA}/filters/highlight.lua
+  - pandoc-crossref  #! 交叉引用, 需要安装 pandoc-crossref
+  - citeproc
+
+metadata:
+  CJKmainfont: Songti SC
+  CJKsansfont: Heiti SC
+  CJKmonofont: STFangsong
+  mainfont: Times New Roman
+  sansfont: Arial
+  monofont: Courier New
+  numbersections: true
+  link-citations: true
+  # For pandoc-crossref
+  crossrefYaml: ${USERDATA}/defaults/crossref.yaml
+  # For citeproc
+  reference-section-title: References
+
+variables:
+  # For beamer
+  navigation: horizontal
+  fonttheme: "professionalfonts"
+  theme: "Antibes"
+  graphics: true
+  natbiboptions: numbers,square
+  biblatexoptions: style=numeric
+  biblio-title: References

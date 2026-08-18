@@ -1,0 +1,14 @@
+filters:
+  and:
+    - file.path.startsWith("30 - Metadata/Scholars")
+formulas:
+  最近机构: institute[-1]
+views:
+  - type: cards
+    name: 学者列表
+    order:
+      - file.name
+      - formula.最近机构
+    cardSize: 170
+    image: note.photo
+    imageAspectRatio: 1.4

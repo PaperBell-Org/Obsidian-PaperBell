@@ -29,3 +29,78 @@
   height: auto;
   overflow-y: auto;
 }
+
+/* Live-rendered {{Variable}} placeholders in reading mode. */
+.longform-variable {
+  border-radius: 3px;
+  padding: 0 2px;
+  background-color: var(--background-modifier-hover);
+  cursor: pointer;
+  transition: background-color 0.1s ease-in-out;
+}
+
+.longform-variable:hover {
+  background-color: var(--text-selection);
+}
+
+.longform-variable[data-longform-var-defined="false"] {
+  background-color: transparent;
+  color: var(--text-muted);
+  border-bottom: 1px dashed var(--text-faint);
+}
+
+/* Copyable error modal (e.g. compile failures). */
+.longform-error-modal-log {
+  max-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+  background: var(--background-secondary);
+  padding: var(--size-4-2);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+}
+
+.longform-error-modal-buttons {
+  display: flex;
+  gap: var(--size-4-2);
+  justify-content: flex-end;
+  margin-top: var(--size-4-3);
+}
+
+/* Pandoc export setup modal checklist. */
+.longform-pandoc-checklist {
+  margin: var(--size-4-2) 0;
+}
+
+.longform-pandoc-check {
+  padding: var(--size-2-2) 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.longform-pandoc-check-detail {
+  margin-left: 1.4em;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.longform-check-ok {
+  color: var(--text-success);
+  font-weight: var(--font-bold);
+}
+
+.longform-check-bad {
+  color: var(--text-error);
+  font-weight: var(--font-bold);
+}
+
+/* Optional prerequisite: only some presets need it, so it must not read as a
+   failure the user has to go fix. */
+.longform-check-warn {
+  color: var(--text-warning);
+  font-weight: var(--font-bold);
+}
