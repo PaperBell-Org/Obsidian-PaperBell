@@ -51502,18 +51502,31 @@ class LongformAPI {
  * schema, re-vendor this file and reconcile the compatibility check in `client.ts`.
  * See MAINTAINING.md → "PaperBell relationship".
  *
- * Last synced against PaperBell host build `paperbell` v0.4.4: `schemaVersion` is still 1,
- * with backward-compatible additions — the `llm-credentials` / `activation` / `download-ticket`
- * scopes and their `request*` methods, the `paperbell:plugins-changed` event, and the
- * `providerId` / `providerName` / `hasApiKey` fields on the public LLM config.
+ * Last synced against PaperBell **0.4.7**, whose published contract is "附录 A" of the host's
+ * README-ZH (its plugin repo ships docs + release binaries, not sources — that appendix *is*
+ * the upstream file for vendoring purposes). Type names here match it verbatim so the next
+ * re-vendor is a readable diff. What 0.4.7 changed for us:
+ *   - `schemaVersion` is **2** (v1 → v2 narrowed the broadcast payload from the full config
+ *     to {@link PaperBellPublicConfig}; the per-client push still carries the restricted one);
+ *   - `PaperBellSharedConfigPublic` was renamed {@link PaperBellRestrictedConfig}, with the
+ *     old name kept upstream as a deprecated alias;
+ *   - `profile` / `cimpoFolders` (optional) and the completion-result quota fields were added;
+ *   - `llm.baseUrl` / `llm.model` are now *effective* values — `baseUrl` has no trailing slash
+ *     and both fall back to the host's built-in defaults instead of echoing empty user input.
+ * Additions are not a schema bump upstream, so treat unknown optional fields as absent and
+ * never compare `schemaVersion` for equality.
+ *
+ * One deliberate deviation from the appendix: `PPBClient.requestSharedConfig()` is typed
+ * with the current name, `PaperBellRestrictedConfig`, where upstream's own appendix still
+ * writes the deprecated alias. Identical type, quieter deprecation.
  *
  * ⚠️ PROPOSAL — NOT YET UPSTREAM: the `projects` scope and everything it drags in
  * (`PPB_PROJECTS_CHANGED_EVENT`, `PPBProject`, `PPBProjectsQuery`, `PPBProjectsResult`,
  * `PPBClient.requestProjects` / `onProjectsChange`) are *our* proposal to the host, written
- * up in docs/PROPOSAL_PROJECTS_SCOPE.md. No shipped host implements them yet, which is why
- * the client methods are optional and every consumer gates on capability + `typeof` checks
- * rather than on `PPB_SCHEMA_VERSION` — which stays at 1 until the host really bumps it,
- * so the "host schema is newer than vendored" warning keeps working.
+ * up in docs/PROPOSAL_PROJECTS_SCOPE.md. 0.4.7 still does not implement it, which is why the
+ * client methods are optional and every consumer gates on capability + `typeof` checks rather
+ * than on `PPB_SCHEMA_VERSION` — that constant tracks the host's number and nothing else, so
+ * the "host schema is newer than vendored" warning keeps working.
  *
  * ── Original header ──────────────────────────────────────────────────────────
  * PaperBell 对外共享契约(消费方 / IPC 表面)。
@@ -51522,17 +51535,23 @@ class LongformAPI {
  * - 经 IPC 对外暴露的一律是 `*Public` 变体,永不包含 apiKey / 激活码等密钥。
  */
 /** 契约版本号,便于未来兼容判断。 */
-const PPB_SCHEMA_VERSION = 1;
+const PPB_SCHEMA_VERSION = 2;
 /**
  * 宿主挂载完成后在 `app.workspace` 上 trigger 的事件名,载荷为 {@link PPBHostApi}。
- * 子插件与 PaperBell 的加载顺序不确定,推荐握手模式(事件只在宿主加载时触发一次,
- * 后加载的一方必须先主动探测)。
+ * 子插件与 PaperBell 的加载顺序不确定,推荐握手模式(先主动探测,探不到再等事件)。
+ *
+ * 宿主**每次**装载都会广播它 —— 所以这条监听同时承担「首次握手」和「宿主重载后重新
+ * 握手」两个职责,必须常驻:握手成功后摘掉监听,PaperBell 更新一次就再也连不回来。
  */
 const PPB_READY_EVENT = "paperbell:ready";
 
 /** PaperBell host plugin id (the parent). */
 const HOST_PLUGIN_ID = "paperbell";
-/** Our own id — MUST match manifest.json `id`. Used for registration and settings deep-link. */
+/**
+ * Our own id — MUST match manifest.json `id`. Used for registration, for matching our
+ * entry in the host's grant list, and for the settings deep-link. Exported so tests
+ * assert against this value rather than a copy of it.
+ */
 const THIS_PLUGIN_ID = "longform-paperbell";
 const THIS_PLUGIN_NAME = "PaperOut To-Authors";
 /**
@@ -51547,6 +51566,9 @@ const THIS_PLUGIN_NAME = "PaperOut To-Authors";
  * those trigger a host consent prompt, so they are requested lazily on user action
  * (settings button, AI command). Capabilities come from `getPluginInfo()`, which needs
  * no consent.
+ *
+ * The handshake is re-run on every host `ready` event, not just the first: a handle from
+ * a previous host load is inert. See `attach()`.
  */
 class PaperBellClient {
     constructor(plugin) {
@@ -51564,19 +51586,24 @@ class PaperBellClient {
         return this.client !== null;
     }
     /**
-     * Probe for the host now; if it isn't loaded yet, wait (once) for its ready event.
-     * The listener is registered via `plugin.registerEvent`, so it is cleaned up on unload.
+     * Probe for the host now, and stay subscribed to its ready event.
+     *
+     * The host broadcasts PPB_READY_EVENT on *every* load, so that listener does double
+     * duty: it covers the host-loads-after-us ordering, and it is also the only way we
+     * recover when the host reloads (an update, or a disable/enable). Dropping it after
+     * the first successful handshake would leave us holding a dead handle — every
+     * `request*` on it silently returns null — until the user restarted us by hand.
+     *
+     * Registered via `plugin.registerEvent`, so it is still cleaned up on unload.
      */
     init() {
         const host = this.lookupHost();
         if (host) {
-            this.onHostReady(host);
+            this.attach(host);
         }
-        // The host fires PPB_READY_EVENT once when it loads; this covers the
-        // host-loads-after-us ordering. Guard against a double connect.
         this.plugin.registerEvent(this.app.workspace.on(PPB_READY_EVENT, ((api) => {
-            if (!this.client && api) {
-                this.onHostReady(api);
+            if (api) {
+                this.attach(api);
             }
         })));
     }
@@ -51585,8 +51612,20 @@ class PaperBellClient {
         const api = (_c = (_b = (_a = this.app.plugins) === null || _a === void 0 ? void 0 : _a.plugins) === null || _b === void 0 ? void 0 : _b[HOST_PLUGIN_ID]) === null || _c === void 0 ? void 0 : _c.api;
         return api !== null && api !== void 0 ? api : null;
     }
-    onHostReady(host) {
+    /**
+     * (Re-)handshake with a host. Safe to call again at any time: the previous handle —
+     * which a host reload has already invalidated — is released first, so we never end up
+     * with two registrations or a stale config subscription.
+     *
+     * Deliberately no "same host, skip it" shortcut: whether a reloaded host hands back a
+     * fresh `api` object is its business, and guessing wrong there is unrecoverable — we
+     * would sit on a dead handle forever, which is the bug this method exists to fix. A
+     * redundant re-register costs one unregister and one register.
+     */
+    attach(host) {
         var _a, _b;
+        const reconnecting = this.client !== null;
+        this.releaseHandle();
         let handle;
         try {
             handle = host.registerPPBplugin({
@@ -51599,6 +51638,10 @@ class PaperBellClient {
         }
         catch (e) {
             console.error("[PaperOut] Failed to register with PaperBell host:", e);
+            // Disconnected, but the last config we were given is still the best answer we
+            // have for "what language does the host want?" — same reasoning as the reconnect
+            // path below. Only `destroy()` clears it outright.
+            paperbell.update((s) => (Object.assign(Object.assign({}, s), { connected: false, capabilities: DISCONNECTED.capabilities })));
             return;
         }
         this.client = handle;
@@ -51611,14 +51654,40 @@ class PaperBellClient {
             console.warn("[PaperOut] Could not read PaperBell plugin info:", e);
         }
         this.capabilities = capabilities;
-        paperbell.set({ connected: true, config: null, capabilities });
-        console.log("[PaperOut] Connected to PaperBell host.");
-        // Keep the public config fresh when the host pushes changes. Subscribing does
-        // not prompt for consent (it's a plain workspace event under the hood).
+        // Keep whatever config we already had: on a reconnect it is the last value the host
+        // gave us, and dropping it would flip the UI back to the fallback language for as
+        // long as it takes to fetch a fresh one.
+        paperbell.update((s) => (Object.assign(Object.assign({}, s), { connected: true, capabilities })));
+        console.log(reconnecting
+            ? "[PaperOut] Reconnected to PaperBell host after it reloaded."
+            : "[PaperOut] Connected to PaperBell host.");
+        // Keep the config fresh when the host pushes changes. Subscribing does not prompt
+        // for consent. This is a directed push bound to `handle`, so it dies with it —
+        // hence the re-subscribe on every attach.
         this.unsubscribeConfig = handle.onConfigChange((config) => {
             this.checkSchema(config);
             paperbell.update((s) => (Object.assign(Object.assign({}, s), { config })));
         });
+        // Only after a reconnect, and only if the user already granted `config`: the grant
+        // outlived the reload, so this prompts for nothing, and it is how we notice a
+        // language the host changed while our handle was dead. On a first connect we stay
+        // scope-free by design (see the class docstring).
+        if (reconnecting && this.hasGrant(host, "config")) {
+            this.fetchSharedConfig().catch((e) => {
+                console.warn("[PaperOut] Could not refresh PaperBell config:", e);
+            });
+        }
+    }
+    /** Whether the user has already granted us `scope`, per the host's grant list. */
+    hasGrant(host, scope) {
+        var _a;
+        try {
+            return ((_a = host.listGrants()) !== null && _a !== void 0 ? _a : []).some((grant) => grant.sourceId === THIS_PLUGIN_ID && grant.scopes.includes(scope));
+        }
+        catch (e) {
+            console.warn("[PaperOut] Could not read PaperBell grants:", e);
+            return false;
+        }
     }
     /**
      * Request the host's public shared config (scope: `config`). First call prompts the
@@ -51732,8 +51801,24 @@ class PaperBellClient {
     }
     /** Tear down: unsubscribe, unregister from the host, reset the store. */
     destroy() {
+        this.releaseHandle();
+        paperbell.set(Object.assign({}, DISCONNECTED));
+    }
+    /**
+     * Drop the current handle and its subscription, leaving the store alone.
+     *
+     * Both calls go into a host we do not control — and after a host reload they reach a
+     * handle whose owner is gone — so neither is allowed to abort the caller: `attach()`
+     * has to get to its fresh registration, and `destroy()` runs during plugin unload.
+     */
+    releaseHandle() {
         if (this.unsubscribeConfig) {
-            this.unsubscribeConfig();
+            try {
+                this.unsubscribeConfig();
+            }
+            catch (e) {
+                console.warn("[PaperOut] Error unsubscribing from PaperBell config:", e);
+            }
             this.unsubscribeConfig = null;
         }
         if (this.client) {
@@ -51746,7 +51831,6 @@ class PaperBellClient {
             this.client = null;
         }
         this.capabilities = [];
-        paperbell.set(Object.assign({}, DISCONNECTED));
     }
     checkSchema(config) {
         if (config.schemaVersion > PPB_SCHEMA_VERSION) {

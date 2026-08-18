@@ -1,0 +1,334 @@
+{
+  "settings": {
+    "backendUrl": "http://127.0.0.1:8001",
+    "apiKey": "",
+    "apiBaseUrl": "",
+    "apiModel": "",
+    "defaultView": "list",
+    "originalPreviewLines": 5,
+    "lastLibrary": "MyPapers",
+    "searchMode": "balanced",
+    "searchIntent": "support",
+    "searchExpertMode": false,
+    "litNoteDir": "PaperSearch笔记",
+    "conceptDir": "PaperSearch/概念",
+    "paperLibraryDir": "PaperSearch/文献",
+    "conceptCandidateDir": "PaperSearch/概念/_候选",
+    "pdfSelectionToolbar": true,
+    "annotationRoles": [
+      {
+        "id": "claim",
+        "color": "#f6d55c",
+        "label": "观点"
+      },
+      {
+        "id": "method",
+        "color": "#3caea3",
+        "label": "方法"
+      },
+      {
+        "id": "quotation",
+        "color": "#5b9cf8",
+        "label": "引用"
+      },
+      {
+        "id": "challenge",
+        "color": "#ed6a5a",
+        "label": "质疑"
+      },
+      {
+        "id": "term",
+        "color": "#b98ef0",
+        "label": "术语"
+      },
+      {
+        "id": "todo",
+        "color": "#f0a04b",
+        "label": "待查"
+      }
+    ],
+    "annoPanelEnabled": true,
+    "annoPanelEdge": "right",
+    "annoPanelPinned": false,
+    "annoSilentFile": "ask",
+    "citePanelEnabled": false,
+    "citePanelEdge": "right",
+    "citePanelPinned": false,
+    "bibStyle": "apa",
+    "citationForm": "pandoc",
+    "rewritePrompt": "你是资深中文学术写作编辑。把用户给的「原文」改写成可供核对和修改的规范学术表达：\n- 书面、严谨、客观，用词准确，逻辑连贯，符合学术行文与论证习惯；\n- 完整保留原意与关键论点，不杜撰原文没有的事实、数据或引用；\n- 仅输出改写后的文本，不要任何解释、前后缀、引号或 markdown，不要出现\"改写\"\"作者认为\"之类的元叙述；\n- 除非用户「指令」明确要求换一种语言，否则保持原文语言。",
+    "aiAnswerPrompt": "你是学术文献综述助手。根据用户的检索主题和系统召回的文献片段，写一段文献综述式的综合回答：\n- 直接围绕检索主题展开，综合多篇文献的观点，呈现它们的共识、分歧与脉络；\n- 引用文献时一律用 Pandoc 的 [@citekey] 格式（citekey 见每条来源开头方括号里的内容）；同一处可并列 [@a; @b]；\n- 没有 citekey 的来源，用 [N] 标号兜底；\n- 客观严谨，只综合来源里有的内容，不杜撰事实、数据或结论；\n- 直接输出综述段落本身，不要列大纲、不要 markdown 标题、不要\"综上所述\"之类套话。",
+    "analysisCacheRetentionDays": 7,
+    "metadataResolver": {
+      "enabled": true,
+      "resolvers": {
+        "crossref": true,
+        "arxiv": true,
+        "openalex": true,
+        "bbt": true,
+        "zotero": true,
+        "llm": false
+      },
+      "s2": {
+        "enabled": true,
+        "apiKey": ""
+      },
+      "reranking": {
+        "enabled": false,
+        "boost": 0.1
+      }
+    },
+    "contactEmail": "",
+    "bbtBibPath": "",
+    "paperbellBibPath": "",
+    "writingProjectPath": "",
+    "libSources": [
+      {
+        "libraryName": "default",
+        "path": "/Users/songshgeo/Zotero/storage",
+        "autoWatch": true,
+        "source": "zotero"
+      }
+    ],
+    "onboardingDone": true,
+    "coreDownloadUrl": "",
+    "coreDownloadSha256": "",
+    "coreInstalledVersion": "",
+    "coreInstalledSha256": "",
+    "coreInstalledFilename": "",
+    "coreInstalledAt": 0,
+    "siteBaseUrl": "https://paperbell.cn",
+    "localBackendEnabled": false,
+    "localBackendDir": "",
+    "localBackendPython": "",
+    "developerMode": false,
+    "hoverPopupMode": "click",
+    "enableAISummary": false,
+    "pdfLinkMode": "inline",
+    "pdfCacheMax": 10,
+    "promptTemplates": "改写为学术风格，保留核心论点\n精炼内容至100字以内，突出关键信息\n梳理论证关系，不补充原文未支持的因果关系\n转为间接引用形式，符合学术写作规范"
+  },
+  "analysisCache": {
+    "version": 1,
+    "entries": {}
+  },
+  "docMetaCache": {
+    "version": 2,
+    "entries": {},
+    "by_doi": {},
+    "by_citekey": {}
+  },
+  "paperIndex": {
+    "version": 1,
+    "migration_version": 1,
+    "items": {
+      "paper-cab2bd58a0e53280": {
+        "paper_id": "paper-cab2bd58a0e53280",
+        "aliases": [
+          "file:unknown:cimpo一种以输出为导向的学术知识管理方法"
+        ],
+        "note_path": "20 - Inputs/Zotero/CIMPO：一种以输出为导向的学术知识管理方法.md",
+        "attachments": [
+          {
+            "attachment_id": "attachment-c37f0a3b65ac8f48",
+            "sha256": "",
+            "library": "",
+            "document_id": "",
+            "source_file": "CIMPO：一种以输出为导向的学术知识管理方法.pdf",
+            "locator_kind": "note-stem",
+            "pdf_paths": [],
+            "locator_status": "unverified"
+          }
+        ],
+        "created_at": 1787090376944,
+        "updated_at": 1787090376944,
+        "note_paths": [
+          "20 - Inputs/Zotero/CIMPO：一种以输出为导向的学术知识管理方法.md"
+        ],
+        "alias_note_paths": []
+      },
+      "paper-a18fdee404594697": {
+        "paper_id": "paper-a18fdee404594697",
+        "aliases": [
+          "file:unknown:yu2023"
+        ],
+        "note_path": "20 - Inputs/Zotero/yu2023.md",
+        "attachments": [
+          {
+            "attachment_id": "attachment-3ecea222063076f4",
+            "sha256": "",
+            "library": "",
+            "document_id": "",
+            "source_file": "yu2023.pdf",
+            "locator_kind": "note-stem",
+            "pdf_paths": [],
+            "locator_status": "unverified"
+          }
+        ],
+        "created_at": 1787090376945,
+        "updated_at": 1787090376945,
+        "note_paths": [
+          "20 - Inputs/Zotero/yu2023.md"
+        ],
+        "alias_note_paths": []
+      },
+      "paper-a3a069cfba504dc7": {
+        "paper_id": "paper-a3a069cfba504dc7",
+        "aliases": [
+          "file:unknown:从草稿到成稿长文本写作的线性化"
+        ],
+        "note_path": "20 - Inputs/Zotero/从草稿到成稿：长文本写作的线性化.md",
+        "attachments": [
+          {
+            "attachment_id": "attachment-dc22cd5bc07c4e89",
+            "sha256": "",
+            "library": "",
+            "document_id": "",
+            "source_file": "从草稿到成稿：长文本写作的线性化.pdf",
+            "locator_kind": "note-stem",
+            "pdf_paths": [],
+            "locator_status": "unverified"
+          }
+        ],
+        "created_at": 1787090376945,
+        "updated_at": 1787090376945,
+        "note_paths": [
+          "20 - Inputs/Zotero/从草稿到成稿：长文本写作的线性化.md"
+        ],
+        "alias_note_paths": []
+      },
+      "paper-e73d475394e3950d": {
+        "paper_id": "paper-e73d475394e3950d",
+        "aliases": [
+          "file:unknown:关键词别名与受控词表输入端的检索"
+        ],
+        "note_path": "20 - Inputs/Zotero/关键词、别名与受控词表：输入端的检索.md",
+        "attachments": [
+          {
+            "attachment_id": "attachment-d5ea7f32b680806c",
+            "sha256": "",
+            "library": "",
+            "document_id": "",
+            "source_file": "关键词、别名与受控词表：输入端的检索.pdf",
+            "locator_kind": "note-stem",
+            "pdf_paths": [],
+            "locator_status": "unverified"
+          }
+        ],
+        "created_at": 1787090376945,
+        "updated_at": 1787090376945,
+        "note_paths": [
+          "20 - Inputs/Zotero/关键词、别名与受控词表：输入端的检索.md"
+        ],
+        "alias_note_paths": []
+      },
+      "paper-d78d67fadc132b0d": {
+        "paper_id": "paper-d78d67fadc132b0d",
+        "aliases": [
+          "file:unknown:卡片盒笔记法与知识的涌现"
+        ],
+        "note_path": "20 - Inputs/Zotero/卡片盒笔记法与知识的涌现.md",
+        "attachments": [
+          {
+            "attachment_id": "attachment-5924d780eae78227",
+            "sha256": "",
+            "library": "",
+            "document_id": "",
+            "source_file": "卡片盒笔记法与知识的涌现.pdf",
+            "locator_kind": "note-stem",
+            "pdf_paths": [],
+            "locator_status": "unverified"
+          }
+        ],
+        "created_at": 1787090376945,
+        "updated_at": 1787090376945,
+        "note_paths": [
+          "20 - Inputs/Zotero/卡片盒笔记法与知识的涌现.md"
+        ],
+        "alias_note_paths": []
+      },
+      "paper-6a41f5bb6c864a89": {
+        "paper_id": "paper-6a41f5bb6c864a89",
+        "aliases": [
+          "file:unknown:学术写作中的数据驱动与可复现"
+        ],
+        "note_path": "20 - Inputs/Zotero/学术写作中的数据驱动与可复现.md",
+        "attachments": [
+          {
+            "attachment_id": "attachment-8e92cacfd2aad90b",
+            "sha256": "",
+            "library": "",
+            "document_id": "",
+            "source_file": "学术写作中的数据驱动与可复现.pdf",
+            "locator_kind": "note-stem",
+            "pdf_paths": [],
+            "locator_status": "unverified"
+          }
+        ],
+        "created_at": 1787090376945,
+        "updated_at": 1787090376945,
+        "note_paths": [
+          "20 - Inputs/Zotero/学术写作中的数据驱动与可复现.md"
+        ],
+        "alias_note_paths": []
+      },
+      "paper-ff69e33f3c109e30": {
+        "paper_id": "paper-ff69e33f3c109e30",
+        "aliases": [
+          "file:unknown:长周期科研项目的里程碑管理"
+        ],
+        "note_path": "20 - Inputs/Zotero/长周期科研项目的里程碑管理.md",
+        "attachments": [
+          {
+            "attachment_id": "attachment-65ece4a56dbaab00",
+            "sha256": "",
+            "library": "",
+            "document_id": "",
+            "source_file": "长周期科研项目的里程碑管理.pdf",
+            "locator_kind": "note-stem",
+            "pdf_paths": [],
+            "locator_status": "unverified"
+          }
+        ],
+        "created_at": 1787090376945,
+        "updated_at": 1787090376945,
+        "note_paths": [
+          "20 - Inputs/Zotero/长周期科研项目的里程碑管理.md"
+        ],
+        "alias_note_paths": []
+      }
+    },
+    "by_alias": {
+      "file:unknown:cimpo一种以输出为导向的学术知识管理方法": "paper-cab2bd58a0e53280",
+      "file:unknown:yu2023": "paper-a18fdee404594697",
+      "file:unknown:从草稿到成稿长文本写作的线性化": "paper-a3a069cfba504dc7",
+      "file:unknown:关键词别名与受控词表输入端的检索": "paper-e73d475394e3950d",
+      "file:unknown:卡片盒笔记法与知识的涌现": "paper-d78d67fadc132b0d",
+      "file:unknown:学术写作中的数据驱动与可复现": "paper-6a41f5bb6c864a89",
+      "file:unknown:长周期科研项目的里程碑管理": "paper-ff69e33f3c109e30"
+    }
+  },
+  "citationIndex": {
+    "version": 1,
+    "items": {},
+    "anchor_audit": {
+      "audited_at": 1787055267559,
+      "anchored": 0,
+      "detached": 0,
+      "broken": 0,
+      "quarantined": 0
+    }
+  },
+  "claimIndex": {
+    "version": 1,
+    "items": {}
+  },
+  "annotationIndex": {
+    "version": 1,
+    "items": {}
+  },
+  "collectedRefs": {
+    "version": 1,
+    "items": {}
+  }
+}
