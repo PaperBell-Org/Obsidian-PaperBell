@@ -269,6 +269,10 @@ body.theme-dark .claudian-provider-icon-variant--dark {
   border-color: var(--color-green);
 }
 
+.claudian-tab-badge-review-error {
+  border-color: var(--color-orange);
+}
+
 .claudian-tab-badge-action-required {
   border-color: var(--text-error);
 }
@@ -298,7 +302,8 @@ body.theme-dark .claudian-provider-icon-variant--dark {
 /* ============================================
    components/history.css
    ============================================ */
-.claudian-history-container {
+.claudian-history-container,
+.claudian-nav-dropup-container {
   position: static;
 }
 
@@ -354,6 +359,66 @@ body.theme-dark .claudian-provider-icon-variant--dark {
   display: none;
 }
 
+.claudian-sidebar-surface-track {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  scrollbar-width: none;
+}
+
+.claudian-sidebar-surface-track--paging {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+}
+
+.claudian-sidebar-surface-track::-webkit-scrollbar {
+  display: none;
+}
+
+.claudian-sidebar-surface-track > :is(
+  .claudian-session-surface,
+  .claudian-collab-surface,
+  .claudian-sidebar-surface-replica
+) {
+  flex: 0 0 100%;
+  width: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.claudian-sidebar-surface-replica {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.claudian-sidebar-surface-replica > .claudian-sidebar-surface-replica-content {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.claudian-sidebar-surface-track > .claudian-sidebar-surface-page--before {
+  order: 0;
+}
+
+.claudian-sidebar-surface-track > .claudian-sidebar-surface-page--active {
+  order: 1;
+}
+
+.claudian-sidebar-surface-track > .claudian-sidebar-surface-page--after {
+  order: 2;
+}
+
 .claudian-sidebar-surface-switcher {
   display: flex;
   flex: 0 0 28px;
@@ -363,6 +428,15 @@ body.theme-dark .claudian-provider-icon-variant--dark {
   gap: 14px;
   padding: 4px 12px;
   background: transparent;
+}
+
+.claudian-collab-surface {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .claudian-session-sidebar .claudian-sidebar-surface-button {
@@ -907,8 +981,8 @@ body.theme-dark .claudian-session-metadata-popover {
   color: var(--text-normal);
 }
 
-/* History dropup menu (opens upward since it's at bottom of view) */
-.claudian-history-menu {
+/* Single-pane dropup shell (opens upward since it's at bottom of view) */
+.claudian-nav-dropup-menu {
   display: none;
   position: absolute;
   bottom: 100%;
@@ -926,8 +1000,26 @@ body.theme-dark .claudian-session-metadata-popover {
   inset-inline-end: 0;
 }
 
-.claudian-history-menu.visible {
+.claudian-nav-dropup-menu.visible {
   display: block;
+}
+
+.claudian-nav-dropup-menu--surface.visible {
+  display: flex;
+  height: min(400px, 60vh);
+  flex-direction: column;
+}
+
+.claudian-nav-dropup-menu--surface > .claudian-collab-surface {
+  width: 100%;
+  height: 100%;
+}
+
+.claudian-compact-collab-button.is-active {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
 }
 
 .claudian-history-header {
@@ -1160,201 +1252,6 @@ body.theme-dark .claudian-session-metadata-popover {
 
 
 /* ============================================
-   components/vault-file-tree.css
-   ============================================ */
-.claudian-session-surface,
-.claudian-files-surface {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.claudian-session-surface {
-  padding-top: 8px;
-}
-
-.claudian-vault-file-tree {
-  --trees-bg-override: transparent;
-  --trees-bg-muted-override: var(--background-secondary);
-  --trees-border-color-override: var(--background-modifier-border);
-  --trees-fg-override: var(--text-normal);
-  --trees-fg-muted-override: var(--text-muted);
-  --trees-focus-ring-color-override: var(--interactive-accent);
-  --trees-font-family-override: var(--font-interface);
-  --trees-font-size-override: 13px;
-  --trees-input-bg-override: var(--background-modifier-form-field);
-  --trees-search-bg-override: var(--background-primary);
-  --trees-search-fg-override: var(--text-normal);
-  --trees-selected-bg-override: var(--background-modifier-hover);
-  --trees-selected-fg-override: var(--text-normal);
-  --trees-selected-focused-border-color-override: var(--interactive-accent);
-
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  color: var(--text-normal);
-  background: var(--background-primary);
-}
-
-.claudian-vault-file-tree-header {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  min-height: 40px;
-  padding: 6px 8px 4px 12px;
-}
-
-.claudian-vault-file-tree-default-header {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  justify-content: space-between;
-  min-width: 0;
-}
-
-.claudian-vault-file-tree-title {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-weight: var(--font-semibold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.claudian-vault-file-tree-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.claudian-vault-file-tree .claudian-vault-file-tree-header-button {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-  color: var(--text-faint);
-  cursor: pointer;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.claudian-vault-file-tree .claudian-vault-file-tree-header-button:hover,
-.claudian-vault-file-tree .claudian-vault-file-tree-header-button:focus-visible {
-  color: var(--text-normal);
-  background: transparent;
-  box-shadow: none;
-}
-
-.claudian-vault-file-tree-header-button svg {
-  width: 16px;
-  height: 16px;
-}
-
-.claudian-vault-file-tree-search {
-  display: flex;
-  flex: 1 1 auto;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  color: var(--text-muted);
-  border-radius: 0;
-  background: transparent;
-}
-
-.claudian-vault-file-tree-search-icon {
-  display: flex;
-  flex: 0 0 20px;
-  align-items: center;
-  justify-content: center;
-}
-
-.claudian-vault-file-tree-search-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.claudian-vault-file-tree-search-input {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 0;
-  color: var(--text-normal);
-  font-family: inherit;
-  font-size: 13px;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.claudian-vault-file-tree-search-input:hover,
-.claudian-vault-file-tree-search-input:focus {
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  outline: none;
-}
-
-.claudian-vault-file-tree-search-input::-webkit-search-cancel-button {
-  display: none;
-}
-
-.claudian-vault-file-tree-body {
-  display: flex;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.claudian-vault-file-tree-pane {
-  display: flex;
-  flex: 1 1 auto;
-  flex-direction: column;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.claudian-vault-file-tree-pane > [data-file-tree-virtualized] {
-  display: block;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
-}
-
-.claudian-vault-file-tree-search-limit {
-  flex: 0 0 auto;
-  padding: 6px 12px;
-  color: var(--text-muted);
-  font-size: 11px;
-}
-
-.claudian-vault-file-tree-loading,
-.claudian-vault-file-tree-error {
-  padding: 16px 12px;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-.claudian-vault-file-tree-error {
-  color: var(--text-error);
-}
-
-
-/* ============================================
    components/messages.css
    ============================================ */
 /* Messages wrapper (for scroll-to-bottom button positioning) */
@@ -1400,6 +1297,242 @@ body.theme-dark .claudian-session-metadata-popover {
   font-weight: 300;
   color: var(--text-muted);
   letter-spacing: -0.01em;
+}
+
+.claudian-welcome-linked-content {
+  position: relative;
+  min-width: 0;
+  width: min(420px, 100%);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.claudian-welcome-linked-content:empty {
+  display: none;
+}
+
+.claudian-linked-content-selector-row {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 4px;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.claudian-linked-content-selector {
+  appearance: none;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.claudian-linked-content-selector:hover,
+.claudian-linked-content-selector:focus-visible,
+.claudian-linked-content-selector:active {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.claudian-linked-content-selector:focus-visible {
+  outline: none;
+}
+
+.claudian-linked-content-selector:disabled {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.claudian-welcome-linked-content .claudian-linked-content-selector-row > button.claudian-linked-content-selector,
+.claudian-welcome-linked-content .claudian-linked-content-selector-row > button.claudian-linked-content-selector:hover,
+.claudian-welcome-linked-content .claudian-linked-content-selector-row > button.claudian-linked-content-selector:focus-visible,
+.claudian-welcome-linked-content .claudian-linked-content-selector-row > button.claudian-linked-content-selector:active {
+  appearance: none;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.claudian-linked-content-selector-row.is-editing .claudian-linked-content-selector {
+  display: none;
+}
+
+.claudian-linked-content-selector-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+}
+
+.claudian-linked-content-selector-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.claudian-linked-content-selector-prefix {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.claudian-linked-content-picker.claudian-composer-dropdown.is-visible {
+  position: absolute;
+  inset-block-start: calc(100% + 6px);
+  inset-inline: 0;
+  bottom: auto;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  max-height: min(360px, 55vh);
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  text-align: start;
+}
+
+.claudian-linked-content-picker-search {
+  min-width: 0;
+  width: auto;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--interactive-accent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.claudian-linked-content-picker-search:hover {
+  border: 0;
+  border-bottom: 1px solid var(--interactive-accent);
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-linked-content-picker-search:focus {
+  outline: none;
+  border: 0;
+  border-bottom: 1px solid var(--interactive-accent);
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-welcome-linked-content .claudian-linked-content-selector-row > input[type='text'].claudian-linked-content-picker-search,
+.claudian-welcome-linked-content .claudian-linked-content-selector-row > input[type='text'].claudian-linked-content-picker-search:hover,
+.claudian-welcome-linked-content .claudian-linked-content-selector-row > input[type='text'].claudian-linked-content-picker-search:focus,
+.claudian-welcome-linked-content .claudian-linked-content-selector-row > input[type='text'].claudian-linked-content-picker-search:active {
+  appearance: none;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--interactive-accent);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-linked-content-picker-search::placeholder {
+  color: var(--text-muted);
+}
+
+.claudian-linked-content-picker-search:disabled {
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.claudian-linked-content-picker-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.claudian-linked-content-picker-option-path::before {
+  content: ' ';
+}
+
+.claudian-linked-content-picker button.claudian-linked-content-picker-option {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: inherit;
+  text-align: start;
+}
+
+.claudian-linked-content-picker button.claudian-linked-content-picker-option:focus-visible,
+.claudian-linked-content-picker button.claudian-linked-content-picker-option:active {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-linked-content-picker button.claudian-linked-content-picker-option:focus-visible {
+  outline: 1px solid var(--interactive-accent);
+  outline-offset: -1px;
+}
+
+.claudian-linked-content-picker button.claudian-linked-content-picker-option:hover,
+.claudian-linked-content-picker button.claudian-linked-content-picker-option.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.claudian-linked-content-picker button.claudian-linked-content-picker-option:disabled {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.claudian-linked-content-picker-empty {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.claudian-linked-content-picker-empty {
+  padding: 8px;
+  text-align: center;
 }
 
 .claudian-message {
@@ -2861,14 +2994,63 @@ body.theme-light .claudian-message-content pre {
   border: 0;
   border-radius: 4px;
   background: transparent;
+  box-shadow: none;
   cursor: pointer;
-  color: var(--text-faint);
-  transition: color 0.15s ease, background 0.15s ease;
+  color: var(--text-muted);
+  transition: color 0.15s ease;
 }
 
-.claudian-input-nav-btn:hover {
+.claudian-input-nav-btn:hover,
+.claudian-input-nav-btn:focus-visible,
+.claudian-input-nav-btn:active {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--text-normal);
-  background: var(--background-modifier-hover);
+}
+
+.claudian-input-nav-btn:disabled,
+.claudian-input-nav-btn[aria-disabled='true'] {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-faint);
+  cursor: default;
+}
+
+/* Obsidian applies more specific native-button chrome than the shared nav class. */
+button.claudian-input-nav-btn {
+  appearance: none;
+  flex: 0 0 24px;
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+}
+
+button.claudian-input-nav-btn:hover,
+button.claudian-input-nav-btn:focus-visible,
+button.claudian-input-nav-btn:active {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+button.claudian-input-nav-btn:disabled,
+button.claudian-input-nav-btn[aria-disabled='true'] {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-faint);
+  cursor: default;
 }
 
 .claudian-input-nav-btn svg {
@@ -3060,6 +3242,18 @@ body.theme-light .claudian-message-content pre {
   background: var(--background-modifier-hover);
 }
 
+.claudian-context-chip--content {
+  border-color: var(--background-modifier-border-hover);
+}
+
+.claudian-context-chip--missing {
+  border-color: var(--text-error);
+}
+
+.claudian-context-chip--missing .claudian-context-chip-icon {
+  color: var(--text-error);
+}
+
 .claudian-context-chip-main {
   display: flex;
   align-items: center;
@@ -3079,7 +3273,7 @@ body.theme-light .claudian-message-content pre {
   box-shadow: none;
 }
 
-/* Obsidian applies a button surface to clickable note and image labels. */
+/* Obsidian applies a button surface to clickable context labels. */
 .claudian-context-chip > button.claudian-context-chip-main,
 .claudian-context-chip > button.claudian-context-chip-main:hover,
 .claudian-context-chip > button.claudian-context-chip-main:focus,
@@ -3133,7 +3327,7 @@ body.theme-light .claudian-message-content pre {
   line-height: 1;
   cursor: pointer;
   box-shadow: none;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition: color 0.15s ease;
 }
 
 .claudian-context-chip > button.claudian-context-chip-remove,
@@ -3144,12 +3338,15 @@ body.theme-light .claudian-message-content pre {
   border: 0;
   background: transparent;
   background-image: none;
+  color: var(--text-muted);
   box-shadow: none;
 }
 
-.claudian-context-chip > button.claudian-context-chip-remove:hover {
+.claudian-context-chip > button.claudian-context-chip-remove:hover,
+.claudian-context-chip > button.claudian-context-chip-remove:focus-visible {
   border: 0;
-  background: var(--background-modifier-hover);
+  background: transparent;
+  background-image: none;
   color: var(--text-normal);
   box-shadow: none;
 }
@@ -3261,6 +3458,124 @@ body.theme-light .claudian-message-content pre {
 
 .claudian-context-meter.warning .claudian-context-meter-percent {
   color: #E57373;
+}
+
+
+/* ============================================
+   components/composer-dropdown.css
+   ============================================ */
+.claudian-composer-dropdown {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  z-index: 1000;
+  max-height: 300px;
+  margin-bottom: 4px;
+  overflow-y: auto;
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 6px;
+  box-shadow: 0 -4px 16px rgb(0 0 0 / 20%);
+}
+
+.claudian-composer-dropdown.is-visible {
+  display: block;
+}
+
+.claudian-composer-dropdown--fixed {
+  position: fixed;
+  right: auto;
+  bottom: var(--claudian-fixed-dropdown-bottom);
+  left: var(--claudian-fixed-dropdown-left);
+  z-index: 10001;
+  width: var(--claudian-fixed-dropdown-width);
+}
+
+.claudian-composer-dropdown-item {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+  padding: 7px 10px;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+
+.claudian-composer-dropdown-item:hover,
+.claudian-composer-dropdown-item.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.claudian-composer-dropdown-item[aria-disabled="true"] {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.claudian-composer-dropdown-item[aria-disabled="true"]:hover {
+  background: transparent;
+}
+
+.claudian-composer-dropdown-icon,
+.claudian-composer-dropdown-folder-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--text-muted);
+}
+
+.claudian-composer-dropdown-icon svg,
+.claudian-composer-dropdown-folder-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.claudian-composer-dropdown-folder-icon {
+  margin-left: auto;
+}
+
+.claudian-composer-dropdown-copy {
+  min-width: 0;
+  flex: 1;
+}
+
+.claudian-composer-dropdown-label,
+.claudian-composer-dropdown-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claudian-composer-dropdown-label {
+  font-size: 13px;
+}
+
+.claudian-composer-dropdown-detail {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.claudian-composer-dropdown-item.is-loading,
+.claudian-composer-dropdown-item.is-empty,
+.claudian-composer-dropdown-item.is-error {
+  justify-content: center;
+  padding: 12px;
+  text-align: center;
+}
+
+.claudian-composer-dropdown::-webkit-scrollbar {
+  width: 6px;
+}
+
+.claudian-composer-dropdown::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.claudian-composer-dropdown::-webkit-scrollbar-thumb {
+  background: var(--background-modifier-border);
+  border-radius: 3px;
 }
 
 
@@ -3771,194 +4086,6 @@ body.theme-light .claudian-message-content pre {
 .claudian-external-context-remove svg {
   width: 14px;
   height: 14px;
-}
-
-
-/* ============================================
-   features/file-context.css
-   ============================================ */
-/* @ Mention dropdown */
-.claudian-mention-dropdown {
-  display: none;
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  margin-bottom: 4px;
-  background: var(--background-secondary);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
-  z-index: 1000;
-  max-height: 250px;
-  overflow-y: auto;
-}
-
-.claudian-mention-dropdown.visible {
-  display: block;
-}
-
-/* Fixed positioning for inline editor */
-.claudian-mention-dropdown-fixed {
-  position: fixed;
-  bottom: var(--claudian-fixed-dropdown-bottom);
-  left: var(--claudian-fixed-dropdown-left);
-  right: auto;
-  width: var(--claudian-fixed-dropdown-width);
-  z-index: 10001;
-}
-
-.claudian-mention-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
-  transition: background 0.1s ease;
-}
-
-.claudian-mention-item:hover,
-.claudian-mention-item.selected {
-  background: var(--background-modifier-hover);
-}
-
-.claudian-mention-icon {
-  display: flex;
-  align-items: center;
-  color: var(--text-muted);
-  flex-shrink: 0;
-}
-
-.claudian-mention-icon svg {
-  width: 14px;
-  height: 14px;
-}
-
-.claudian-mention-path {
-  font-size: 13px;
-  color: var(--text-normal);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.claudian-mention-empty {
-  padding: 12px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-/* Scrollbar for mention dropdown */
-.claudian-mention-dropdown::-webkit-scrollbar {
-  width: 6px;
-}
-
-.claudian-mention-dropdown::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.claudian-mention-dropdown::-webkit-scrollbar-thumb {
-  background: var(--background-modifier-border);
-  border-radius: 3px;
-}
-
-.claudian-mention-item.vault-folder .claudian-mention-icon {
-  color: var(--text-muted);
-}
-
-.claudian-mention-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.claudian-mention-name {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--interactive-accent);
-}
-
-.claudian-mention-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Context file items in @-mention dropdown */
-.claudian-mention-item.context-file .claudian-mention-icon {
-  color: var(--claudian-brand);
-}
-
-.claudian-mention-item.context-file .claudian-mention-text {
-  flex-direction: row;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.claudian-mention-item.context-file .claudian-mention-name-context {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
-/* Context folder filter items in @-mention dropdown */
-.claudian-mention-item.context-folder .claudian-mention-icon {
-  color: var(--text-muted);
-}
-
-.claudian-mention-name-folder {
-  color: var(--text-normal);
-  font-weight: 500;
-}
-
-.claudian-mention-name-context {
-  color: var(--text-normal);
-}
-
-/* Agent folder items in @-mention dropdown */
-.claudian-mention-item.agent-folder .claudian-mention-icon {
-  color: var(--link-color);
-}
-
-.claudian-mention-name-agent-folder {
-  color: var(--link-color);
-  font-weight: 600;
-}
-
-/* Agent items in @-mention dropdown (inside @Agents/) */
-.claudian-mention-item.agent .claudian-mention-icon {
-  color: var(--link-color);
-}
-
-.claudian-mention-item.agent .claudian-mention-text {
-  flex-direction: row;
-  align-items: baseline;
-  gap: 6px;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.claudian-mention-item.agent .claudian-mention-name-agent {
-  color: var(--text-normal);
-  font-size: 13px;
-  flex-shrink: 0;
-}
-
-.claudian-mention-item.agent .claudian-mention-agent-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
 }
 
 
@@ -4655,100 +4782,6 @@ code .claudian-file-link:hover {
 
 
 /* ============================================
-   features/slash-commands.css
-   ============================================ */
-/* Slash Command Dropdown */
-.claudian-slash-dropdown {
-  display: none;
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  right: 0;
-  margin-bottom: 4px;
-  background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 6px;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.2);
-  z-index: 1000;
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-.claudian-slash-dropdown.visible {
-  display: block;
-}
-
-/* Fixed positioning for inline editor */
-.claudian-slash-dropdown-fixed {
-  position: fixed;
-  bottom: var(--claudian-fixed-dropdown-bottom);
-  left: var(--claudian-fixed-dropdown-left);
-  right: auto;
-  width: var(--claudian-fixed-dropdown-width);
-  z-index: 10001;
-}
-
-.claudian-slash-item {
-  padding: 8px 12px;
-  cursor: pointer;
-  transition: background 0.1s ease;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.claudian-slash-item:last-child {
-  border-bottom: none;
-}
-
-.claudian-slash-item:hover,
-.claudian-slash-item.selected {
-  background: var(--background-modifier-hover);
-}
-
-.claudian-slash-name {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--text-normal);
-  font-family: var(--font-monospace);
-}
-
-.claudian-slash-hint {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-left: 8px;
-}
-
-.claudian-slash-desc {
-  font-size: 11px;
-  color: var(--text-muted);
-  margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.claudian-slash-empty {
-  padding: 16px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 13px;
-}
-
-/* Scrollbar */
-.claudian-slash-dropdown::-webkit-scrollbar {
-  width: 6px;
-}
-
-.claudian-slash-dropdown::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.claudian-slash-dropdown::-webkit-scrollbar-thumb {
-  background: var(--background-modifier-border);
-  border-radius: 3px;
-}
-
-
-/* ============================================
    features/resume-session.css
    ============================================ */
 /* Resume Session Dropdown */
@@ -5301,6 +5334,1987 @@ code .claudian-file-link:hover {
 
 
 /* ============================================
+   features/collab-git.css
+   ============================================ */
+.claudian-collab-git-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+  padding: var(--size-4-3);
+}
+
+.claudian-collab-git-title {
+  margin: 0;
+}
+
+.claudian-collab-git-status {
+  border-radius: var(--radius-s);
+  padding: var(--size-4-2) var(--size-4-3);
+}
+
+.claudian-collab-git-status--ready {
+  background: rgba(var(--color-green-rgb), 0.12);
+  color: var(--text-success);
+}
+
+.claudian-collab-git-status--blocked {
+  background: var(--background-modifier-error-hover);
+  color: var(--text-error);
+}
+
+.claudian-collab-git-capabilities {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  margin-top: var(--size-4-1);
+}
+
+.claudian-collab-git-support,
+.claudian-collab-git-path-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.claudian-collab-git-prompt {
+  box-sizing: border-box;
+  font-family: var(--font-monospace);
+  resize: vertical;
+  width: 100%;
+}
+
+.claudian-collab-git-actions {
+  display: flex;
+  gap: var(--size-4-2);
+}
+
+.claudian-collab-git-path {
+  width: 100%;
+}
+
+
+/* ============================================
+   features/collab-project.css
+   ============================================ */
+.claudian-collab-create-modal {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.claudian-collab-create-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.claudian-collab-create-field label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.claudian-collab-create-status {
+  min-height: var(--line-height-normal);
+  margin: 12px 0;
+}
+
+.claudian-collab-create-warning {
+  color: var(--text-warning);
+}
+
+.claudian-collab-create-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.claudian-collab-access-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.claudian-collab-access-manager-count {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+
+/* ============================================
+   features/collab-join.css
+   ============================================ */
+.claudian-collab-join-modal {
+  width: min(620px, calc(100vw - 32px));
+}
+
+.claudian-collab-join-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.claudian-collab-join-field label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.claudian-collab-join-field textarea {
+  min-height: 96px;
+  resize: vertical;
+  font-family: var(--font-monospace);
+}
+
+.claudian-collab-join-status {
+  min-height: 24px;
+  margin: 12px 0;
+}
+
+.claudian-collab-join-warning {
+  color: var(--text-warning);
+}
+
+.claudian-collab-join-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+
+/* ============================================
+   features/collab-panel.css
+   ============================================ */
+.claudian-collab-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  padding: 8px;
+  overflow: auto;
+}
+
+.claudian-collab-panel--inactive {
+  pointer-events: none;
+}
+
+.claudian-collab-panel-header,
+.claudian-collab-project-toolbar,
+.claudian-collab-empty-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.claudian-collab-panel-header {
+  min-height: 32px;
+  padding-inline: 4px;
+}
+
+.claudian-collab-empty-actions {
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+
+.claudian-collab-empty-actions > button {
+  flex: 1 1 0;
+}
+
+.claudian-collab-panel button.claudian-collab-empty-join {
+  border: 0;
+  background: var(--interactive-normal);
+  box-shadow: none;
+  color: var(--text-muted);
+}
+
+.claudian-collab-panel button.claudian-collab-empty-join:is(:hover, :focus-visible) {
+  border: 0;
+  background: var(--interactive-hover);
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.claudian-collab-panel button.claudian-collab-empty-join:active {
+  border: 0;
+  background: var(--background-modifier-active-hover, var(--interactive-hover));
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.claudian-collab-panel-header h3 {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.claudian-collab-panel-header-action {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  color: var(--text-muted);
+}
+
+.claudian-collab-panel-header-action svg {
+  width: 15px;
+  height: 15px;
+}
+
+.claudian-collab-project-toolbar {
+  flex-wrap: nowrap;
+  padding: 2px 4px 8px;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.claudian-collab-project-header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.claudian-collab-project-management {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+}
+
+.claudian-collab-project-management-icon {
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.claudian-collab-project-management-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.claudian-collab-empty,
+.claudian-collab-panel-status {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  align-items: stretch;
+  justify-content: center;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.claudian-collab-panel .claudian-collab-project-picker {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: flex-start;
+  width: 0;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 8px;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  text-align: start;
+  white-space: nowrap;
+}
+
+.claudian-collab-project-picker:hover {
+  background: var(--background-modifier-hover);
+}
+
+.claudian-collab-project-picker-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.claudian-collab-project-home {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
+  min-height: 0;
+}
+
+.claudian-collab-retired-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 8px;
+  justify-content: center;
+  padding: 16px 8px;
+  color: var(--text-muted);
+}
+
+.claudian-collab-retired-panel h3 {
+  margin: 0;
+  color: var(--text-normal);
+}
+
+.claudian-collab-retired-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.claudian-collab-project-path {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-project-recovery {
+  padding: 10px 8px;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.claudian-collab-project-recovery {
+  color: var(--text-warning);
+}
+
+.claudian-collab-host-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.claudian-collab-panel-status--warning {
+  color: var(--text-warning);
+}
+
+
+/* ============================================
+   features/collab-publish.css
+   ============================================ */
+.claudian-collab-publish {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  padding: 10px 4px;
+  overflow: auto;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.claudian-collab-publish-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.claudian-collab-publish-header h4,
+.claudian-collab-panel button.claudian-collab-publish-title {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.claudian-collab-panel button.claudian-collab-publish-title {
+  width: fit-content;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  text-align: start;
+}
+
+.claudian-collab-panel button.claudian-collab-publish-title:is(:hover, :focus-visible) {
+  color: var(--text-normal);
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-collab-publish-actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.claudian-collab-publish-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.claudian-collab-publish-status--conflict,
+.claudian-collab-publish-status--error {
+  color: var(--text-error);
+}
+
+.claudian-collab-publish-status--offline,
+.claudian-collab-publish-status--awaiting-request,
+.claudian-collab-publish-status--cancelled {
+  color: var(--text-warning);
+}
+
+.claudian-collab-file-list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.claudian-collab-file-list--list {
+  gap: 2px;
+  margin: 4px 0 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.claudian-collab-file-list--flat {
+  padding: 2px 0;
+}
+
+.claudian-collab-file-list--list > li {
+  min-width: 0;
+}
+
+.claudian-collab-panel button.claudian-collab-file-button {
+  display: grid;
+  width: 100%;
+  color: var(--text-muted);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-collab-file-list--list > li > button.claudian-collab-file-button {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.claudian-collab-file-list--flat > button.claudian-collab-file-button {
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  padding: 7px 8px;
+  text-align: start;
+}
+
+.claudian-collab-panel button.claudian-collab-file-button:is(:active, [aria-pressed="true"]) {
+  color: var(--text-normal);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-collab-panel button.claudian-collab-file-button:is(:hover, :focus-visible) {
+  color: var(--text-normal);
+  border: 0;
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+}
+
+.claudian-collab-panel button.claudian-collab-file-button:disabled,
+.claudian-collab-panel button.claudian-collab-file-button:disabled:is(:hover, :focus-visible, :active) {
+  color: var(--text-faint);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  cursor: default;
+}
+
+.claudian-collab-file-kind {
+  color: var(--text-accent);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-file-list--list .claudian-collab-file-kind {
+  width: 14px;
+}
+
+.claudian-collab-file-kind[data-kind="added"],
+.claudian-collab-file-kind[data-kind="copied"] {
+  color: var(--text-success);
+}
+
+.claudian-collab-file-kind[data-kind="deleted"] {
+  color: var(--text-error);
+}
+
+.claudian-collab-file-kind[data-kind="modified"],
+.claudian-collab-file-kind[data-kind="renamed"],
+.claudian-collab-file-kind[data-kind="type-changed"] {
+  color: var(--text-warning);
+}
+
+.claudian-collab-file-path {
+  overflow: hidden;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claudian-collab-panel button.claudian-collab-publish-navigation {
+  width: auto;
+  padding: 3px 10px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-panel button.claudian-collab-publish-navigation:is(:hover, :focus-visible) {
+  color: var(--text-normal);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.claudian-collab-panel button.claudian-collab-publish-navigation:disabled {
+  color: var(--text-muted);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+
+/* ============================================
+   features/collab-requests.css
+   ============================================ */
+.claudian-collab-team-home,
+.claudian-collab-team {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.claudian-collab-team-home {
+  padding: 10px 4px;
+}
+
+.claudian-collab-team-home {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.claudian-collab-team-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.claudian-collab-team-header h4 {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.claudian-collab-team-count {
+  min-width: 1.5rem;
+  padding: 1px var(--size-2-2);
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+  border-radius: var(--radius-l);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
+}
+
+.claudian-collab-team-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.claudian-collab-panel .claudian-collab-team-request {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--size-2-2);
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 8px;
+  color: var(--text-normal);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  box-shadow: none;
+  text-align: start;
+}
+
+.claudian-collab-team-request-conflict {
+  color: var(--text-warning);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-team-request:hover {
+  background: var(--background-modifier-hover);
+}
+
+.claudian-collab-team-member {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claudian-collab-team-status,
+.claudian-collab-team-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-team-request-body {
+  padding: 2px 0 6px;
+}
+
+.claudian-collab-panel button.claudian-collab-team-request-resolve {
+  width: auto;
+  padding: 6px 8px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-panel button.claudian-collab-team-request-resolve:is(:hover, :focus-visible) {
+  color: var(--text-normal);
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-collab-team-request-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-team-request-status {
+  padding: 6px 8px;
+}
+
+
+/* ============================================
+   features/collab-markdown-editor.css
+   ============================================ */
+.claudian-collab-markdown-draft {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.claudian-collab-markdown-draft-modes {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.claudian-collab-markdown-draft-modes[hidden] {
+  display: none;
+}
+
+.claudian-collab-markdown-draft > .claudian-collab-markdown-draft-modes {
+  align-self: flex-end;
+}
+
+.claudian-collab-review .claudian-collab-markdown-draft-modes button {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-muted);
+  padding: 0;
+  width: auto;
+}
+
+.claudian-collab-review .claudian-collab-markdown-draft-modes button:is(:hover, :focus-visible, [aria-pressed="true"]) {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.claudian-collab-markdown-draft .cm-editor {
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--input-radius, var(--radius-s));
+  box-shadow: none;
+  box-sizing: border-box;
+  color: var(--text-normal);
+  width: 100%;
+}
+
+.claudian-collab-markdown-draft .cm-editor.cm-focused {
+  border-color: var(--background-modifier-border-focus);
+  box-shadow: none;
+  outline: none;
+}
+
+.claudian-collab-markdown-draft .cm-scroller {
+  max-height: min(42vh, 420px);
+  overflow: auto;
+}
+
+.claudian-collab-markdown-draft .cm-content {
+  caret-color: var(--text-normal);
+  font-family: var(--font-monospace);
+  min-height: 120px;
+  padding: 10px 12px;
+}
+
+.claudian-collab-markdown-draft .cm-cursor {
+  border-left-color: var(--text-normal);
+}
+
+.claudian-collab-markdown-draft .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground,
+.claudian-collab-markdown-draft .cm-editor > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
+  background: var(--text-selection);
+}
+
+.claudian-collab-markdown-draft .cm-line {
+  padding: 0;
+}
+
+.claudian-collab-markdown-draft .cm-placeholder {
+  color: var(--text-faint);
+  font-style: normal;
+}
+
+.claudian-collab-ticket-field .cm-content {
+  min-height: clamp(180px, 28vh, 360px);
+}
+
+.claudian-collab-markdown-draft-editor[hidden],
+.claudian-collab-markdown-draft-preview[hidden] {
+  display: none;
+}
+
+.claudian-collab-markdown-draft-preview {
+  background: transparent;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--input-radius, var(--radius-s));
+  box-shadow: none;
+  box-sizing: border-box;
+  min-height: 120px;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+.claudian-collab-ticket-field .claudian-collab-markdown-draft-preview {
+  min-height: clamp(180px, 28vh, 360px);
+}
+
+.claudian-collab-markdown-draft-preview > :first-child {
+  margin-top: 0;
+}
+
+.claudian-collab-markdown-draft-preview > :last-child {
+  margin-bottom: 0;
+}
+
+.claudian-collab-review button.claudian-collab-markdown-ticket-reference {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-accent);
+  cursor: pointer;
+  display: inline;
+  font: inherit;
+  margin: 0;
+  padding: 0;
+  text-decoration: none;
+  vertical-align: baseline;
+  width: auto;
+}
+
+.claudian-collab-review button.claudian-collab-markdown-ticket-reference:is(:hover, :focus-visible) {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-accent-hover);
+  text-decoration: underline;
+}
+
+
+/* ============================================
+   features/collab-comments.css
+   ============================================ */
+.claudian-collab-comment-meta {
+  align-items: baseline;
+  color: var(--text-muted);
+  display: flex;
+  font-size: var(--font-ui-smaller);
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.claudian-collab-comment-meta time {
+  margin-left: auto;
+}
+
+.claudian-collab-comment-context {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claudian-collab-comment-markdown > :first-child {
+  margin-top: 0;
+}
+
+.claudian-collab-comment-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.claudian-collab-comment-composer {
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 14px;
+}
+
+.claudian-collab-comment-composer-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.claudian-collab-comment-modes {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.claudian-collab-review .claudian-collab-markdown-draft-modes button.claudian-collab-comment-submit {
+  background: var(--interactive-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--button-radius, var(--radius-s));
+  box-shadow: var(--input-shadow);
+  color: var(--text-normal);
+  min-height: var(--input-height);
+  padding: 4px 12px;
+}
+
+.claudian-collab-review .claudian-collab-markdown-draft-modes button.claudian-collab-comment-submit:is(:hover, :focus-visible) {
+  background: var(--interactive-hover);
+  border-color: var(--background-modifier-border-hover);
+  box-shadow: var(--input-shadow);
+  color: var(--text-normal);
+}
+
+.claudian-collab-comment-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-comment-status:empty {
+  display: none;
+}
+
+.claudian-collab-request-comments {
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+  padding-top: var(--size-4-4);
+}
+
+.claudian-collab-request-comments:not(.has-entries) > .claudian-collab-comment-composer {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.claudian-collab-request-comments h3 {
+  margin: 0;
+}
+
+.claudian-collab-request-comment-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.claudian-collab-request-comment-list[hidden] {
+  display: none;
+}
+
+.claudian-collab-request-comment {
+  background: var(--background-primary);
+  border-radius: var(--radius-s);
+  padding: var(--size-4-3);
+}
+
+
+/* ============================================
+   features/collab-tickets.css
+   ============================================ */
+.claudian-collab-ticket-home {
+  border-top: 1px solid var(--background-modifier-border);
+  padding: 10px 4px;
+}
+
+.claudian-collab-ticket-list-header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.claudian-collab-ticket-list-header h4 {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  margin: 0;
+}
+
+.claudian-collab-ticket-list-actions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.claudian-collab-panel button.claudian-collab-ticket-filter {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-muted);
+  padding: 0;
+  width: auto;
+}
+
+.claudian-collab-panel button.claudian-collab-ticket-filter:is(:hover, :focus-visible, :active) {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.claudian-collab-ticket-add {
+  flex: none;
+}
+
+.claudian-collab-ticket-connection-state {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-ticket-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.claudian-collab-panel button.claudian-collab-ticket-list-item {
+  align-items: baseline;
+  border: 0;
+  box-shadow: none;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-start;
+  min-width: 0;
+  padding: 6px 8px;
+  text-align: left;
+  width: 100%;
+}
+
+.claudian-collab-panel button.claudian-collab-ticket-list-item:not([aria-current="true"]) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.claudian-collab-panel button.claudian-collab-ticket-list-item:not([aria-current="true"]):is(:hover, :focus-visible, :active) {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.claudian-collab-panel button.claudian-collab-ticket-list-item:focus-visible {
+  outline: 1px solid var(--interactive-accent);
+  outline-offset: -1px;
+}
+
+.claudian-collab-panel button.claudian-collab-ticket-list-item[aria-current="true"],
+.claudian-collab-panel button.claudian-collab-ticket-list-item[aria-current="true"]:hover,
+.claudian-collab-panel button.claudian-collab-ticket-list-item[aria-current="true"]:focus-visible {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.claudian-collab-ticket-number,
+.claudian-collab-ticket-detail-number {
+  color: var(--text-muted);
+  flex: none;
+  font-family: var(--font-monospace);
+}
+
+.claudian-collab-ticket-title {
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claudian-collab-ticket-list-status,
+.claudian-collab-ticket-editor-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.claudian-collab-ticket-editor-status {
+  padding: 8px;
+}
+
+.claudian-collab-ticket-list-status.is-error,
+.claudian-collab-ticket-editor-status.is-error {
+  color: var(--text-error);
+}
+
+.claudian-collab-ticket-load-more {
+  margin-top: 6px;
+  width: 100%;
+}
+
+.claudian-collab-ticket-editor {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(14px, 1.5vw, 22px);
+  margin: 0 auto;
+  max-width: 1200px;
+  min-width: 0;
+  padding: clamp(24px, 4vw, 56px);
+  width: 100%;
+}
+
+.claudian-collab-ticket-detail-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+
+.claudian-collab-ticket-detail-header h2 {
+  align-items: baseline;
+  display: flex;
+  flex: 0 1 auto;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.claudian-collab-ticket-detail-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.claudian-collab-ticket-edit-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.claudian-collab-review button.claudian-collab-ticket-status-toggle {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-muted);
+  padding: 0;
+  width: auto;
+}
+
+.claudian-collab-review button.claudian-collab-ticket-status-toggle:is(:hover, :focus-visible, :active) {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.claudian-collab-review button.claudian-collab-ticket-status-toggle:disabled {
+  background: transparent;
+  color: var(--text-muted);
+  opacity: 1;
+}
+
+.claudian-collab-review button.claudian-collab-ticket-edit {
+  margin-inline-start: auto;
+  width: auto;
+}
+
+.claudian-collab-ticket-field,
+.claudian-collab-request-description {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+}
+
+.claudian-collab-ticket-field input,
+.claudian-collab-ticket-field select {
+  box-sizing: border-box;
+  max-width: none;
+  width: 100%;
+}
+
+.claudian-collab-ticket-field-header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.claudian-collab-ticket-field-header > .claudian-collab-markdown-draft-modes {
+  margin-inline-start: auto;
+}
+
+.claudian-collab-ticket-editor-status:empty {
+  display: none;
+}
+
+.claudian-collab-ticket-editor > .mod-cta {
+  align-self: flex-start;
+  min-width: 180px;
+}
+
+.claudian-collab-ticket-activity {
+  border-top: 1px solid var(--background-modifier-border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.claudian-collab-ticket-activity:not(.has-entries) > .claudian-collab-comment-composer {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.claudian-collab-ticket-activity h3 {
+  margin: 0;
+}
+
+.claudian-collab-ticket-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.claudian-collab-ticket-activity-item {
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
+  padding: 12px 14px;
+}
+
+.claudian-collab-ticket-activity-item.is-comment {
+  background: var(--background-primary);
+}
+
+.claudian-collab-ticket-activity-item.is-references,
+.claudian-collab-ticket-activity-item.is-resolves {
+  border-inline-start: 3px solid var(--text-accent);
+}
+
+.claudian-collab-ticket-activity-item.is-resolves {
+  border-inline-start-color: var(--text-success);
+}
+
+.claudian-collab-ticket-relation-event {
+  color: var(--text-normal);
+}
+.claudian-collab-review .claudian-collab-markdown-draft-modes button.claudian-collab-request-description-submit {
+  background: var(--interactive-normal);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--button-radius, var(--radius-s));
+  box-shadow: var(--input-shadow);
+  color: var(--text-normal);
+  min-height: var(--input-height);
+  padding: 4px 12px;
+}
+
+.claudian-collab-review .claudian-collab-markdown-draft-modes button.claudian-collab-request-description-submit:is(:hover, :focus-visible) {
+  background: var(--interactive-hover);
+  border-color: var(--background-modifier-border-hover);
+  box-shadow: var(--input-shadow);
+  color: var(--text-normal);
+}
+
+.claudian-collab-request-description {
+  margin-top: 8px;
+}
+
+.claudian-collab-request-description-header {
+  align-items: center;
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2) var(--size-4-3);
+}
+
+.claudian-collab-request-description-header:empty {
+  display: none;
+}
+
+.claudian-collab-request-description-modes {
+  margin-inline-start: auto;
+}
+
+.claudian-collab-request-description-header > .claudian-collab-review-metadata-line {
+  margin-inline-start: auto;
+}
+
+.claudian-collab-request-description-header
+  > .claudian-collab-review-metadata-line
+  + .claudian-collab-request-description-modes {
+  margin-inline-start: 0;
+}
+
+.claudian-collab-request-description > [data-collab-description="true"] {
+  min-width: 0;
+  width: 100%;
+}
+
+.claudian-collab-request-description.is-request:not(.is-editing) .claudian-collab-markdown-draft-preview {
+  border: 0;
+  border-radius: 0;
+  min-height: 0;
+  padding: 0;
+}
+
+.claudian-collab-request-description-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-request-description-status:empty {
+  display: none;
+}
+
+.claudian-collab-ticket-offline-read-only {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-markdown-suggestions {
+  background: var(--background-primary-alt);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+}
+
+.claudian-collab-markdown-suggestions[hidden] {
+  display: none;
+}
+
+.claudian-collab-review .claudian-collab-markdown-suggestions button.claudian-collab-markdown-suggestion {
+  appearance: none;
+  align-items: center;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: var(--text-normal);
+  display: flex;
+  justify-content: flex-start;
+  text-align: left;
+  width: 100%;
+}
+
+.claudian-collab-review .claudian-collab-markdown-suggestions button.claudian-collab-markdown-suggestion:is(:hover, :focus-visible),
+.claudian-collab-review .claudian-collab-markdown-suggestions button.claudian-collab-markdown-suggestion[aria-selected="true"] {
+  background: var(--background-modifier-hover);
+}
+
+
+/* ============================================
+   features/collab-review.css
+   ============================================ */
+.claudian-collab-review {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: var(--size-4-4);
+}
+
+.claudian-collab-review-header {
+  border-block-end: 1px solid var(--background-modifier-border);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--size-2-2) var(--size-4-3);
+  align-items: center;
+  margin-block-end: var(--size-4-3);
+  padding-block-end: var(--size-4-3);
+}
+
+.claudian-collab-review-header h2 {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  margin: 0;
+}
+
+.claudian-collab-review-header.has-primary-action h2 {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.claudian-collab-review-header > .claudian-collab-request-description {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.claudian-collab-review-tabs {
+  align-items: center;
+  display: flex;
+  gap: var(--size-4-3);
+  grid-column: 1 / -1;
+  grid-row: 3;
+  min-width: 0;
+}
+
+.claudian-collab-review-header.is-request > .claudian-collab-review-tabs {
+  grid-row: 2;
+}
+
+.claudian-collab-review .claudian-collab-review-tabs > button {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text-muted);
+  padding: var(--size-2-2) 0;
+  width: auto;
+}
+
+.claudian-collab-review .claudian-collab-review-tabs > button:is(:hover, :focus-visible) {
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.claudian-collab-review .claudian-collab-review-tabs > button.is-active {
+  color: var(--text-normal);
+}
+
+.claudian-collab-review-tabs > .claudian-collab-review-display-controls {
+  margin-inline-start: auto;
+}
+
+.claudian-collab-review-tabs > .claudian-collab-review-display-controls[hidden],
+.claudian-collab-review-content[hidden] {
+  display: none;
+}
+
+.claudian-collab-review-display-controls {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: var(--size-2-2);
+}
+
+.view-content.claudian-collab-review button.claudian-collab-review-display-toggle {
+  appearance: none;
+  display: inline-flex;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline: 0;
+}
+
+.view-content.claudian-collab-review button.claudian-collab-review-display-toggle svg {
+  width: 16px;
+  height: 16px;
+}
+
+.claudian-collab-review [slot="header-filename-suffix"] {
+  display: inline-flex;
+  align-self: center;
+  align-items: center;
+  line-height: 1;
+}
+
+.claudian-collab-review button.claudian-collab-review-file-open {
+  align-self: center;
+  margin-block: 0;
+  vertical-align: middle;
+}
+
+.view-content.claudian-collab-review button.claudian-collab-review-display-toggle:hover,
+.view-content.claudian-collab-review button.claudian-collab-review-display-toggle:focus-visible,
+.view-content.claudian-collab-review button.claudian-collab-review-display-toggle:active {
+  color: var(--text-normal);
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.view-content.claudian-collab-review button.claudian-collab-review-display-toggle:focus-visible {
+  outline: 1px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.claudian-collab-review-metadata-line {
+  align-items: center;
+  display: flex;
+  gap: var(--size-4-2);
+  min-width: 0;
+}
+
+.claudian-collab-review-header button.claudian-collab-review-accept {
+  grid-column: 2;
+  grid-row: 2;
+  width: auto;
+  padding: 2px 6px;
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border: 1px solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+  box-shadow: none;
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+}
+
+.claudian-collab-review-header.has-primary-action button.claudian-collab-review-accept {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.claudian-collab-review-header button.claudian-collab-review-accept:hover,
+.claudian-collab-review-header button.claudian-collab-review-accept:focus-visible {
+  color: var(--text-on-accent);
+  background: var(--interactive-accent-hover);
+  border-color: var(--interactive-accent-hover);
+  box-shadow: none;
+}
+
+.claudian-collab-review-header button.claudian-collab-review-accept:disabled {
+  color: var(--text-muted);
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border);
+  box-shadow: none;
+}
+
+.claudian-collab-review-summary {
+  color: var(--text-muted);
+}
+
+.claudian-collab-review-condition {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-review-condition.is-clean,
+.claudian-collab-review-condition.is-merged {
+  color: var(--text-success);
+}
+
+.claudian-collab-review-condition.is-conflicting,
+.claudian-collab-review-condition.is-stale {
+  color: var(--text-warning);
+}
+
+.claudian-collab-review-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 0;
+}
+
+.claudian-collab-review button.claudian-collab-review-display-toggle[hidden] {
+  display: none;
+}
+
+.claudian-collab-review-overview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-5);
+  padding: var(--size-4-2) 0;
+}
+
+.claudian-collab-review-content [data-diffs] {
+  font-family: var(--font-monospace);
+}
+
+.claudian-collab-review-file {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 20rem;
+  min-height: 8rem;
+  margin-block-end: var(--size-4-6);
+  scroll-margin-block-start: var(--size-4-3);
+}
+
+.claudian-collab-review-file:last-child {
+  margin-block-end: 0;
+}
+
+.claudian-collab-review-file-title {
+  display: flex;
+  gap: var(--size-2-2);
+  align-items: center;
+}
+
+.claudian-collab-review-file-title h3 {
+  margin: 0;
+}
+
+.claudian-collab-review-file-placeholder {
+  min-height: 8rem;
+  padding: var(--size-4-3);
+  color: var(--text-muted);
+  border-block-start: 1px solid var(--background-modifier-border);
+}
+
+.claudian-collab-review-metadata,
+.claudian-collab-review-message {
+  color: var(--text-muted);
+}
+
+.claudian-collab-review-image {
+  display: block;
+  max-width: min(100%, 60rem);
+  max-height: 70vh;
+  margin-block-start: var(--size-4-4);
+  object-fit: contain;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+}
+
+
+/* ============================================
+   features/collab-conflicts.css
+   ============================================ */
+.claudian-collab-conflict {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  padding: var(--size-4-4);
+}
+
+.claudian-collab-conflict-header {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--size-4-3);
+  padding-block-end: var(--size-4-3);
+}
+
+.claudian-collab-conflict-header h2,
+.claudian-collab-conflict-content h3 {
+  margin: 0;
+}
+
+.claudian-collab-conflict-progress,
+.claudian-collab-conflict-kind,
+.claudian-collab-conflict-guidance {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.claudian-collab-conflict-guidance {
+  flex: 0 0 auto;
+  margin: 0 0 var(--size-4-4);
+}
+
+.claudian-collab-conflict-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.claudian-collab-conflict-section {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 24rem;
+  min-width: 0;
+  padding-block: var(--size-4-3) var(--size-4-6);
+  border-block-end: 1px solid var(--background-modifier-border);
+}
+
+.claudian-collab-conflict-section:first-child {
+  padding-block-start: 0;
+}
+
+.claudian-collab-conflict-section:last-child {
+  padding-block-end: 0;
+  border-block-end: 0;
+}
+
+.claudian-collab-conflict-kind {
+  margin-block: var(--size-2-1) var(--size-4-3);
+}
+
+.claudian-collab-conflict-diff-labels {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--size-4-3);
+  margin-block-end: var(--size-2-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-conflict-diff-labels span:last-child {
+  text-align: end;
+}
+
+.claudian-collab-conflict-diff {
+  min-width: 0;
+  font-family: var(--font-monospace);
+}
+
+.claudian-collab-conflict-versions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--size-4-3);
+}
+
+.claudian-collab-conflict-version {
+  min-width: 0;
+  padding-block: var(--size-2-2);
+}
+
+.claudian-collab-conflict-blocking {
+  max-width: 48rem;
+  padding: var(--size-4-3);
+}
+
+.claudian-collab-conflict-message {
+  margin: auto;
+  color: var(--text-muted);
+}
+
+@media (max-width: 700px) {
+  .claudian-collab-conflict-versions {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ============================================
+   features/collab-access.css
+   ============================================ */
+.claudian-collab-host-section {
+  min-width: 0;
+}
+
+.claudian-collab-project-management-modal button:not(.mod-cta, .mod-warning, .claudian-collab-host-badge),
+.claudian-collab-project-invitation-modal button,
+.claudian-collab-host-diagnostics-modal button,
+.claudian-collab-retired-panel button:not(.mod-warning) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+}
+
+.claudian-collab-project-management-modal button:not(.mod-cta, .mod-warning, .claudian-collab-host-badge):is(:hover, :focus-visible, :active),
+.claudian-collab-project-invitation-modal button:is(:hover, :focus-visible, :active),
+.claudian-collab-host-diagnostics-modal button:is(:hover, :focus-visible, :active),
+.claudian-collab-retired-panel button:not(.mod-warning):is(:hover, :focus-visible, :active) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+.claudian-collab-project-management-modal button:not(.mod-cta, .mod-warning, .claudian-collab-host-badge):disabled,
+.claudian-collab-project-management-modal button:not(.mod-cta, .mod-warning, .claudian-collab-host-badge):disabled:is(:hover, :focus-visible, :active),
+.claudian-collab-project-invitation-modal button:disabled,
+.claudian-collab-project-invitation-modal button:disabled:is(:hover, :focus-visible, :active),
+.claudian-collab-host-diagnostics-modal button:disabled,
+.claudian-collab-host-diagnostics-modal button:disabled:is(:hover, :focus-visible, :active),
+.claudian-collab-retired-panel button:not(.mod-warning):disabled,
+.claudian-collab-retired-panel button:not(.mod-warning):disabled:is(:hover, :focus-visible, :active) {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-faint);
+  cursor: default;
+}
+
+.claudian-collab-host-section-header {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 34px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.claudian-collab-access-badge,
+.claudian-collab-host-badge {
+  width: auto;
+  min-width: 0;
+  min-height: 0;
+  height: auto;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  background: var(--background-modifier-hover);
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+.claudian-collab-host-badge:hover,
+.claudian-collab-host-badge:focus-visible {
+  background: var(--background-modifier-active-hover);
+  box-shadow: none;
+}
+
+.claudian-collab-host-badge--warning,
+.claudian-collab-access-status--error,
+.claudian-collab-host-error {
+  color: var(--text-warning);
+}
+
+.claudian-collab-host-body,
+.claudian-collab-access-members,
+.claudian-collab-access-confirmation {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.claudian-collab-project-actions {
+  display: flex;
+  gap: 8px 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.claudian-collab-project-actions-primary,
+.claudian-collab-project-actions-lifecycle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.claudian-collab-project-actions-primary {
+  flex: 1 1 auto;
+}
+
+.claudian-collab-project-actions-lifecycle {
+  flex: 0 1 auto;
+}
+
+.claudian-collab-project-actions-lifecycle {
+  margin-left: auto;
+}
+
+.claudian-collab-project-actions button {
+  white-space: nowrap;
+}
+
+.claudian-collab-project-host-action,
+.claudian-collab-project-invitation-action {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.claudian-collab-project-actions .claudian-collab-host-section-header {
+  min-height: 0;
+}
+
+.claudian-collab-project-actions .claudian-collab-host-body {
+  padding: 4px 0 0;
+}
+
+.claudian-collab-cleanup-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.claudian-collab-cleanup-choices label {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.claudian-collab-access-members h3 {
+  margin: 0;
+}
+
+.claudian-collab-access-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.claudian-collab-access-member {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+}
+
+.claudian-collab-access-member-heading,
+.claudian-collab-access-actions,
+.claudian-collab-host-actions,
+.claudian-collab-access-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.claudian-collab-access-member-heading {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.claudian-collab-access-member-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: var(--font-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.claudian-collab-access-note,
+.claudian-collab-access-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-access-confirmation {
+  padding: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+}
+
+.claudian-collab-access-invitation {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-host-diagnostics-modal .modal-content,
+.claudian-collab-project-invitation-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.claudian-collab-host-diagnostics-modal pre {
+  max-height: 220px;
+  padding: 8px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  white-space: pre-wrap;
+}
+
+
+/* ============================================
+   features/collab-polish.css
+   ============================================ */
+.claudian-collab-panel,
+.claudian-collab-panel-header,
+.claudian-collab-project-home,
+.claudian-collab-project-toolbar,
+.claudian-collab-project-header-actions,
+.claudian-collab-personal-home,
+.claudian-collab-team-home {
+  min-inline-size: 0;
+}
+
+.claudian-collab-panel button,
+.claudian-collab-panel-status,
+.claudian-collab-project-path,
+.claudian-collab-publish-status,
+.claudian-collab-team-member,
+.claudian-collab-access-note,
+.claudian-collab-access-status,
+.claudian-collab-access-invitation,
+.claudian-collab-host-error {
+  overflow-wrap: anywhere;
+}
+
+.claudian-collab-panel button:not(.claudian-collab-project-picker) {
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  white-space: normal;
+}
+
+.claudian-collab-panel-header,
+.claudian-collab-access-actions,
+.claudian-collab-host-actions {
+  flex-wrap: wrap;
+}
+
+.claudian-collab-panel :is(button, select, summary, textarea, input):focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .claudian-collab-surface,
+  .claudian-collab-surface * {
+    animation-duration: 0s;
+    animation-iteration-count: 1;
+    scroll-behavior: auto;
+    transition-duration: 0s;
+  }
+}
+
+
+/* ============================================
    modals/instruction.css
    ============================================ */
 /* Instruction Mode */
@@ -5534,6 +7548,45 @@ code .claudian-file-link:hover {
   display: block;
 }
 
+.claudian-settings-provider-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 16px;
+}
+
+.claudian-settings button.claudian-settings-provider-tab {
+  padding: 5px 10px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  cursor: pointer;
+}
+
+.claudian-settings button.claudian-settings-provider-tab:hover,
+.claudian-settings button.claudian-settings-provider-tab:focus,
+.claudian-settings button.claudian-settings-provider-tab:active {
+  color: var(--text-normal);
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-settings button.claudian-settings-provider-tab--active {
+  color: var(--text-normal);
+  background: transparent;
+  box-shadow: none;
+}
+
+.claudian-settings-provider-content {
+  display: none;
+}
+
+.claudian-settings-provider-content--active {
+  display: block;
+}
+
 /* Codex placeholder */
 .claudian-settings-codex-placeholder {
   padding: 40px 20px;
@@ -5543,6 +7596,13 @@ code .claudian-file-link:hover {
 }
 
 /* Settings page - remove separator lines from setting items */
+.setting-item.claudian-settings {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border-top: none;
+}
+
 .claudian-settings .setting-item {
   border-top: none;
 }
@@ -5568,6 +7628,52 @@ code .claudian-file-link:hover {
 
 .claudian-mcp-settings-desc {
   margin-bottom: 12px;
+}
+
+.claudian-collab-git-installation-help {
+  margin: var(--size-4-1) var(--size-4-3) var(--size-4-4);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.claudian-collab-git-installation-help > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+}
+
+.claudian-collab-git-installation-help > summary:hover {
+  color: var(--text-normal);
+}
+
+.claudian-collab-git-installation-help > p {
+  margin: var(--size-4-2) 0;
+}
+
+.claudian-collab-git-path-status {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-inline-start: var(--size-4-1);
+  border-radius: 50%;
+  background: var(--text-faint);
+  vertical-align: middle;
+}
+
+.claudian-collab-git-path-status--available {
+  background: var(--color-green);
+}
+
+.claudian-collab-git-path-status--unavailable {
+  background: var(--color-red);
+}
+
+.claudian-collab-read-more-link {
+  color: var(--text-accent);
+}
+
+.claudian-collab-read-more-link:hover,
+.claudian-collab-read-more-link:focus-visible {
+  color: var(--text-accent-hover);
 }
 
 /* Custom section descriptions - align with items */

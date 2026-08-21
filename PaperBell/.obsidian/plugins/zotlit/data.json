@@ -1,9 +1,17 @@
 {
-  "__VERSION__": 8,
+  "__VERSION__": 9,
   "citation.show-citekey-in-suggester": true,
   "note.literature-folder": "20 - Inputs/Zotero",
   "template.folder": "00 - Obsidian/模板",
-  "release.previous-version": "2.1.0-beta.2",
+  "release.previous-version": "2.1.0-beta.3",
   "release.migration-pending": true,
-  "citation.open-as-links": true
+  "citation.open-as-links": true,
+  "zotero.library-scope": {
+    "mode": "selected",
+    "libraries": [
+      {
+        "type": "personal"
+      }
+    ]
+  }
 }
