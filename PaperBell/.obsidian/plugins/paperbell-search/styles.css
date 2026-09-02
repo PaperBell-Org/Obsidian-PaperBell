@@ -324,6 +324,40 @@ body {
   min-height: 20px;
 }
 
+.pb-search-hd-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pb-core-refresh-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 6px);
+  background: var(--background-secondary);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+.pb-core-refresh-btn:hover {
+  color: var(--interactive-accent);
+  border-color: var(--interactive-accent);
+}
+.pb-core-refresh-btn:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+.pb-core-refresh-btn.is-loading svg {
+  animation: pb-core-refresh-spin .8s linear infinite;
+}
+@keyframes pb-core-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
 .pb-src-label {
   font-size: 10px;
   color: var(--text-faint);
@@ -3073,6 +3107,46 @@ body {
 
 /* 库行 */
 .pb-ls-lib-list { display: flex; flex-direction: column; gap: 2px; }
+.pb-ls-connect-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+.pb-ls-refresh-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 9px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 5px);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  font-size: 11px;
+  cursor: pointer;
+}
+.pb-ls-refresh-btn:hover {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+}
+.pb-ls-refresh-btn:disabled {
+  cursor: wait;
+  opacity: .65;
+}
+.pb-ls-refresh-icon {
+  width: 13px;
+  height: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.pb-ls-refresh-icon svg { width: 13px; height: 13px; }
+.pb-ls-refresh-btn.is-loading .pb-ls-refresh-icon svg {
+  animation: pb-core-refresh-spin .8s linear infinite;
+}
 .pb-ls-lib-item {
   display: flex;
   align-items: center;
@@ -3400,6 +3474,16 @@ body {
 .pb-lc-file-name { flex: 1; color: var(--text-normal); min-width: 0;
                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pb-lc-file-size { color: var(--text-faint); flex-shrink: 0; }
+.pb-lc-file-remove {
+  flex-shrink: 0;
+  border: 0;
+  padding: 1px 5px;
+  color: var(--text-muted);
+  background: transparent;
+  font-size: 10px;
+  cursor: pointer;
+}
+.pb-lc-file-remove:hover { color: var(--text-error); }
 
 /* 提示文字 */
 .pb-lc-hint { font-size: 10px; color: var(--text-faint); margin: 4px 0 0; }

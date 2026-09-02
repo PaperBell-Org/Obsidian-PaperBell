@@ -3,7 +3,7 @@
   "citation.show-citekey-in-suggester": true,
   "note.literature-folder": "20 - Inputs/Zotero",
   "template.folder": "00 - Obsidian/模板",
-  "release.previous-version": "2.1.0-beta.3",
+  "release.previous-version": "2.1.1",
   "release.migration-pending": true,
   "citation.open-as-links": true,
   "zotero.library-scope": {

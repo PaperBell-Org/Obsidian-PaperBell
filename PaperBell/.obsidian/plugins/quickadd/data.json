@@ -535,6 +535,7 @@
   "inputPrompt": "single-line",
   "persistInputPromptDrafts": true,
   "useSelectionAsCaptureValue": true,
+  "namePastedImagesAfterNoteTitle": false,
   "searchNestedChoices": true,
   "templateFolderLauncherRow": "bottom",
   "devMode": false,
@@ -542,7 +543,7 @@
     "00 - Obsidian/模板"
   ],
   "announceUpdates": "all",
-  "version": "2.22.0",
+  "version": "2.24.1",
   "globalVariables": {},
   "onePageInputEnabled": false,
   "disableOnlineFeatures": false,
@@ -607,19 +608,19 @@
             "name": "gpt-5.4",
             "maxTokens": 1050000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false
+            "supportsTemperature": true
           },
           {
             "name": "gpt-5.4-mini",
             "maxTokens": 400000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false
+            "supportsTemperature": true
           },
           {
             "name": "gpt-5.4-nano",
             "maxTokens": 400000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false
+            "supportsTemperature": true
           },
           {
             "name": "gpt-4.1",
@@ -763,13 +764,13 @@
             "name": "gpt-5.2",
             "maxTokens": 400000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false
+            "supportsTemperature": true
           },
           {
             "name": "gpt-5.3-codex",
             "maxTokens": 400000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false
+            "supportsTemperature": true
           },
           {
             "name": "gpt-5-mini",
@@ -793,7 +794,7 @@
             "name": "gpt-5.1",
             "maxTokens": 400000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false
+            "supportsTemperature": true
           },
           {
             "name": "gpt-4-turbo",
@@ -826,7 +827,7 @@
         "id": "openai"
       }
     ],
-    "lastModelAutoSyncAt": 1787318713248
+    "lastModelAutoSyncAt": 1788340361819
   },
   "migrations": {
     "migrateToMacroIDFromEmbeddedMacro": true,

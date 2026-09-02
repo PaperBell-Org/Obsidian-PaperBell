@@ -1659,8 +1659,157 @@ var CoreManager = class {
   // 是否有任何可拉起的核心来源
   _canLaunch() {
     // 兼容旧版/手动解压留下的 core/PaperRAGStudio/PaperRAGStudio 目录层级。
+    this._migrateLegacyData();
     if (!this.hasBinaryCore()) this._flattenCoreDir();
     return this.hasBinaryCore() || !!this._localBackend() || !!this._installedSourceBackend();
+  }
+  // 0.7.x 的 portable 后端把用户数据放在 core/<源码包目录>/data。
+  // 新版统一使用 core/data；启动前只复制缺失文件，绝不覆盖用户已有索引。
+  _dataRootCandidates() {
+    const root = this.coreRoot();
+    const out = [];
+    const seen = new Set();
+    const add = (p) => {
+      try {
+        const resolved = nodeFs.realpathSync(p);
+        if (seen.has(resolved)) return;
+        if (!nodeFs.statSync(resolved).isDirectory()) return;
+        const useful = ["libraries", "pdfs", "chroma"].some((name) => nodeFs.existsSync(nodePath2.join(resolved, name)));
+        if (useful) { seen.add(resolved); out.push(resolved); }
+      } catch (_) {
+      }
+    };
+    add(nodePath2.join(root, "data"));
+    let entries = [];
+    try { entries = nodeFs.readdirSync(root, { withFileTypes: true }); } catch (_) { entries = []; }
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+      const child = nodePath2.join(root, entry.name);
+      add(nodePath2.join(child, "data"));
+      let nested = [];
+      try { nested = nodeFs.readdirSync(child, { withFileTypes: true }); } catch (_) { nested = []; }
+      for (const sub of nested) {
+        if (sub.isDirectory() && /papersearch|paperragstudio/i.test(sub.name)) add(nodePath2.join(child, sub.name, "data"));
+      }
+    }
+    const local = (this.plugin.settings.localBackendDir || "").trim();
+    if (local) add(nodePath2.join(local, "data"));
+    const home = process.env.USERPROFILE || process.env.HOME || "";
+    const localApp = process.env.LOCALAPPDATA || "";
+    for (const p of [
+      localApp && nodePath2.join(localApp, "paper-rag-studio", "data"),
+      home && nodePath2.join(home, ".local", "share", "paper-rag-studio", "data"),
+      home && nodePath2.join(home, "Library", "Application Support", "paper-rag-studio", "data"),
+      process.env.XDG_DATA_HOME && nodePath2.join(process.env.XDG_DATA_HOME, "paper-rag-studio", "data")
+    ]) if (p) add(p);
+    return out;
+  }
+  _copyMissingTree(src, dst) {
+    let copied = 0;
+    try {
+      const st = nodeFs.statSync(src);
+      if (st.isDirectory()) {
+        nodeFs.mkdirSync(dst, { recursive: true });
+        for (const entry of nodeFs.readdirSync(src, { withFileTypes: true })) {
+          copied += this._copyMissingTree(nodePath2.join(src, entry.name), nodePath2.join(dst, entry.name));
+        }
+      } else if (!nodeFs.existsSync(dst)) {
+        nodeFs.mkdirSync(nodePath2.dirname(dst), { recursive: true });
+        nodeFs.copyFileSync(src, dst);
+        copied++;
+      }
+    } catch (e) {
+      this._appendLog(`[PaperSearch] legacy data copy skipped: ${src} -> ${dst}: ${e.message || e}`);
+    }
+    return copied;
+  }
+ _migrateLegacyData() {
+    if (this._legacyDataMigrationRunning || this._legacyDataMigrationChecked) return 0;
+    this._legacyDataMigrationRunning = true;
+    let copied = 0;
+    try {
+      const target = nodePath2.join(this.coreRoot(), "data");
+      for (const source of this._dataRootCandidates()) {
+        if (nodePath2.normalize(source).toLowerCase() === nodePath2.normalize(target).toLowerCase()) continue;
+        copied += this._copyMissingTree(source, target);
+      }
+      if (copied) this._appendLog(`[PaperSearch] migrated ${copied} legacy data files into ${target}`);
+    } finally {
+      this._legacyDataMigrationChecked = true;
+      this._legacyDataMigrationRunning = false;
+    }
+    return copied;
+  }
+  _treeHasFiles(dir) {
+    try {
+      const stack = [dir];
+      while (stack.length) {
+        const current = stack.pop();
+        for (const entry of nodeFs.readdirSync(current, { withFileTypes: true })) {
+          const p = nodePath2.join(current, entry.name);
+          if (entry.isFile()) return true;
+          if (entry.isDirectory()) stack.push(p);
+        }
+      }
+    } catch (_) {
+    }
+    return false;
+  }
+  _backupDataBeforeInstall() {
+    const roots = this._dataRootCandidates();
+    const nonEmpty = roots.filter((p) => this._treeHasFiles(p));
+    if (!nonEmpty.length) return null;
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const backupRoot = nodePath2.join(this.coreRoot(), `.papersearch-upgrade-backup-${stamp}`);
+    const entries = [];
+    const failures = [];
+    for (let i = 0; i < nonEmpty.length; i++) {
+      const source = nonEmpty[i];
+      const backup = nodePath2.join(backupRoot, `data-${i}`);
+      try {
+        nodeFs.mkdirSync(nodePath2.dirname(backup), { recursive: true });
+        nodeFs.cpSync(source, backup, { recursive: true, force: false, errorOnExist: false });
+        entries.push({ source, backup });
+      } catch (e) {
+        this._appendLog(`[PaperSearch] upgrade backup failed: ${source}: ${e.message || e}`);
+        failures.push(source);
+      }
+    }
+    if (failures.length) {
+      throw new Error(`升级前备份旧文献库失败，已中止安装，原数据未改动。请确认磁盘空间和目录权限后重试：${failures[0]}`);
+    }
+    if (!entries.length) return null;
+    this._appendLog(`[PaperSearch] upgrade backup created: ${backupRoot}`);
+    return { backupRoot, entries };
+  }
+  _restoreDataAfterInstall(state) {
+    if (!state) return 0;
+    const target = nodePath2.join(this.coreRoot(), "data");
+    let copied = 0;
+    for (const entry of [...state.entries || []].reverse()) {
+      try {
+        nodeFs.mkdirSync(target, { recursive: true });
+        nodeFs.cpSync(entry.backup, target, { recursive: true, force: true, errorOnExist: false });
+        copied++;
+      } catch (e) {
+        this._appendLog("[PaperSearch] upgrade restore failed: " + entry.backup + ": " + (e.message || e));
+      }
+    }
+    this._appendLog("[PaperSearch] restored " + copied + " data roots from upgrade backup into " + target);
+    return copied;
+  }
+  // 所有启动形态共用当前 vault 的数据目录，避免 Python 源码后端和二进制后端各自生成一套库。
+  _sharedDataEnv(env) {
+    const coreDataDir = nodePath2.join(this.coreRoot(), "data");
+    return {
+      ...env,
+      USER_DATA_DIR: this.coreRoot(),
+      PDF_DIR: nodePath2.join(coreDataDir, "pdfs"),
+      CHROMA_DIR: nodePath2.join(coreDataDir, "chroma"),
+      OUTPUT_DIR: nodePath2.join(this.coreRoot(), "outputs"),
+      CHUNK_ENRICHMENT_CACHE_PATH: nodePath2.join(coreDataDir, "chunk_enrichment_cache.json"),
+      LIBRARY_ROOT_DIR: nodePath2.join(coreDataDir, "libraries")
+    };
   }
   // Python 启动配置：portable 运行时需注入 PATH（含 torch/lib 等 DLL 搜索路径）
   _pythonLaunchConfig(local, env) {
@@ -1694,8 +1843,9 @@ var CoreManager = class {
       API_PORT: String(this.port),
       API_HOST: "127.0.0.1"
     };
+    const sharedEnv = this._sharedDataEnv(env);
     const local = this._localBackend();
-    if (local) return this._pythonLaunchConfig(local, env);
+    if (local) return this._pythonLaunchConfig(local, sharedEnv);
     if (this.hasBinaryCore()) {
       if (this.platform() !== "win") {
         try {
@@ -1709,11 +1859,11 @@ var CoreManager = class {
         cmd: this.corePath(),
         args: ["--host", "127.0.0.1", "--port", String(this.port), "--no-browser"],
         cwd: this.coreRoot(),
-        env
+        env: sharedEnv
       };
     }
     const installedSource = this._installedSourceBackend();
-    if (installedSource) return this._pythonLaunchConfig(installedSource, env);
+    if (installedSource) return this._pythonLaunchConfig(installedSource, sharedEnv);
     return null;
   }
   // 端口探测：从 8000 试到 8020
@@ -1820,6 +1970,13 @@ var CoreManager = class {
     if (!zipPath || !nodeFs.existsSync(zipPath)) {
       throw new Error(`找不到压缩包：${zipPath || "(空)"}`);
     }
+    const upgradeBackup = this._backupDataBeforeInstall();
+    let dataRestored = false;
+    const restoreOnFailure = () => {
+      if (!upgradeBackup || dataRestored) return;
+      this._restoreDataAfterInstall(upgradeBackup);
+      dataRestored = true;
+    };
     try {
       nodeFs.mkdirSync(this.coreRoot(), { recursive: true });
     } catch (_) {
@@ -1863,6 +2020,7 @@ var CoreManager = class {
         nodeFs.unlinkSync(this._installingFlagPath());
       } catch (_) {
       }
+      restoreOnFailure();
       throw e;
     }
     if (deleteZipAfter) {
@@ -1880,10 +2038,16 @@ var CoreManager = class {
       const srcDir = this._installedSourceDir() || "";
       const rt = srcDir && nodePath2.join(srcDir, "python_runtime");
       if (rt && nodeFs.existsSync(rt) && !this._isRuntimeComplete(rt)) {
+        restoreOnFailure();
         throw new Error("安装包解压不完整（内置 Python 运行时缺少文件），常见原因是磁盘空间不足或解压被中断。请清理磁盘空间后重新安装。");
       }
+      restoreOnFailure();
       throw new Error(`解压完成，但没有找到可启动的 PaperSearch 本地服务。请确认安装包完整且与当前系统匹配。`);
     }
+    this._restoreDataAfterInstall(upgradeBackup);
+    dataRestored = true;
+    this._legacyDataMigrationChecked = false;
+    this._migrateLegacyData();
     if (this.platform() !== "win" && this.hasBinaryCore()) {
       try {
         nodeFs.chmodSync(this.corePath(), 493);
@@ -1905,11 +2069,22 @@ var CoreManager = class {
         if (!hasBinary && !hasSource) continue;
         for (const item of nodeFs.readdirSync(sub)) {
           const dst = nodePath2.join(root, item);
-          try {
-            nodeFs.rmSync(dst, { recursive: true, force: true });
-          } catch (_) {
+          const src = nodePath2.join(sub, item);
+          // Never replace user data during flattening. Merge data trees and keep
+          // any existing files in the destination.
+          if (["data", "outputs", ".runtime"].includes(item.toLowerCase()) && nodeFs.existsSync(dst)) {
+            this._copyMissingTree(src, dst);
+            continue;
           }
-          nodeFs.renameSync(nodePath2.join(sub, item), dst);
+          if ([".env", "core.log", "core.lock"].includes(item.toLowerCase()) && nodeFs.existsSync(dst)) continue;
+          if (nodeFs.existsSync(dst)) {
+            try {
+              nodeFs.rmSync(dst, { recursive: true, force: true });
+            } catch (_) {
+              continue;
+            }
+          }
+          nodeFs.renameSync(src, dst);
         }
         try {
           nodeFs.rmdirSync(sub);
@@ -4410,6 +4585,93 @@ var PaperSearchView = class extends obsidian11.ItemView {
     setTimeout(() => input.classList.remove("pushed"), 2e3);
     this._runSearch(root);
   }
+  // 手动刷新本地服务连接：服务被用户在外部重启后，直接检查当前地址并重新同步库状态。
+  async _refreshCoreConnection(root, button) {
+    if (this._connectionRefreshInFlight) return;
+    this._connectionRefreshInFlight = true;
+    if (button) {
+      button.disabled = true;
+      button.classList.add("is-loading");
+      button.setAttribute("aria-busy", "true");
+    }
+    const cm = this.plugin.coreManager;
+    try {
+      // 清掉一次性的 CORS 探测缓存，避免服务重启后沿用旧结果。
+      if (this.plugin.api) this.plugin.api._corsCache = null;
+      let reachable = false;
+      try {
+        await this.plugin.api.get("/health");
+        reachable = true;
+      } catch (_) {
+      }
+      if (reachable) {
+        try {
+          const port = Number(new URL(this.plugin.api._base()).port);
+          if (port) cm.port = port;
+        } catch (_) {
+        }
+        cm._intentionalKill = false;
+        cm._restartAttempts = 0;
+        cm._setStatus("healthy", "已连接运行中的本地服务");
+        cm._startWatchdog();
+      } else {
+        await this.plugin._restartCore();
+        await this.plugin.api.get("/health");
+      }
+
+      const data = await this.plugin.api.get("/libraries");
+      const raw = Array.isArray(data == null ? void 0 : data.libraries) ? data.libraries : [];
+      const libs = raw.map((item) => typeof item === "string" ? item : (item == null ? void 0 : item.name) || (item == null ? void 0 : item.library) || (item == null ? void 0 : item.id) || "").filter(Boolean);
+      this._libs = libs;
+      this._hasLibraries = libs.length > 0;
+      this._librariesReady = true;
+      if (this._libStats) this._libStats.clear();
+
+      const widget = root == null ? void 0 : root.querySelector(".pb-lib-widget");
+      const searchButton = root == null ? void 0 : root.querySelector(".pb-btn-search");
+      if (libs.length) {
+        const current = widget == null ? "" : widget.dataset.lib;
+        const remembered = this.plugin.settings.lastLibrary || "";
+        const target = libs.includes(current) ? current : libs.includes(remembered) ? remembered : libs.find((name) => name !== "default") || libs[0];
+        if (widget && target) {
+          widget.dataset.lib = target;
+          const label = widget.querySelector(".pb-lib-cur");
+          if (label) label.textContent = target;
+        }
+        if (target && this.plugin.settings.lastLibrary !== target) {
+          this.plugin.settings.lastLibrary = target;
+          await this.plugin.saveSettings();
+        }
+        if (searchButton) {
+          searchButton.disabled = false;
+          searchButton.textContent = "检索";
+          searchButton.removeAttribute("aria-busy");
+        }
+      } else {
+        if (widget) {
+          widget.dataset.lib = "default";
+          const label = widget.querySelector(".pb-lib-cur");
+          if (label) label.textContent = "尚无文献库";
+        }
+        if (searchButton) {
+          searchButton.disabled = true;
+          searchButton.textContent = "请先新建文献库";
+          searchButton.removeAttribute("aria-busy");
+        }
+      }
+      new obsidian11.Notice("本地服务连接已刷新");
+    } catch (e) {
+      cm._setStatus("failed", e.message || "连接失败");
+      new obsidian11.Notice(`刷新连接失败：${e.message || e}`, 8e3);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.classList.remove("is-loading");
+        button.removeAttribute("aria-busy");
+      }
+      this._connectionRefreshInFlight = false;
+    }
+  }
   // ── HTML 模板 ────────────────────────────────────────
   _panelHTML() {
     return `
@@ -4423,7 +4685,9 @@ var PaperSearchView = class extends obsidian11.ItemView {
 <div class="pb-section pb-search-area">
   <div class="pb-search-hd">
     <span class="pb-src-label">检索条件</span>
-    <div class="pb-view-toggle" title="切换视图">
+    <div class="pb-search-hd-actions">
+      <button class="pb-core-refresh-btn" type="button" title="刷新本地服务连接" aria-label="刷新本地服务连接"></button>
+      <div class="pb-view-toggle" title="切换视图">
       <div class="pb-vt-btn active" data-view="list" title="列表视图" role="button">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
           <rect x="1" y="2"  width="14" height="2" rx="1" fill="currentColor"/>
@@ -4444,6 +4708,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
           <rect x="1" y="1" width="14" height="14" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
           <path d="M1 5.5h14M1 10h14M6 5.5v9.5" stroke="currentColor" stroke-width="1.2"/>
         </svg>
+      </div>
       </div>
     </div>
   </div>
@@ -4739,6 +5004,11 @@ var PaperSearchView = class extends obsidian11.ItemView {
         requestAnimationFrame(() => this._refreshOrigDisclosures(results));
       });
     });
+    const refreshButton = root.querySelector(".pb-core-refresh-btn");
+    if (refreshButton) {
+      obsidian12.setIcon(refreshButton, "refresh-cw");
+      refreshButton.addEventListener("click", () => this._refreshCoreConnection(root, refreshButton));
+    }
     root.querySelector(".pb-btn-search").addEventListener("click", () => this._runSearch(root));
     root.querySelector(".pb-search-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") this._runSearch(root);
@@ -7055,7 +7325,24 @@ ${papers}`;
       libs = (_a = data.libraries) != null ? _a : [];
       this._libs = libs;
     } catch (err) {
-      body.querySelector(".pb-ls-lib-list").innerHTML = `<div class="pb-ls-loading pb-ls-error">无法连接本地服务：${pbEscapeHtml(err.message)}</div>`;
+      const list = body.querySelector(".pb-ls-lib-list");
+      list.innerHTML = `<div class="pb-ls-loading pb-ls-error pb-ls-connect-error">
+        <span>无法连接本地服务：${pbEscapeHtml(err.message)}</span>
+        <button class="pb-ls-refresh-btn" type="button" title="服务就绪后重新加载文献库" aria-label="刷新文献库连接">
+          <span class="pb-ls-refresh-icon"></span><span>刷新连接</span>
+        </button>
+      </div>`;
+      const refreshBtn = list.querySelector(".pb-ls-refresh-btn");
+      if (refreshBtn) {
+        obsidian12.setIcon(refreshBtn.querySelector(".pb-ls-refresh-icon"), "refresh-cw");
+        refreshBtn.addEventListener("click", async () => {
+          if (refreshBtn.disabled) return;
+          refreshBtn.disabled = true;
+          refreshBtn.classList.add("is-loading");
+          refreshBtn.querySelector("span:last-child").textContent = "连接中…";
+          await this._renderLibModule(root);
+        });
+      }
       return;
     }
     if (!libs.length) {
@@ -7326,15 +7613,15 @@ ${papers}`;
              </div>`}
 
         <details class="pb-lc-expert">
-          <summary>高级选项 · 本地快速建库 · 同时处理 1 篇</summary>
+          <summary>高级选项 · AI 辅助整理结构 · 同时处理 2 篇</summary>
           <div class="pb-lc-field">
             <label class="pb-lc-label">文献整理方式</label>
             <p class="pb-lc-hint">决定建库时是否借助 AI 整理文献结构，影响检索质量、速度与成本</p>
             <div class="pb-scheme-list">
             ${SCHEMES.map((s, i) => `
-              <label class="pb-scheme-card${i === 0 ? " selected" : ""}" data-value="${s.value}">
+              <label class="pb-scheme-card${i === 1 ? " selected" : ""}" data-value="${s.value}">
                 <input type="radio" class="pb-scheme-radio" name="pb_ingest_scheme"
-                       value="${s.value}"${i === 0 ? " checked" : ""}>
+                       value="${s.value}"${i === 1 ? " checked" : ""}>
                 <div class="pb-scheme-body">
                   <div class="pb-scheme-hd">
                     <span class="pb-scheme-badge">${s.badge}</span>
@@ -7359,34 +7646,34 @@ ${papers}`;
           <div class="pb-lc-inline-row">
             <label class="pb-lc-label">同时处理</label>
             <input class="pb-lc-num" data-field="ingest_preprocess_concurrency"
-                   type="number" value="${(_c = SCHEMES[0].lockTo) != null ? _c : 2}" min="1" max="16"
-                   ${SCHEMES[0].lockTo ? "disabled" : ""}>
+                   type="number" value="${(_c = SCHEMES[1].lockTo) != null ? _c : 2}" min="1" max="16"
+                   ${SCHEMES[1].lockTo ? "disabled" : ""}>
             <span class="pb-lc-num-unit">篇</span>
-            <span class="pb-lc-concurrency-note">${(_d = SCHEMES[0].lockNote) != null ? _d : "同时处理数量越高，速度可能越快，也更容易触发 AI 服务限流；建议从 2 开始"}</span>
+            <span class="pb-lc-concurrency-note">${(_d = SCHEMES[1].lockNote) != null ? _d : "同时处理数量越高，速度可能越快，也更容易触发 AI 服务限流；建议从 2 开始"}</span>
           </div>
         </details>
 
         <div class="pb-lc-field">
           <label class="pb-lc-label">导入来源</label>
           <div class="pb-lc-src-toggle">
-            <div class="pb-lc-src-btn active" data-src="folder" role="button" tabindex="0" aria-pressed="true">现有 PDF 文件夹</div>
+            <div class="pb-lc-src-btn active" data-src="folder" role="button" tabindex="0" aria-pressed="true">选择文件夹</div>
             <div class="pb-lc-src-btn" data-src="upload" role="button" tabindex="0" aria-pressed="false">选择 PDF</div>
           </div>
         </div>
 
         <div class="pb-lc-pane" data-pane="folder">
-          <input class="pb-lc-input" data-field="source_folder" type="text"
-                 placeholder="目录绝对路径，例如 D:\\papers\\行政法研究"
-                 autocomplete="off">
-          <p class="pb-lc-hint">默认导入文件夹内全部 PDF；如只导入部分文件，可在下方填写相对路径</p>
-          <div class="pb-lc-relpaths-wrap" style="display:none">
-            <label class="pb-lc-label" style="margin-top:6px">
-              指定文件范围 <span class="pb-lc-opt">可选</span>
-            </label>
-            <textarea class="pb-lc-textarea" data-field="relative_paths_json"
-                      placeholder="每行一个，相对于上方目录，例如：&#10;2024/行刑衔接.pdf&#10;理论框架.pdf&#10;（留空则索引整个目录）"
-                      rows="3"></textarea>
+          <div class="pb-lc-dropzone pb-lc-folder-dropzone">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="1.3" stroke-linecap="round">
+              <path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H10l2 2h6.5A2.5 2.5 0 0 1 21 9.5v7A2.5 2.5 0 0 1 18.5 19h-13A2.5 2.5 0 0 1 3 16.5z"/>
+              <path d="M3 10h18"/>
+            </svg>
+            <span>选择文件夹，扫描其中全部 PDF</span>
+            <input class="pb-lc-folder-input pb-lc-file-input" type="file"
+                   accept=".pdf,application/pdf" webkitdirectory directory multiple>
           </div>
+          <div class="pb-lc-folder-list pb-lc-file-list"></div>
+          <p class="pb-lc-hint">选择后会列出待建库文件；可以逐篇移除不想导入的 PDF。</p>
         </div>
 
         <div class="pb-lc-pane" data-pane="upload" style="display:none">
@@ -7421,7 +7708,7 @@ ${papers}`;
     const expertSummary = body.querySelector(".pb-lc-expert > summary");
     const updateExpertSummary = () => {
       const selected = body.querySelector(".pb-scheme-radio:checked");
-      const scheme = SCHEMES.find((s) => s.value === (selected == null ? void 0 : selected.value)) || SCHEMES[0];
+      const scheme = SCHEMES.find((s) => s.value === (selected == null ? void 0 : selected.value)) || SCHEMES[1];
       if (expertSummary) expertSummary.textContent = `高级选项 · ${scheme.title} · 同时 ${(concInput == null ? void 0 : concInput.value) || scheme.lockTo || 1} 篇`;
     };
     body.querySelectorAll(".pb-scheme-radio").forEach((radio) => {
@@ -7463,28 +7750,55 @@ ${papers}`;
         activate();
       });
     });
-    const folderInput = body.querySelector('[data-field="source_folder"]');
-    const relWrap = body.querySelector(".pb-lc-relpaths-wrap");
-    folderInput == null ? void 0 : folderInput.addEventListener("input", () => {
-      if (relWrap) relWrap.style.display = folderInput.value.trim() ? "" : "none";
-    });
-    const fileInput = body.querySelector(".pb-lc-file-input");
-    const fileList = body.querySelector(".pb-lc-file-list");
-    (_e = body.querySelector(".pb-lc-dropzone")) == null ? void 0 : _e.addEventListener("click", () => fileInput == null ? void 0 : fileInput.click());
-    fileInput == null ? void 0 : fileInput.addEventListener("change", () => {
-      const files = [...fileInput.files];
-      fileList.innerHTML = files.map(
-        (f) => `<div class="pb-lc-file-row">
+    const folderPickerInput = body.querySelector(".pb-lc-folder-input");
+    const folderDropzone = body.querySelector(".pb-lc-folder-dropzone");
+    const folderList = body.querySelector(".pb-lc-folder-list");
+    const fileInput = body.querySelector(".pb-lc-file-input:not(.pb-lc-folder-input)");
+    const fileDropzone = body.querySelector(".pb-lc-pane[data-pane=upload] .pb-lc-dropzone");
+    const fileList = body.querySelector(".pb-lc-pane[data-pane=upload] .pb-lc-file-list");
+    let selectedFolderFiles = [];
+    let selectedUploadFiles = [];
+    const fileRelativeName = (file, source) => source === "folder" && file.webkitRelativePath ? file.webkitRelativePath : file.name;
+    const renderPickedFiles = (container, files, source) => {
+      if (!container) return;
+      container.innerHTML = files.map((f, index) => `<div class="pb-lc-file-row">
            <span class="pb-ls-src pb-ls-src-pdf">PDF</span>
-           <span class="pb-lc-file-name">${pbEscapeHtml(f.name)}</span>
+           <span class="pb-lc-file-name" title="${pbEscapeHtml(fileRelativeName(f, source))}">${pbEscapeHtml(fileRelativeName(f, source))}</span>
            <span class="pb-lc-file-size">${(f.size / 1024 / 1024).toFixed(1)} MB</span>
-         </div>`
-      ).join("");
+           <button class="pb-lc-file-remove" type="button" data-remove-file="${index}" title="移除">移除</button>
+         </div>`).join("");
+      container.querySelectorAll("[data-remove-file]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.stopPropagation();
+          const index = Number(button.dataset.removeFile);
+          if (source === "folder") selectedFolderFiles.splice(index, 1);
+          else selectedUploadFiles.splice(index, 1);
+          renderPickedFiles(container, source === "folder" ? selectedFolderFiles : selectedUploadFiles, source);
+        });
+      });
+    };
+    folderDropzone == null ? void 0 : folderDropzone.addEventListener("click", (event) => {
+      if (event.target === folderPickerInput) return;
+      folderPickerInput == null ? void 0 : folderPickerInput.click();
+    });
+    folderPickerInput == null ? void 0 : folderPickerInput.addEventListener("change", () => {
+      selectedFolderFiles = [...folderPickerInput.files].filter((f) => /\.pdf$/i.test(f.name));
+      renderPickedFiles(folderList, selectedFolderFiles, "folder");
+      folderPickerInput.value = "";
+    });
+    fileDropzone == null ? void 0 : fileDropzone.addEventListener("click", (event) => {
+      if (event.target === fileInput) return;
+      fileInput == null ? void 0 : fileInput.click();
+    });
+    fileInput == null ? void 0 : fileInput.addEventListener("change", () => {
+      selectedUploadFiles = [...fileInput.files].filter((f) => /\.pdf$/i.test(f.name));
+      renderPickedFiles(fileList, selectedUploadFiles, "upload");
+      fileInput.value = "";
     });
     body.querySelector(".pb-lc-submit").addEventListener("click", () => {
       var _a2, _b2, _c2, _d2, _e2, _f, _g, _h, _i;
       const activeSrc = (_b2 = (_a2 = body.querySelector(".pb-lc-src-btn.active")) == null ? void 0 : _a2.dataset.src) != null ? _b2 : "folder";
-      const scheme = (_d2 = (_c2 = body.querySelector(".pb-scheme-radio:checked")) == null ? void 0 : _c2.value) != null ? _d2 : "raw";
+      const scheme = (_d2 = (_c2 = body.querySelector(".pb-scheme-radio:checked")) == null ? void 0 : _c2.value) != null ? _d2 : "full_document_llm_boundary_split";
       const concurrency = (_e2 = concInput == null ? void 0 : concInput.value) != null ? _e2 : "1";
       const fd = new FormData();
       fd.append("ingest_mode", scheme);
@@ -7501,22 +7815,20 @@ ${papers}`;
         fd.append("action", "create");
         fd.append("library_name", libName);
       }
-      if (activeSrc === "upload") {
-        if (!((_g = fileInput == null ? void 0 : fileInput.files) == null ? void 0 : _g.length)) {
+      if (activeSrc === "folder") {
+        if (!selectedFolderFiles.length) {
+          new obsidian11.Notice("请先选择 PDF 文件夹");
+          return;
+        }
+        selectedFolderFiles.forEach((f) => fd.append("files", f, f.name));
+        fd.append("relative_paths_json", JSON.stringify(selectedFolderFiles.map((f) => fileRelativeName(f, "folder"))));
+      } else {
+        if (!selectedUploadFiles.length) {
           new obsidian11.Notice("请先选择 PDF 文件");
           return;
         }
-        [...fileInput.files].forEach((f) => fd.append("files", f, f.name));
-      } else {
-        const folder = (_h = body.querySelector('[data-field="source_folder"]')) == null ? void 0 : _h.value.trim();
-        if (!folder) {
-          new obsidian11.Notice("请先填写 PDF 文件夹路径");
-          return;
-        }
-        fd.append("source_folder", folder);
-        const relRaw = (_i = body.querySelector('[data-field="relative_paths_json"]')) == null ? void 0 : _i.value.trim();
-        const relArr = relRaw ? relRaw.split("\n").map((s) => s.trim()).filter(Boolean) : [];
-        fd.append("relative_paths_json", JSON.stringify(relArr));
+        selectedUploadFiles.forEach((f) => fd.append("files", f, f.name));
+        fd.append("relative_paths_json", JSON.stringify(selectedUploadFiles.map((f) => fileRelativeName(f, "upload"))));
       }
       const label = isAdd ? `向「${lib.name}」追加` : `建库「${fd.get("library_name")}」`;
       new obsidian11.Notice(`${label}…`);
@@ -8570,7 +8882,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
   // 的判断都不成立。宁可启动时吵一声，也不要让它静默错位。
   _assertBuildMatchesManifest() {
     var _a;
-    const built = true ? "0.8.2" : "";
+    const built = true ? "0.8.8" : "";
     const declared = ((_a = this.manifest) == null ? void 0 : _a.version) || "";
     if (!built || !declared || built === declared) return;
     console.error(`PaperSearch: 版本错位——运行中的代码构建自 ${built}，manifest.json 声明的是 ${declared}。`);
