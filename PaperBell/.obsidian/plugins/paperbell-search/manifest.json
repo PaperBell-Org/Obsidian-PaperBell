@@ -1,7 +1,7 @@
 {
   "id": "papersearch",
   "name": "PaperSearch",
-  "version": "0.8.8",
+  "version": "0.10.0",
   "minAppVersion": "1.0.0",
   "description": "在 Obsidian 中检索、阅读和标注文献，并在写作时保留可追溯的来源。",
   "author": "PaperSearch",

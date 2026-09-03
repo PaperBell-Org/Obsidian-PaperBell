@@ -34,7 +34,7 @@ __export(main_exports, {
   default: () => main_default
 });
 module.exports = __toCommonJS(main_exports);
-var obsidian12 = __toESM(require("obsidian"));
+var obsidian11 = __toESM(require("obsidian"));
 var nodeFs3 = __toESM(require("fs"));
 var nodePath5 = __toESM(require("path"));
 var nodeOs = __toESM(require("os"));
@@ -44,37 +44,27 @@ var nodeCrypto2 = __toESM(require("crypto"));
 var VIEW_TYPE = "paperbell-papersearch";
 var PROTOCOL = "papersearch";
 var LEGACY_PROTOCOL = "paperbell-search";
-var TAG_META = {
-  unclassified: { label: "未分类", cls: "pb-rt-unclassified" },
-  support: { label: "核心支撑", cls: "pb-rt-support" },
-  method: { label: "方法参考", cls: "pb-rt-method" },
-  contrast: { label: "反例与边界", cls: "pb-rt-contrast" },
-  bg: { label: "背景信息", cls: "pb-rt-bg" },
-  data: { label: "数据来源", cls: "pb-rt-data" },
-  theory: { label: "理论框架", cls: "pb-rt-theory" }
+var RELATION_META = {
+  unclassified: { label: "未标注", cls: "pb-rl-unclassified", hint: "后端未给出关系判定（快速模式不生成）" },
+  "同一问题": { label: "同一问题", cls: "pb-rl-question", hint: "关注同一研究问题" },
+  "同一机制": { label: "同一机制", cls: "pb-rl-mechanism", hint: "讨论相同机制 / 因果链" },
+  "同一对象/场景": { label: "同一场景", cls: "pb-rl-scene", hint: "研究同一对象或情境" },
+  "对照/补充": { label: "对照补充", cls: "pb-rl-contrast", hint: "提供反例、适用边界或补充视角" },
+  "同一方法": { label: "同一方法", cls: "pb-rl-method", hint: "使用相同方法 / 实证策略" },
+  "背景/间接": { label: "背景相关", cls: "pb-rl-background", hint: "提供背景或间接相关" }
 };
-var TAG_KEYS = Object.keys(TAG_META);
+var RELATION_KEYS = Object.keys(RELATION_META);
+function pbNormalizeRelation(rel) {
+  if (rel === null || rel === void 0) return "unclassified";
+  const raw = String(rel).trim();
+  if (!raw) return "unclassified";
+  if (RELATION_META[raw]) return raw;
+  const norm = raw.replace(/[·・•‧∙／、]/g, "/").replace(/\s*\/\s*/g, "/").replace(/\s+/g, "");
+  if (RELATION_META[norm]) return norm;
+  return "unclassified";
+}
 var CHEV = `<svg class="pb-chevron" width="8" height="5" viewBox="0 0 8 5" fill="none"><path d="M1 4L4 1.2L7 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 var COMPANION_VIEW_TYPE = "paperbell-companion";
-var CITE_TEMPLATES = {
-  // AI 综述：转述学者观点，自然融入行文
-  ai: (d) => `${d.title}的研究表明，${d.reasonShort.replace(/，$/, "")}（${d.venue}，被引 ${Number(d.cites).toLocaleString()} 次）。
-`,
-  // 原文引用：直接插入原文节选 + 引注
-  raw: (d) => `
-> ${d.origFull}
->
-> ——${d.title}，*${d.venue}*
-
-`,
-  // 先引用后 AI 改写：插入原文并标记 #ai-pending
-  mixed: (d) => `
-> ${d.origFull}
->
-> ——${d.title}，*${d.venue}* \`#ai-pending\`
-
-`
-};
 var DEFAULT_REWRITE_PROMPT = [
   "你是资深中文学术写作编辑。把用户给的「原文」改写成可供核对和修改的规范学术表达：",
   "- 书面、严谨、客观，用词准确，逻辑连贯，符合学术行文与论证习惯；",
@@ -82,43 +72,15 @@ var DEFAULT_REWRITE_PROMPT = [
   '- 仅输出改写后的文本，不要任何解释、前后缀、引号或 markdown，不要出现"改写""作者认为"之类的元叙述；',
   "- 除非用户「指令」明确要求换一种语言，否则保持原文语言。"
 ].join("\n");
-var DEFAULT_AI_ANSWER_PROMPT = [
-  "你是学术文献综述助手。根据用户的检索主题和系统召回的文献片段，写一段文献综述式的综合回答：",
-  "- 直接围绕检索主题展开，综合多篇文献的观点，呈现它们的共识、分歧与脉络；",
-  "- 引用文献时一律用 Pandoc 的 [@citekey] 格式（citekey 见每条来源开头方括号里的内容）；同一处可并列 [@a; @b]；",
-  "- 没有 citekey 的来源，用 [N] 标号兜底；",
-  "- 客观严谨，只综合来源里有的内容，不杜撰事实、数据或结论；",
-  '- 直接输出综述段落本身，不要列大纲、不要 markdown 标题、不要"综上所述"之类套话。'
-].join("\n");
 var DEFAULT_SETTINGS = {
   backendUrl: "http://127.0.0.1:8000",
   // PaperSearch 后端地址
-  apiKey: "",
-  // [legacy] PaperSearch 不再保存 AI 密钥，改为按需向 PaperBell 授权读取
-  apiBaseUrl: "",
-  // [legacy] 保留兼容旧 data.json，当前不再使用
-  apiModel: "",
-  // [legacy] 保留兼容旧 data.json，当前不再使用
-  defaultView: "list",
   originalPreviewLines: 5,
   // 原文默认显示五行，超出后折叠
-  lastLibrary: "",
-  // 最近一次真实使用的文献库；不让空 default 抢占任务
-  searchMode: "balanced",
-  // quick | balanced | deep
-  searchIntent: "support",
-  // support | contrast | method | definition
-  searchExpertMode: false,
-  // top_k / recall / chunk 上限只在专家模式显示
-  litNoteDir: "PaperSearch笔记",
-  // [旧/兼容] 平铺文献笔记目录
   conceptDir: "PaperSearch/概念",
-  // 已升格的正式概念笔记
-  // P0 库组织架构（粗读/精读分层）
+  // 概念笔记目录；候选概念写入 <conceptDir>/_候选
   paperLibraryDir: "PaperSearch/文献",
-  // 精读收入：一篇一目录（笔记 + PDF）
-  conceptCandidateDir: "PaperSearch/概念/_候选",
-  // AI 抽出但未升格的候选概念
+  // 收入 vault 的文献：一篇一目录（笔记 + PDF）
   pdfSelectionToolbar: true,
   // PDF 划词浮动工具条
   // PDF 颜色标注：颜色即语义（label 可在设置里改，例如 观点/方法/引用…）
@@ -130,46 +92,22 @@ var DEFAULT_SETTINGS = {
     { id: "term", color: "#b98ef0", label: "术语" },
     { id: "todo", color: "#f0a04b", label: "待查" }
   ],
-  // 悬浮标注索引面板（Floating TOC 式）
+  // 悬浮标注面板（PDF 阅读时的标注目录）
   annoPanelEnabled: true,
   annoPanelEdge: "right",
   // right | left | top | bottom
-  annoPanelPinned: false,
-  // 标注→文献笔记：笔记不存在时怎么办。'ask'=首次弹窗询问（可勾选记住）/ 'always'=静默自动创建 / 'never'=只存标注库不建笔记
-  annoSilentFile: "ask",
-  // 悬浮「文献收集栏」（原"文献收集栏"侧栏 → 改悬浮 Floating-TOC 式）
-  citePanelEnabled: false,
-  citePanelEdge: "right",
-  // right | left | top | bottom
-  citePanelPinned: false,
   bibStyle: "apa",
   // 内联格式化（fallback）风格：apa | mla | chicago
   citationForm: "pandoc",
   // 默认引用形态：pandoc(@citekey, .bib 真相源) | footnote | inline
   rewritePrompt: DEFAULT_REWRITE_PROMPT,
   // 行内改写的系统提示词（可编辑）
-  aiAnswerPrompt: DEFAULT_AI_ANSWER_PROMPT,
-  // AI 综合回答的系统提示词（可编辑，默认文献综述式）
   analysisCacheRetentionDays: 7,
-  // 单篇分析本地缓存保留天数，0 = 永久
-  // 元数据解析（CrossRef / S2 / arXiv / OpenAlex / BBT / Zotero / LLM 级联）
+  // 文献概要本地缓存保留天数，0 = 永久
+  // 元数据解析（CrossRef / S2 级联）
   metadataResolver: {
     enabled: true,
-    resolvers: {
-      crossref: true,
-      arxiv: true,
-      // Phase B 启用
-      openalex: true,
-      // Phase C 启用
-      bbt: true,
-      // Phase B 启用
-      zotero: true,
-      // Phase B 启用
-      llm: false
-      // 默认关，成本高
-    },
-    s2: { enabled: true, apiKey: "" },
-    reranking: { enabled: false, boost: 0.1 }
+    s2: { enabled: true, apiKey: "" }
   },
   contactEmail: "",
   // 礼貌头：CrossRef 建议附联系邮箱
@@ -182,21 +120,6 @@ var DEFAULT_SETTINGS = {
   // vault 内相对路径
   // 数据源：每条 { libraryName, path, autoWatch, source: 'zotero'|'folder' }
   libSources: [],
-  // 一体化 Core 配置
-  onboardingDone: false,
-  // 首次运行向导是否走完
-  coreDownloadUrl: "",
-  // 开发 / 离线直链；留空则走 PaperBell 授权下载
-  coreDownloadSha256: "",
-  // 期望 SHA-256
-  coreInstalledVersion: "",
-  // 最近安装核心的版本（下载 ticket 提供）
-  coreInstalledSha256: "",
-  // 最近安装核心的 SHA-256
-  coreInstalledFilename: "",
-  // 最近安装核心的文件名
-  coreInstalledAt: 0,
-  // 最近安装时间（毫秒时间戳）
   siteBaseUrl: "https://paperbell.cn",
   // 账号 / 授权 / 受保护下载 API 站点（开发态可指向本地 mock）
   // 自托管：用本地 Python 源自动拉起后端（开发者 / 有 Python 环境的用户；免打包免签名）
@@ -206,19 +129,36 @@ var DEFAULT_SETTINGS = {
   // PaperSearch 源码根目录（含 start_app.py 与 .venv）
   localBackendPython: "",
   // 可选：自定义 python 解释器（默认优先 <dir>/.venv）
-  developerMode: false,
-  // 显示"核心服务"标签页 / 手填后端地址
   hoverPopupMode: "click",
   // 原文悬停浮窗：off=关 / click=显原文+「中译」按钮 / auto=悬停自动中译
-  enableAISummary: false,
-  // 是否启用「AI 综合回答」整体功能（默认关）
   pdfLinkMode: "inline",
   // 文献笔记里的 PDF：inline（嵌入）/ obsidian-preview / link / none
   pdfCacheMax: 10,
-  // PaperSearch缓存/ 最多保留多少个 PDF（LRU）
+  // PaperSearch 缓存最多保留多少个 PDF（LRU）
   promptTemplates: "改写为学术风格，保留核心论点\n精炼内容至100字以内，突出关键信息\n梳理论证关系，不补充原文未支持的因果关系\n转为间接引用形式，符合学术写作规范"
 };
-var CITATION_PALETTE_VIEW_TYPE = "paperbell-citation-palette";
+var DEFAULT_STATE = {
+  onboardingDone: false,
+  // 首次运行向导是否走完
+  coreInstalledVersion: "",
+  // 最近安装核心的版本（下载 ticket 提供）
+  coreInstalledSha256: "",
+  // 最近安装核心的 SHA-256
+  coreInstalledFilename: "",
+  // 最近安装核心的文件名
+  coreInstalledAt: 0,
+  // 最近安装时间（毫秒时间戳）
+  // 已交给后端建库的文件路径，按库名分组。用来在扫描存量时排除掉已入库的，
+  // 否则每次启动都会弹一次「检测到 N 篇新 PDF」。
+  ingestedPaths: {},
+  lastLibrary: "",
+  // 最近一次真实使用的文献库；不让空 default 抢占任务
+  // 标注时这篇还没有文献笔记该怎么办：'ask'（首次弹窗询问）/ 'always' 静默建 / 'never' 只存标注。
+  // 用户在那个弹窗里勾了「记住」才会落成 always/never，默认值就是「问一次」。
+  annoSilentFile: "ask",
+  annoPanelPinned: false
+  // 标注面板是否被用户钉住
+};
 
 // src/editor/cm-extensions.ts
 var obsidian = __toESM(require("obsidian"));
@@ -291,6 +231,8 @@ try {
 } catch (e) {
   console.warn("PaperSearch: @codemirror/view 不可用，行内工具条已禁用");
 }
+var ANCHORED_EVIDENCE = /%%(?:claim|cite):[\w-]+%%/;
+var ANCHORED_HINT = "选区含已锚定的证据，请只选论断文字；要改写整块请用右键的 AI 转述";
 function createInlineBarExtension(plugin) {
   if (!cmView) return [];
   class InlineBarWidget extends cmView.WidgetType {
@@ -314,7 +256,7 @@ function createInlineBarExtension(plugin) {
       const selFrom = this.selFrom;
       const selTo = this.selTo;
       bar.innerHTML = `
-        <div class="pb-ib-btn pb-ib-push" title="推送至 PaperSearch" role="button">
+        <div class="pb-ib-btn pb-ib-push" title="以选中内容检索" role="button">
           <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
             <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" stroke-width="1.5"/>
             <path d="M10 10l3 3" stroke="currentColor" stroke-width="1.5"
@@ -331,6 +273,12 @@ function createInlineBarExtension(plugin) {
         <span class="pb-ib-expand"></span>`;
       const expand = bar.querySelector(".pb-ib-expand");
       const selText = this.selectedText;
+      const selectionHasAnchor = () => {
+        const len = view.state.doc.length;
+        const from = Math.min(Math.max(selFrom, 0), len);
+        const to = Math.min(Math.max(selTo, from), len);
+        return ANCHORED_EVIDENCE.test(view.state.doc.sliceString(from, to));
+      };
       const dismiss = (delay = 0) => {
         setTimeout(() => {
           view.dispatch({ selection: { anchor: view.state.selection.main.to } });
@@ -341,7 +289,7 @@ function createInlineBarExtension(plugin) {
         e.stopPropagation();
         plugin._pushSelectionToPanel(selText);
         expand.className = "pb-ib-expand pb-ib-expand--toast";
-        expand.innerHTML = '<span class="pb-ib-toast">已推送至 PaperSearch ↗</span>';
+        expand.innerHTML = '<span class="pb-ib-toast">已发送到检索面板</span>';
         dismiss(1800);
       });
       bar.querySelector(".pb-ib-ai-toggle").addEventListener("mousedown", (e) => {
@@ -432,9 +380,22 @@ function createInlineBarExtension(plugin) {
           });
         });
         input.addEventListener("blur", () => setTimeout(closeSlash, 150));
+        let selectionSnapshot = "";
         const send = async () => {
           const val = input == null ? void 0 : input.textContent.trim();
           if (!val) return;
+          selectionSnapshot = view.state.doc.sliceString(
+            Math.min(selFrom, view.state.doc.length),
+            Math.min(selTo, view.state.doc.length)
+          );
+          if (selectionHasAnchor()) {
+            closeSlash();
+            expand.style.maxWidth = "";
+            expand.className = "pb-ib-expand";
+            expand.innerHTML = "";
+            new obsidian.Notice(ANCHORED_HINT);
+            return;
+          }
           expand.innerHTML = `<span class="pb-ib-toast pb-ib-generating">生成中…</span>`;
           let aiResult;
           try {
@@ -481,6 +442,21 @@ function createInlineBarExtension(plugin) {
             panel.querySelector(".pb-ai-preview-accept").addEventListener("mousedown", (e2) => {
               e2.preventDefault();
               e2.stopPropagation();
+              if (view.state.doc.sliceString(
+                Math.min(selFrom, view.state.doc.length),
+                Math.min(selTo, view.state.doc.length)
+              ) !== selectionSnapshot) {
+                new obsidian.Notice("正文在生成期间已改动，这次改写没有写入");
+                closePanel();
+                dismiss(0);
+                return;
+              }
+              if (selectionHasAnchor()) {
+                new obsidian.Notice(ANCHORED_HINT);
+                closePanel();
+                dismiss(0);
+                return;
+              }
               view.dispatch({
                 changes: { from: selFrom, to: selTo, insert: aiResult },
                 selection: { anchor: selFrom + aiResult.length }
@@ -636,7 +612,7 @@ function createDragExtension(plugin) {
       }
       if (!Array.isArray(cards) || !cards.length) return;
       const pos = (_b = view.posAtCoords({ x: e.clientX, y: e.clientY }, false)) != null ? _b : view.state.doc.length;
-      plugin._showCitationPicker(e.clientX, e.clientY, cards, view, pos);
+      plugin._insertAnchoredCitation(view, pos, cards);
     }
   });
 }
@@ -1180,7 +1156,7 @@ var BuildSummaryModal = class extends obsidian3.Modal {
         const fileTiming = item.timings_ms || {};
         const detail = fileList.createEl("details", { cls: "pb-build-file-timing" });
         detail.createEl("summary", {
-          text: `${item.file || "未命名 PDF"} · ${pbFormatBuildDuration(fileTiming.total_ms || 0)}${item.status === "failed" ? " · 失败" : ""}`
+          text: `${item.file || "未命名 PDF"} · ${pbFormatBuildDuration(fileTiming.total_ms || 0)}` + (item.status === "failed" ? " · 失败" : "")
         });
         const inner = detail.createDiv({ cls: "pb-build-file-timing-body" });
         pbBuildTimingRows(fileTiming).filter(([label]) => label !== "接收请求与文件准备").forEach(([label, value]) => {
@@ -1318,15 +1294,30 @@ var BuildManager = class {
         const previous = job.files.get(f) || {};
         if (previous.stage !== "skipped_duplicate") job.skipped++;
         job.completed = Math.max(job.completed, Number(evt.processed_files || 0));
-        job.files.set(f, { ...previous, cls: "ok", stage: "skipped_duplicate", stageLabel, statusText: "已存在，跳过", completedAt: now });
+        job.files.set(f, {
+          ...previous,
+          cls: "ok",
+          stage: "skipped_duplicate",
+          stageLabel,
+          statusText: "已存在，跳过",
+          completedAt: now
+        });
       } else if (evt.stage === "failed") {
         const previous = job.files.get(f) || {};
         if (previous.cls !== "fail") job.failed++;
         job.completed = Math.max(job.completed, Number(evt.processed_files || 0));
-        job.files.set(f, { ...previous, cls: "fail", stage: "failed", stageLabel, statusText: `失败：${evt.message || "未知错误"}`, timings: evt.timings_ms || previous.timings || null, completedAt: now });
+        job.files.set(f, {
+          ...previous,
+          cls: "fail",
+          stage: "failed",
+          stageLabel,
+          statusText: `失败：${evt.message || "未知错误"}`,
+          timings: evt.timings_ms || previous.timings || null,
+          completedAt: now
+        });
       }
       if (["indexed", "skipped_duplicate", "failed"].includes(stage)) {
-        job.stat = `${job.completed || job.done + job.failed + job.skipped}/${job.total || "?"} 已处理 · 成功 ${job.done}${job.failed ? ` · 失败 ${job.failed}` : ""}${job.skipped ? ` · 跳过 ${job.skipped}` : ""}`;
+        job.stat = `${job.completed || job.done + job.failed + job.skipped}/${job.total || "?"} 已处理 · 成功 ${job.done}` + (job.failed ? ` · 失败 ${job.failed}` : "") + (job.skipped ? ` · 跳过 ${job.skipped}` : "");
       }
     } else if (t === "complete") {
       const r = (_h = evt.result) != null ? _h : {};
@@ -1429,8 +1420,8 @@ var BuildManager = class {
           }
         }
       }
-      if (job.status === "done" && importedDocs > 0 && job.libName && (selectedReadyLibrary || !this.plugin.settings.lastLibrary)) {
-        this.plugin.settings.lastLibrary = job.libName;
+      if (job.status === "done" && importedDocs > 0 && job.libName && (selectedReadyLibrary || !this.plugin.state.lastLibrary)) {
+        this.plugin.state.lastLibrary = job.libName;
         this.plugin.saveSettings();
       }
       this._emit(job);
@@ -1504,7 +1495,16 @@ var CoreManager = class {
     return "linux";
   }
   arch() {
-    return process.arch === "arm64" ? "arm64" : "x64";
+    var _a;
+    if (process.arch === "arm64") return "arm64";
+    if (process.platform === "darwin") {
+      try {
+        const cpus = require("os").cpus();
+        if (((_a = cpus == null ? void 0 : cpus[0]) == null ? void 0 : _a.model) && /apple/i.test(cpus[0].model)) return "arm64";
+      } catch (_) {
+      }
+    }
+    return "x64";
   }
   binName() {
     return this.platform() === "win" ? "PaperRAGStudio.exe" : "PaperRAGStudio";
@@ -1538,6 +1538,10 @@ var CoreManager = class {
       return false;
     }
   }
+  // 摘掉 macOS 的隔离属性。
+  // 从网上下载的可执行文件会被打上 com.apple.quarantine，Gatekeeper 见到就拦，
+  // 用户那边的表现是「核心装好了但一启动就没反应」。core 是我们自己下发的，
+  // 解压完直接清掉，别让用户去右键「仍要打开」。
   _clearMacQuarantine(target = this.coreRoot()) {
     if (process.platform !== "darwin") return;
     try {
@@ -1658,38 +1662,50 @@ var CoreManager = class {
   }
   // 是否有任何可拉起的核心来源
   _canLaunch() {
-    // 兼容旧版/手动解压留下的 core/PaperRAGStudio/PaperRAGStudio 目录层级。
     this._migrateLegacyData();
     if (!this.hasBinaryCore()) this._flattenCoreDir();
     return this.hasBinaryCore() || !!this._localBackend() || !!this._installedSourceBackend();
   }
-  // 0.7.x 的 portable 后端把用户数据放在 core/<源码包目录>/data。
-  // 新版统一使用 core/data；启动前只复制缺失文件，绝不覆盖用户已有索引。
+  // ── 数据目录：统一到 core/data ─────────────────────
+  // 早期 portable 后端把用户数据放在 core/<源码包目录>/data，二进制核心又另建一套，
+  // 于是同一个人在两种启动形态下看到两份不同的文献库。现在统一用 core/data，
+  // 启动前把旧位置里缺的文件补过来——只补缺失，绝不覆盖用户已有索引。
   _dataRootCandidates() {
     const root = this.coreRoot();
     const out = [];
-    const seen = new Set();
+    const seen = /* @__PURE__ */ new Set();
     const add = (p) => {
       try {
         const resolved = nodeFs.realpathSync(p);
         if (seen.has(resolved)) return;
         if (!nodeFs.statSync(resolved).isDirectory()) return;
         const useful = ["libraries", "pdfs", "chroma"].some((name) => nodeFs.existsSync(nodePath2.join(resolved, name)));
-        if (useful) { seen.add(resolved); out.push(resolved); }
+        if (useful) {
+          seen.add(resolved);
+          out.push(resolved);
+        }
       } catch (_) {
       }
     };
     add(nodePath2.join(root, "data"));
     let entries = [];
-    try { entries = nodeFs.readdirSync(root, { withFileTypes: true }); } catch (_) { entries = []; }
+    try {
+      entries = nodeFs.readdirSync(root, { withFileTypes: true });
+    } catch (_) {
+    }
     for (const entry of entries) {
       if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
       const child = nodePath2.join(root, entry.name);
       add(nodePath2.join(child, "data"));
       let nested = [];
-      try { nested = nodeFs.readdirSync(child, { withFileTypes: true }); } catch (_) { nested = []; }
+      try {
+        nested = nodeFs.readdirSync(child, { withFileTypes: true });
+      } catch (_) {
+      }
       for (const sub of nested) {
-        if (sub.isDirectory() && /papersearch|paperragstudio/i.test(sub.name)) add(nodePath2.join(child, sub.name, "data"));
+        if (sub.isDirectory() && /papersearch|paperragstudio/i.test(sub.name)) {
+          add(nodePath2.join(child, sub.name, "data"));
+        }
       }
     }
     const local = (this.plugin.settings.localBackendDir || "").trim();
@@ -1704,6 +1720,7 @@ var CoreManager = class {
     ]) if (p) add(p);
     return out;
   }
+  // 递归复制，目标已存在的文件一律跳过
   _copyMissingTree(src, dst) {
     let copied = 0;
     try {
@@ -1723,7 +1740,7 @@ var CoreManager = class {
     }
     return copied;
   }
- _migrateLegacyData() {
+  _migrateLegacyData() {
     if (this._legacyDataMigrationRunning || this._legacyDataMigrationChecked) return 0;
     this._legacyDataMigrationRunning = true;
     let copied = 0;
@@ -1746,20 +1763,20 @@ var CoreManager = class {
       while (stack.length) {
         const current = stack.pop();
         for (const entry of nodeFs.readdirSync(current, { withFileTypes: true })) {
-          const p = nodePath2.join(current, entry.name);
           if (entry.isFile()) return true;
-          if (entry.isDirectory()) stack.push(p);
+          if (entry.isDirectory()) stack.push(nodePath2.join(current, entry.name));
         }
       }
     } catch (_) {
     }
     return false;
   }
+  // 安装前把现有数据整份备份下来。备份失败就中止安装——
+  // 宁可装不上，也不能在没有退路的情况下动用户的索引。
   _backupDataBeforeInstall() {
-    const roots = this._dataRootCandidates();
-    const nonEmpty = roots.filter((p) => this._treeHasFiles(p));
+    const nonEmpty = this._dataRootCandidates().filter((p) => this._treeHasFiles(p));
     if (!nonEmpty.length) return null;
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const stamp = (/* @__PURE__ */ new Date()).toISOString().replace(/[:.]/g, "-");
     const backupRoot = nodePath2.join(this.coreRoot(), `.papersearch-upgrade-backup-${stamp}`);
     const entries = [];
     const failures = [];
@@ -1792,13 +1809,14 @@ var CoreManager = class {
         nodeFs.cpSync(entry.backup, target, { recursive: true, force: true, errorOnExist: false });
         copied++;
       } catch (e) {
-        this._appendLog("[PaperSearch] upgrade restore failed: " + entry.backup + ": " + (e.message || e));
+        this._appendLog(`[PaperSearch] upgrade restore failed: ${entry.backup}: ${e.message || e}`);
       }
     }
-    this._appendLog("[PaperSearch] restored " + copied + " data roots from upgrade backup into " + target);
+    this._appendLog(`[PaperSearch] restored ${copied} data roots from upgrade backup into ${target}`);
     return copied;
   }
-  // 所有启动形态共用当前 vault 的数据目录，避免 Python 源码后端和二进制后端各自生成一套库。
+  // 所有启动形态共用当前 vault 的数据目录，
+  // 避免 Python 源码后端和二进制后端各自生成一套库。
   _sharedDataEnv(env) {
     const coreDataDir = nodePath2.join(this.coreRoot(), "data");
     return {
@@ -2070,13 +2088,12 @@ var CoreManager = class {
         for (const item of nodeFs.readdirSync(sub)) {
           const dst = nodePath2.join(root, item);
           const src = nodePath2.join(sub, item);
-          // Never replace user data during flattening. Merge data trees and keep
-          // any existing files in the destination.
-          if (["data", "outputs", ".runtime"].includes(item.toLowerCase()) && nodeFs.existsSync(dst)) {
+          const lower = item.toLowerCase();
+          if (["data", "outputs", ".runtime"].includes(lower) && nodeFs.existsSync(dst)) {
             this._copyMissingTree(src, dst);
             continue;
           }
-          if ([".env", "core.log", "core.lock"].includes(item.toLowerCase()) && nodeFs.existsSync(dst)) continue;
+          if ([".env", "core.log", "core.lock"].includes(lower) && nodeFs.existsSync(dst)) continue;
           if (nodeFs.existsSync(dst)) {
             try {
               nodeFs.rmSync(dst, { recursive: true, force: true });
@@ -2559,10 +2576,8 @@ var MetadataResolver = class {
     this.plugin = plugin;
     this.limiters = {
       crossref: new RateLimiter({ rps: 8, burst: 16 }),
-      s2: new RateLimiter({ rps: 1, burst: 1 }),
+      s2: new RateLimiter({ rps: 1, burst: 1 })
       // no-key 配额
-      arxiv: new RateLimiter({ rps: 3, burst: 3 }),
-      openalex: new RateLimiter({ rps: 10, burst: 10 })
     };
     this._inFlight = /* @__PURE__ */ new Map();
   }
@@ -2583,24 +2598,24 @@ var MetadataResolver = class {
   _isFresh(entry) {
     return entry.ttl_until && entry.ttl_until > Date.now();
   }
-  // 主级联：L1 BBT → L3 CrossRef → L6 filename 兜底；S2 并行 enrich
+  // 主级联，三级：BBT → CrossRef → 文件名兜底；拿到主元数据后 S2 并行 enrich。
+  // 只有这三级，是因为三者各自不可替代：BBT 是用户在 Zotero 里手动清洗过的条目，
+  // 最权威也无需联网；CrossRef 覆盖面最广，是联网补齐的唯一必要一跳；
+  // 文件名是网络查不到时的最后兜底，保证任何文档都有可用的标题 / 作者 / 年份。
   async _runCascade(row, docId) {
-    var _a, _b, _c;
+    var _a, _b;
     const stem = (row._sourceFile || row.title || "").replace(/\.pdf$/i, "");
     const sources = [];
     let csl = null;
     let bbt = null;
     const settings = this.plugin.settings;
-    const enabled = ((_a = settings.metadataResolver) == null ? void 0 : _a.resolvers) || {};
-    if (enabled.bbt !== false) {
-      const bbtMatch = this._resolveBbt(row, stem);
-      if (bbtMatch) {
-        csl = bbtMatch.csl;
-        bbt = bbtMatch.bbt;
-        sources.push("bbt");
-      }
+    const bbtMatch = this._resolveBbt(row, stem);
+    if (bbtMatch) {
+      csl = bbtMatch.csl;
+      bbt = bbtMatch.bbt;
+      sources.push("bbt");
     }
-    if (!csl && enabled.crossref !== false) {
+    if (!csl) {
       try {
         const out = await this._resolveCrossRef(stem);
         if (out) {
@@ -2627,7 +2642,7 @@ var MetadataResolver = class {
     };
     this.plugin._writeDocMeta(docId, entry);
     this._emit(docId, entry);
-    if (((_c = (_b = settings.metadataResolver) == null ? void 0 : _b.s2) == null ? void 0 : _c.enabled) !== false) {
+    if (((_b = (_a = settings.metadataResolver) == null ? void 0 : _a.s2) == null ? void 0 : _b.enabled) !== false) {
       this._enrichS2(docId, csl).then((s2) => {
         if (!s2) return;
         const cur = this.plugin._readDocMeta(docId) || entry;
@@ -2677,7 +2692,24 @@ var MetadataResolver = class {
       }
     };
   }
-  // ── L3 CrossRef title search ──────────────────────
+  // CrossRef 礼貌头：版本随 manifest 走，邮箱优先用用户填的联系邮箱
+  // （CrossRef 建议附一个真能联系上的地址），没填就退回本站域名下的 no-reply。
+  _politeUserAgent() {
+    var _a;
+    const version = ((_a = this.plugin.manifest) == null ? void 0 : _a.version) || "0.0.0";
+    const settings = this.plugin.settings || {};
+    const contact = (settings.contactEmail || "").trim();
+    return `PaperSearch/${version} (mailto:${contact || this._fallbackMailto(settings.siteBaseUrl)})`;
+  }
+  _fallbackMailto(siteBaseUrl) {
+    let host = "";
+    try {
+      host = new URL((siteBaseUrl || "").trim()).hostname;
+    } catch (_) {
+    }
+    return `no-reply@${(host || "paperbell.cn").replace(/^www\./, "")}`;
+  }
+  // ── L2 CrossRef title search ──────────────────────
   async _resolveCrossRef(title) {
     var _a, _b, _c, _d, _e, _f;
     if (!title || title.length < 6) return null;
@@ -2687,9 +2719,7 @@ var MetadataResolver = class {
     const r = await obsidian5.requestUrl({
       url,
       method: "GET",
-      headers: {
-        "User-Agent": `PaperSearch/0.2.0 (mailto:${this.plugin.settings.contactEmail || "noreply@paperbell.app"})`
-      },
+      headers: { "User-Agent": this._politeUserAgent() },
       throw: false
     });
     if (r.status < 200 || r.status >= 300) return null;
@@ -2718,7 +2748,7 @@ var MetadataResolver = class {
       URL: item.URL || ""
     };
   }
-  // ── L6 文件名兜底：Liu_Yang_2012_Water-Crisis ────
+  // ── L3 文件名兜底：Liu_Yang_2012_Water-Crisis ────
   _resolveFilename(stem) {
     const parts = (stem || "").split(/[_\s-]+/).filter(Boolean);
     const yIdx = parts.findIndex((p) => /^(19|20)\d{2}$/.test(p));
@@ -2731,6 +2761,74 @@ var MetadataResolver = class {
       author: author.map((a) => ({ family: a })),
       issued: year ? { "date-parts": [[Number(year)]] } : null
     };
+  }
+  // 两个标题是不是同一篇。西文按词重合、CJK 按字重合——
+  // CrossRef 那套 split(/\s+/) 的分词判据对中文等于「整串完全相同才算」，
+  // 太严会把正确命中也拒掉，所以这里分开处理。
+  _titleMatches(want, got) {
+    const PUNCT = /* @__PURE__ */ new Set([
+      "「",
+      "」",
+      "『",
+      "』",
+      "《",
+      "》",
+      "【",
+      "】",
+      "（",
+      "）",
+      "，",
+      "。",
+      "：",
+      "；",
+      "、",
+      "(",
+      ")",
+      "[",
+      "]",
+      "{",
+      "}",
+      "<",
+      ">",
+      "“",
+      "”",
+      '"',
+      "'",
+      "’",
+      "‘",
+      ",",
+      ".",
+      ":",
+      ";",
+      "·",
+      "—",
+      "–",
+      "-",
+      "_",
+      "/",
+      "\\",
+      "?",
+      "!",
+      "？",
+      "！"
+    ]);
+    const norm = (v) => [...String(v || "").toLowerCase()].filter((ch) => !PUNCT.has(ch)).join("").replace(/[\s　]+/g, " ").trim();
+    const a = norm(want), b = norm(got);
+    if (!a || !b) return false;
+    if (a === b) return true;
+    const aw = a.split(" ").filter((w) => w.length > 3);
+    if (aw.length >= 2) {
+      const hit = aw.filter((w) => b.includes(w)).length;
+      if (hit >= 2) return true;
+      if (aw.length >= 5 && hit / aw.length >= 0.6) return true;
+      return false;
+    }
+    const setA = new Set([...a].filter((ch) => /[一-龥]/.test(ch)));
+    const setB = new Set([...b].filter((ch) => /[一-龥]/.test(ch)));
+    if (setA.size < 4) return false;
+    let inter = 0;
+    for (const ch of setA) if (setB.has(ch)) inter++;
+    return inter / setA.size >= 0.75;
   }
   // ── S2 enrich：先用 DOI（精准），无 DOI 用 title 搜索 ──
   async _enrichS2(docId, csl) {
@@ -2757,6 +2855,7 @@ var MetadataResolver = class {
     }
     const p = ((_d = j.data) == null ? void 0 : _d[0]) || j;
     if (!(p == null ? void 0 : p.paperId)) return null;
+    if (!csl.DOI && !this._titleMatches(csl.title, p.title)) return null;
     return {
       paperId: p.paperId,
       citationCount: (_e = p.citationCount) != null ? _e : 0,
@@ -2879,8 +2978,8 @@ var OnboardingWizard = class extends obsidian7.Modal {
     var _a, _b;
     this.contentEl.empty();
     if ((_b = (_a = this.plugin.coreManager) == null ? void 0 : _a.isInstalled) == null ? void 0 : _b.call(_a)) {
-      if (!this.plugin.settings.onboardingDone) {
-        this.plugin.settings.onboardingDone = true;
+      if (!this.plugin.state.onboardingDone) {
+        this.plugin.state.onboardingDone = true;
         await this.plugin.saveSettings();
       }
     } else {
@@ -3015,25 +3114,18 @@ var OnboardingWizard = class extends obsidian7.Modal {
         status.textContent = p.text;
       };
       try {
-        const devUrl = (this.plugin.settings.coreDownloadUrl || "").trim();
-        if (devUrl) {
-          dl.textContent = "下载中…";
-          status.textContent = "准备下载…";
-          await cm.download(devUrl, this.plugin.settings.coreDownloadSha256, onProg);
-        } else {
-          dl.textContent = this.plugin.hasValidActivation() ? "准备下载…" : "检查 PaperBell 授权…";
-          status.textContent = dl.textContent;
-          const offStatus = cm.onStatus((s, detail) => {
-            if (s === "downloading" && detail) status.textContent = detail;
+        dl.textContent = this.plugin.hasValidActivation() ? "准备下载…" : "检查 PaperBell 授权…";
+        status.textContent = dl.textContent;
+        const offStatus = cm.onStatus((s, detail) => {
+          if (s === "downloading" && detail) status.textContent = detail;
+        });
+        try {
+          await this.plugin._downloadCoreAuthorized((got, total, progress) => {
+            dl.textContent = "下载中…";
+            onProg(got, total, progress);
           });
-          try {
-            await this.plugin._downloadCoreAuthorized((got, total, progress) => {
-              dl.textContent = "下载中…";
-              onProg(got, total, progress);
-            });
-          } finally {
-            offStatus == null ? void 0 : offStatus();
-          }
+        } finally {
+          offStatus == null ? void 0 : offStatus();
         }
         fill.style.width = "100%";
         pct.textContent = "下载完成，正在启动…";
@@ -3101,7 +3193,7 @@ var OnboardingWizard = class extends obsidian7.Modal {
     go.onclick = async () => {
       var _a;
       this._persistDraft();
-      this.plugin.settings.onboardingDone = true;
+      this.plugin.state.onboardingDone = true;
       await this.plugin.saveSettings();
       this.close();
       (_a = this.onDone) == null ? void 0 : _a.call(this);
@@ -3123,7 +3215,7 @@ var OnboardingWizard = class extends obsidian7.Modal {
     btn.onclick = async () => {
       var _a;
       this._persistDraft();
-      this.plugin.settings.onboardingDone = true;
+      this.plugin.state.onboardingDone = true;
       await this.plugin.saveSettings();
       this.close();
       (_a = this.onDone) == null ? void 0 : _a.call(this);
@@ -3144,26 +3236,26 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
     const renderToken = this._renderToken = (this._renderToken || 0) + 1;
     this._isStale = () => this._renderToken !== renderToken;
     const TABS = [
-      { key: "start", label: "开始与状态" },
-      { key: "sources", label: "文献库与 Zotero" },
-      { key: "reading", label: "搜索与阅读" },
-      { key: "network", label: "AI、联网与隐私" },
-      { key: "cite", label: "引用与写作" },
-      { key: "support", label: "存储、故障排查与高级" }
+      { key: "home", label: "PaperSearch" },
+      { key: "library", label: "文献库" },
+      { key: "reading", label: "阅读" },
+      { key: "cite", label: "引用" },
+      { key: "network", label: "AI 与联网" },
+      { key: "advanced", label: "高级" }
     ];
     const tabBar = containerEl.createDiv({ cls: "pb-st-tabs" });
     tabBar.setAttribute("role", "tablist");
     const content = containerEl.createDiv({ cls: "pb-st-content" });
     const renderers = {
-      start: (el) => this._secStatus(el),
-      sources: (el) => this._secSources(el),
-      reading: (el) => this._secSearchReading(el),
-      network: (el) => this._secAiNetworkPrivacy(el),
-      cite: (el) => this._secCiteWrite(el),
-      support: (el) => this._secSupport(el)
+      home: (el) => this._secHome(el),
+      library: (el) => this._secLibrary(el),
+      reading: (el) => this._secReading(el),
+      cite: (el) => this._secCite(el),
+      network: (el) => this._secNetwork(el),
+      advanced: (el) => this._secAdvanced(el)
     };
     const visibleKeys = TABS.map((t) => t.key);
-    const activeKey = this._activeTab && visibleKeys.includes(this._activeTab) ? this._activeTab : "start";
+    const activeKey = this._activeTab && visibleKeys.includes(this._activeTab) ? this._activeTab : "home";
     this._activeTab = activeKey;
     TABS.forEach((t) => {
       const btn = tabBar.createEl("button", {
@@ -3182,136 +3274,255 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
     content.empty();
     renderers[activeKey](content);
   }
-  _secStatus(el) {
-    this._secStart(el, false);
-    el.createEl("hr", { cls: "pb-settings-divider" });
-    el.createEl("h3", { text: "界面与引导" });
-    this._secGeneral(el);
-  }
-  _secSearchReading(el) {
+  // ── Tab: PaperSearch（首页）─────────────────────────────
+  // 只回答一个问题：我现在能用了吗？不能的话卡在哪一步。
+  // 四行按依赖顺序：PaperBell 插件 → AI → 账号 → 本地服务。
+  _secHome(el) {
+    var _a, _b, _c, _d;
+    const isStale = this._isStale || (() => false);
+    const plugin = this.plugin;
+    el.createEl("h3", { text: "PaperSearch" });
     el.createEl("p", {
       cls: "setting-item-description",
-      text: "返回篇数、候选范围等参数可在检索页每次检索前直接调整；这里设置默认值。"
+      text: "在 Obsidian 里检索、阅读、标注文献，写作时保留可回查的出处。下面四项按依赖顺序排列，哪一项没就绪就先处理哪一项。"
     });
-    new obsidian8.Setting(el).setName("默认检索深度").setDesc("快速适合探索，平衡适合日常研究，深度适合系统综述或反例查找。").addDropdown((d) => d.addOptions({ quick: "快速", balanced: "平衡（推荐）", deep: "深度" }).setValue(this.plugin.settings.searchMode || "balanced").onChange(async (v) => {
-      this.plugin.settings.searchMode = v;
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("默认检索意图").setDesc("用于帮助系统理解你是在找支持、反例、方法还是定义，不会替代你输入的研究问题。").addDropdown((d) => d.addOptions({ support: "找支持", contrast: "找反例", method: "找方法", definition: "找定义" }).setValue(this.plugin.settings.searchIntent || "support").onChange(async (v) => {
-      this.plugin.settings.searchIntent = v;
-      await this.plugin.saveSettings();
-    }));
-    el.createEl("hr", { cls: "pb-settings-divider" });
-    this._secReading(el);
-  }
-  _secAiNetworkPrivacy(el) {
-    el.createEl("p", {
-      cls: "setting-item-description",
-      text: "PDF、笔记和索引默认保存在本机。检索页可分别开关「优化检索词」和「相关性说明」；联网元数据补全默认开启并在检索后自动运行，可在本页关闭。"
-    });
-    new obsidian8.Setting(el).setName("PaperBell AI 连接状态").setDesc("PaperSearch 沿用 PaperBell 中已配置的 AI 服务和模型，不再保存第二份密钥。").addButton((btn) => btn.setButtonText("检查 AI 连接").setCta().onClick(async () => {
-      var _a, _b;
-      btn.setDisabled(true);
+    el.createEl("h4", { text: "连接与激活" });
+    const box = el.createDiv({ cls: "pb-st-effective" });
+    const DOT = {
+      ok: "var(--color-green, #2c9c6a)",
+      // 就绪
+      warn: "var(--color-orange, #d18d24)",
+      // 可用但未配置
+      off: "var(--text-faint)"
+      // 不可用
+    };
+    const addRow = (name) => {
+      const row = box.createDiv({ cls: "pb-st-effective-row" });
+      const dot = row.createSpan({ text: "●" });
+      dot.style.color = DOT.off;
+      dot.style.flex = "0 0 auto";
+      row.createSpan({ text: name, cls: "pb-st-effective-k" });
+      const val = row.createSpan({ text: "", cls: "pb-st-effective-v" });
+      val.style.flex = "1 1 auto";
+      const actions = row.createSpan();
+      actions.style.marginLeft = "auto";
+      actions.style.flex = "0 0 auto";
+      return {
+        val,
+        set: (tone, text) => {
+          dot.style.color = DOT[tone] || DOT.off;
+          val.setText(text);
+        },
+        button: (label, onClick) => {
+          const b = actions.createEl("button", { text: label, attr: { type: "button" } });
+          b.onclick = () => {
+            onClick(b);
+          };
+          return b;
+        },
+        note: (text) => actions.createSpan({ text, cls: "pb-st-effective-hint" })
+      };
+    };
+    const pbOk = !!(((_a = plugin._paperbellPlugin) == null ? void 0 : _a.call(plugin)) || window.registerPPBplugin);
+    const rPb = addRow("PaperBell 插件");
+    if (pbOk) {
+      rPb.set("ok", "已连接");
+      rPb.button("打开 PaperBell", () => {
+        var _a2;
+        return (_a2 = plugin._openPaperbellSettings) == null ? void 0 : _a2.call(plugin, "ai");
+      });
+    } else {
+      rPb.set("off", "未安装或未启用");
+      rPb.note("请在 Obsidian 社区插件中安装并启用 PaperBell");
+    }
+    const rAi = addRow("AI");
+    if (!pbOk) {
+      rAi.set("off", "需先完成上一步");
+    } else {
+      rAi.set("warn", "检查中…");
+      const checkAi = async (btn) => {
+        var _a2;
+        if (btn) btn.disabled = true;
+        rAi.set("warn", "检查中…");
+        try {
+          const cfg = await ((_a2 = plugin._requestPaperbellLLMCredentials) == null ? void 0 : _a2.call(plugin));
+          if (isStale()) return;
+          if ((cfg == null ? void 0 : cfg.apiKey) && (cfg == null ? void 0 : cfg.model)) {
+            rAi.set("ok", `可用 · ${cfg.providerName ? `${cfg.providerName} / ` : ""}${cfg.model}`);
+          } else {
+            rAi.set("warn", "未配置 · 在 PaperBell 中填写提供方、模型和密钥");
+          }
+        } catch (e) {
+          if (isStale()) return;
+          rAi.set("warn", `未配置 · ${(e == null ? void 0 : e.message) || e}`);
+        } finally {
+          if (btn && !isStale()) btn.disabled = false;
+        }
+      };
+      rAi.button("检查", (b) => {
+        checkAi(b);
+      });
+      checkAi(null);
+    }
+    let accOk = false;
+    const rAcc = addRow("账号");
+    if (!pbOk) {
+      rAcc.set("off", "需先完成上一步");
+    } else {
+      const info0 = ((_b = plugin._paperbellInfo) == null ? void 0 : _b.call(plugin)) || null;
+      accOk = !!((_c = plugin.hasValidActivation) == null ? void 0 : _c.call(plugin));
+      const expOf = (info) => (info == null ? void 0 : info.expiresAt) ? ` · 到期 ${String(info.expiresAt).slice(0, 10)}` : "";
+      rAcc.set(accOk ? "ok" : "warn", accOk ? `已激活${expOf(info0)}` : "未激活 · 下载本地服务前需先在 PaperBell 中激活");
+      rAcc.button("检查", async (b) => {
+        const label = b.textContent;
+        b.disabled = true;
+        b.textContent = "检查中…";
+        try {
+          const info = await plugin._requestPaperbellActivationInfo();
+          if (!(info == null ? void 0 : info.isActive)) throw new Error("PaperBell 账号尚未授权或授权已失效");
+          new obsidian8.Notice("PaperBell 授权已就绪");
+          if (!isStale()) rAcc.set("ok", `已激活${expOf(info)}`);
+        } catch (e) {
+          new obsidian8.Notice(`PaperBell 授权未就绪：${(e == null ? void 0 : e.message) || e}`, 8e3);
+          if (!isStale()) rAcc.set("warn", "未激活");
+        } finally {
+          if (!isStale()) {
+            b.disabled = false;
+            b.textContent = label;
+          }
+        }
+      });
+    }
+    const cm = plugin.coreManager;
+    const installed = !!((_d = cm == null ? void 0 : cm.isInstalled) == null ? void 0 : _d.call(cm));
+    const running = (cm == null ? void 0 : cm.status) === "healthy";
+    const rCore = addRow("本地服务");
+    if (running) {
+      rCore.set("ok", `运行中 · 端口 ${(cm == null ? void 0 : cm.port) || 8e3}`);
+    } else if (installed) {
+      rCore.set("warn", `已安装未运行${(cm == null ? void 0 : cm.statusDetail) ? ` · ${cm.statusDetail}` : ""}`);
+    } else if (!pbOk || !accOk) {
+      rCore.set("off", "未安装 · 需先完成上一步");
+    } else {
+      rCore.set("off", "未安装");
+    }
+    if (installed) {
+      rCore.button(running ? "重启" : "启动", async (b) => {
+        var _a2;
+        if (!((_a2 = cm == null ? void 0 : cm._canLaunch) == null ? void 0 : _a2.call(cm))) {
+          new obsidian8.Notice("没有可启动的本地服务。请先导入安装包；开发版请在「高级」页指定源码目录。", 9e3);
+          return;
+        }
+        const label = b.textContent;
+        b.disabled = true;
+        b.textContent = "启动中…";
+        try {
+          await cm.kill();
+          await plugin._bootCoreThenViews();
+          if (cm.status === "healthy") new obsidian8.Notice("本地服务已就绪");
+          else new obsidian8.Notice(`本地服务未就绪：${cm.statusDetail || cm.status}`, 8e3);
+          if (!isStale()) this.display();
+        } catch (e) {
+          new obsidian8.Notice(`启动失败：${(e == null ? void 0 : e.message) || e}`, 8e3);
+          if (!isStale()) {
+            b.disabled = false;
+            b.textContent = label;
+          }
+        }
+      });
+    } else if (pbOk && accOk) {
+      rCore.button("安装", async (b) => {
+        var _a2;
+        const label = b.textContent;
+        b.disabled = true;
+        b.textContent = "检查下载链接…";
+        let offStatus = null;
+        try {
+          offStatus = (_a2 = cm == null ? void 0 : cm.onStatus) == null ? void 0 : _a2.call(cm, (s, detail) => {
+            if (s === "downloading" && detail && !isStale()) rCore.set("warn", detail);
+          });
+          const ticket = await plugin._fetchCoreDownloadTicket();
+          const ticketLabel = plugin._coreTicketLabel(ticket);
+          if (!isStale()) rCore.set("warn", `准备下载：${ticketLabel}`);
+          b.textContent = "下载中…";
+          await plugin._downloadCoreAuthorized((got, total, progress) => {
+            const p = progress || pbDownloadProgress(got, total);
+            if (!isStale()) rCore.set("warn", p.text);
+            b.textContent = typeof p.percent === "number" ? `下载中 ${p.percent}%` : `下载中 ${pbFormatMb(got)}`;
+          }, ticket);
+          new obsidian8.Notice(`本地服务已安装：${ticketLabel}`);
+          cm._restartAttempts = 0;
+          await plugin._bootCoreThenViews();
+          if (!isStale()) this.display();
+        } catch (e) {
+          new obsidian8.Notice(`下载 / 更新失败：${(e == null ? void 0 : e.message) || e}`, 1e4);
+          if (!isStale()) {
+            rCore.set("off", `未安装 · ${(e == null ? void 0 : e.message) || e}`);
+            b.disabled = false;
+            b.textContent = label;
+          }
+        } finally {
+          offStatus == null ? void 0 : offStatus();
+        }
+      });
+    } else if (!installed) {
+      rCore.note("激活账号后可下载安装");
+    }
+    el.createEl("h4", { text: "快速索引" });
+    const leave = () => {
+      var _a2, _b2;
       try {
-        const cfg = await ((_b = (_a = this.plugin)._requestPaperbellLLMCredentials) == null ? void 0 : _b.call(_a));
-        new obsidian8.Notice((cfg == null ? void 0 : cfg.apiKey) && (cfg == null ? void 0 : cfg.model) ? "PaperBell AI 连接正常" : "PaperBell AI 尚未配置");
-      } catch (e) {
-        new obsidian8.Notice(`检查失败：${(e == null ? void 0 : e.message) || e}`);
-      } finally {
-        btn.setDisabled(false);
+        (_b2 = (_a2 = this.app.setting) == null ? void 0 : _a2.close) == null ? void 0 : _b2.call(_a2);
+      } catch (_) {
       }
-    })).addButton((btn) => btn.setButtonText("打开 PaperBell").onClick(() => {
-      var _a, _b;
-      return (_b = (_a = this.plugin)._openPaperbellSettings) == null ? void 0 : _b.call(_a, "ai");
+    };
+    new obsidian8.Setting(el).setName("检索文献").setDesc("用研究问题在文献库里找相关片段。").addButton((b) => b.setButtonText("前往").setCta().onClick(() => {
+      leave();
+      plugin.activateView();
     }));
-    const privacy = el.createEl("details", { cls: "pb-settings-details" });
-    privacy.createEl("summary", { text: "查看各功能的数据流" });
-    const list = privacy.createEl("ul", { cls: "pb-set-intro" });
-    list.createEl("li", { text: "本地：PDF 缓存、文献笔记，以及文献、标注、引用和论断来源记录。" });
-    list.createEl("li", { text: "AI：优化检索词、生成相关性说明或综述草稿、改写、翻译、使用 AI 核查原文对论断的支持情况时，会发送完成当前任务所需的研究问题和原文片段；使用 AI 辅助建库时可能发送论文全文，具体以建库方案说明为准。" });
-    list.createEl("li", { text: "联网解析：元数据补全默认开启，检索后自动向公开数据库发送 DOI、标题或作者；可在下方关闭。" });
-    list.createEl("li", { text: "Zotero：按你绑定的本地 storage 与 Better BibTeX .bib 读取附件和书目信息。" });
-    el.createEl("hr", { cls: "pb-settings-divider" });
-    this._secMetadataNetwork(el);
+    new obsidian8.Setting(el).setName("新建文献库").setDesc("选一个文件夹或 Zotero 库，建立索引。").addButton((b) => b.setButtonText("前往").onClick(() => {
+      leave();
+      plugin._guideCreateLibrary();
+    }));
+    new obsidian8.Setting(el).setName("我的片段").setDesc("看已经记下的片段，按文献或颜色分组。").addButton((b) => b.setButtonText("前往").onClick(() => {
+      leave();
+      plugin.activateView("fragments");
+    }));
+    new obsidian8.Setting(el).setName("引导").setDesc("重新走一遍配置引导。").addButton((b) => b.setButtonText("前往").onClick(() => {
+      leave();
+      new OnboardingWizard(this.app, plugin, () => plugin._bootCoreThenViews()).open();
+    }));
   }
-  _secSupport(el) {
-    var _a, _b;
-    new obsidian8.Setting(el).setName("PaperSearch 运行状态").setDesc(`当前：${((_a = this.plugin.coreManager) == null ? void 0 : _a.statusDetail) || ((_b = this.plugin.coreManager) == null ? void 0 : _b.status) || "未知"} · ${this.plugin.settings.backendUrl || "http://127.0.0.1:8000"}`).addButton((btn) => btn.setButtonText("测试连接").setCta().onClick(async () => {
+  // ── Tab: 文献库（数据从哪来）────────────────────────────
+  // 本地服务是文献库的运行前提，所以「跑起来 / 装上」和「数据源绑定」放在同一页。
+  // 「运行状态」全插件只在这里出现一次。
+  async _secLibrary(el) {
+    var _a, _b, _c, _d;
+    el.createEl("h4", { text: "本地服务" });
+    el.createEl("p", {
+      text: "PaperSearch 在本机完成文献检索、PDF 解析和索引。首次使用可在配置向导中下载，也可在此安装、更新或重启。开发版可在「高级」页指定源码目录。",
+      cls: "setting-item-description"
+    });
+    const cm = this.plugin.coreManager;
+    new obsidian8.Setting(el).setName("运行状态").setDesc(`当前：${(cm == null ? void 0 : cm.statusDetail) || (cm == null ? void 0 : cm.status) || "未知"} · ${this.plugin.settings.backendUrl || "http://127.0.0.1:8000"}`).addButton((btn) => btn.setButtonText("测试连接").setCta().onClick(async () => {
+      var _a2;
+      btn.setButtonText("测试中…");
       btn.setDisabled(true);
       try {
-        await this.plugin.api.get("/health");
-        new obsidian8.Notice("PaperSearch 本地服务连接正常");
+        const h = await this.plugin.api.get("/health");
+        new obsidian8.Notice(`本地服务在线 · 当前文献库：${(_a2 = h.library) != null ? _a2 : "—"}`);
       } catch (e) {
         new obsidian8.Notice(`连接失败：${(e == null ? void 0 : e.message) || e}`, 8e3);
       } finally {
+        btn.setButtonText("测试连接");
         btn.setDisabled(false);
       }
     }));
-    el.createEl("hr", { cls: "pb-settings-divider" });
-    this._secStorage(el);
-    const advanced = el.createEl("details", { cls: "pb-settings-details pb-settings-advanced" });
-    advanced.createEl("summary", { text: "故障排查与高级参数" });
-    const body = advanced.createDiv({ cls: "pb-settings-details-body" });
-    body.createEl("p", {
-      cls: "setting-item-description",
-      text: "这里的参数会影响本地服务连接、超时、缓存与实验功能。除非正在排障，建议保留默认值。"
-    });
-    this._secAdvanced(body);
-  }
-  // ── Tab: 开始使用（AI 服务 + 本地服务）────────────────
-  _secStart(el, showAI = true) {
-    el.createEl("p", {
-      cls: "setting-item-description",
-      text: "PaperSearch 用于在 Obsidian 中检索、阅读和标注文献，并在写作时保留可追溯的来源。"
-    });
-    const intro = el.createEl("ul", { cls: "pb-set-intro" });
-    intro.createEl("li", { text: "直接输入研究问题，找到相关论文和可回查的原文片段；" });
-    intro.createEl("li", { text: "直接在 Obsidian 里阅读、划词、彩色标注这些 PDF；" });
-    intro.createEl("li", { text: "写作时插入带出处的引用、原文摘录或 AI 转述，不用离开 Obsidian。" });
-    el.createEl("p", {
-      cls: "setting-item-description",
-      text: "PDF、笔记和本地索引默认保存在本机。「平衡 / 深度」检索会使用 AI；联网元数据补全默认开启。AI 辅助建库可能发送论文全文。"
-    });
-    if (showAI) new obsidian8.Setting(el).setName("PaperBell AI").setDesc("AI 提供方、模型和密钥都在 PaperBell 中统一配置；PaperSearch 请求授权读取这些配置，不再二次填写。").addButton((btn) => btn.setButtonText("检查 PaperBell AI 连接").setCta().onClick(async () => {
-      btn.setDisabled(true);
-      btn.setButtonText("检查中…");
-      try {
-        const cfg = await this.plugin._requestPaperbellLLMCredentials();
-        if (!(cfg == null ? void 0 : cfg.apiKey) || !(cfg == null ? void 0 : cfg.model)) {
-          throw new Error("请先在 PaperBell 中完成 AI 提供方、模型和密钥配置");
-        }
-        new obsidian8.Notice(`PaperBell AI 已就绪：${cfg.providerName || cfg.model} / ${cfg.model}`);
-      } catch (e) {
-        new obsidian8.Notice(`PaperBell AI 未就绪：${e.message}`, 8e3);
-      } finally {
-        btn.setDisabled(false);
-        btn.setButtonText("检查 PaperBell AI 连接");
-      }
-    })).addButton((btn) => btn.setButtonText("打开 PaperBell AI 设置").onClick(() => this.plugin._openPaperbellSettings("ai")));
-    el.createEl("h4", { text: "本地服务" });
-    el.createEl("p", {
-      text: "PaperSearch 在本机完成文献检索、PDF 解析和索引。首次使用可在配置向导中下载，也可在此安装、更新或重启。开发版可在高级设置中指定源码目录。",
-      cls: "setting-item-description"
-    });
-    new obsidian8.Setting(el).setName("PaperBell 账号").setDesc(this.plugin.hasValidActivation() ? "已授权，可下载本地服务。" : "下载本地服务前，需先在 PaperBell 中完成账号授权。").addButton((btn) => btn.setButtonText("检查下载权限").onClick(async () => {
-      btn.setDisabled(true);
-      btn.setButtonText("检查中…");
-      try {
-        const info = await this.plugin._requestPaperbellActivationInfo();
-        if (!(info == null ? void 0 : info.isActive)) throw new Error("PaperBell 账号尚未授权或授权已失效");
-        new obsidian8.Notice("PaperBell 授权已就绪 ✓");
-        this.display();
-      } catch (e) {
-        new obsidian8.Notice(`PaperBell 授权未就绪：${e.message}`, 8e3);
-      } finally {
-        btn.setDisabled(false);
-        btn.setButtonText("检查下载权限");
-      }
-    }));
-    new obsidian8.Setting(el).setName("启动 / 重启").setDesc("按当前配置立即启动；以后每次打开 Obsidian 会自动启动。").addButton((btn) => btn.setButtonText("启动或重启").setCta().onClick(async () => {
-      const cm = this.plugin.coreManager;
-      if (!cm._canLaunch()) {
-        new obsidian8.Notice("没有可启动的本地服务。请先导入安装包；开发版请在高级设置中指定源码目录。", 9e3);
+    const launchLabel = (cm == null ? void 0 : cm.status) === "healthy" ? "重启" : "启动";
+    new obsidian8.Setting(el).setName("启动 / 重启").setDesc("按当前配置立即启动；以后每次打开 Obsidian 会自动启动。").addButton((btn) => btn.setButtonText(launchLabel).onClick(async () => {
+      var _a2;
+      if (!((_a2 = cm == null ? void 0 : cm._canLaunch) == null ? void 0 : _a2.call(cm))) {
+        new obsidian8.Notice("没有可启动的本地服务。请先导入安装包；开发版请在「高级」页指定源码目录。", 9e3);
         return;
       }
       btn.setButtonText("启动中…");
@@ -3322,9 +3533,9 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
         if (cm.status === "healthy") new obsidian8.Notice("本地服务已就绪");
         else new obsidian8.Notice(`本地服务未就绪：${cm.statusDetail || cm.status}`, 8e3);
       } catch (e) {
-        new obsidian8.Notice(`启动失败：${e.message}`);
+        new obsidian8.Notice(`启动失败：${(e == null ? void 0 : e.message) || e}`);
       } finally {
-        btn.setButtonText("启动或重启");
+        btn.setButtonText(launchLabel);
         btn.setDisabled(false);
       }
     }));
@@ -3351,9 +3562,9 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
       downloadProgressText.style.whiteSpace = "";
     };
     new obsidian8.Setting(el).setName("安装 / 更新").setDesc("从 PaperBell 下载最新版本；已是最新时会先提示你。").addButton((btn) => {
-      const label = this.plugin.coreManager.isInstalled() ? "检查并更新" : "下载";
+      var _a2, _b2;
+      const label = ((_b2 = (_a2 = this.plugin.coreManager) == null ? void 0 : _a2.isInstalled) == null ? void 0 : _b2.call(_a2)) ? "更新" : "下载";
       btn.setButtonText(label).setCta().onClick(async () => {
-        const cm = this.plugin.coreManager;
         btn.setDisabled(true).setButtonText("检查下载链接…");
         resetDownloadProgress();
         showDownloadProgress("检查下载链接…", 0);
@@ -3405,8 +3616,8 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
           await this.plugin._bootCoreThenViews();
           this.display();
         } catch (e) {
-          new obsidian8.Notice(`下载 / 更新失败：${e.message}`, 1e4);
-          showDownloadProgress(`失败：${e.message}`);
+          new obsidian8.Notice(`下载 / 更新失败：${(e == null ? void 0 : e.message) || e}`, 1e4);
+          showDownloadProgress(`失败：${(e == null ? void 0 : e.message) || e}`);
           if (downloadProgressText) {
             downloadProgressText.style.color = "var(--text-error, #e5534b)";
             downloadProgressText.style.whiteSpace = "normal";
@@ -3422,10 +3633,22 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
     const downloadProgressBar = downloadProgressBox.createDiv({ cls: "pb-onb-bar" });
     downloadProgressFill = downloadProgressBar.createDiv({ cls: "pb-onb-bar-fill" });
     downloadProgressText = downloadProgressBox.createDiv({ cls: "pb-onb-pct", text: "0%" });
-  }
-  // ── Tab: 文献来源（Zotero 检测 + 手动路径绑定）───────────
-  async _secSources(el) {
-    var _a, _b, _c, _d;
+    new obsidian8.Setting(el).setName("PaperBell 账号").setDesc(this.plugin.hasValidActivation() ? "已授权，可下载本地服务。" : "下载本地服务前，需先在 PaperBell 中完成账号授权。").addButton((btn) => btn.setButtonText("检查").onClick(async () => {
+      btn.setDisabled(true);
+      btn.setButtonText("检查中…");
+      try {
+        const info = await this.plugin._requestPaperbellActivationInfo();
+        if (!(info == null ? void 0 : info.isActive)) throw new Error("PaperBell 账号尚未授权或授权已失效");
+        new obsidian8.Notice("PaperBell 授权已就绪");
+        this.display();
+      } catch (e) {
+        new obsidian8.Notice(`PaperBell 授权未就绪：${(e == null ? void 0 : e.message) || e}`, 8e3);
+      } finally {
+        btn.setDisabled(false);
+        btn.setButtonText("检查");
+      }
+    }));
+    el.createEl("hr", { cls: "pb-settings-divider" });
     el.createEl("p", {
       text: "把本地 PDF 文件夹或 Zotero 库绑定到 PaperSearch 文献库；启用自动监听后，新文献会被检测并提示你增量加入。",
       cls: "setting-item-description"
@@ -3581,7 +3804,233 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
     }));
     renderBbtStat();
   }
-  _secMetadataNetwork(el) {
+  // ── Tab: 阅读（怎么读）─────────────────────────────────
+  // 只放「读 PDF、划词、看原文」相关的项。保存动作（PDF 怎么进笔记）在「引用」页。
+  _secReading(el) {
+    new obsidian8.Setting(el).setName("标注分类与颜色").setDesc("在 PDF 里划选文字即可着色标注。给每种颜色起个名字（如 观点 / 方法 / 引用），便于之后按用途筛选、检索、转成引用。").setHeading();
+    const rolesWrap = el.createDiv({ cls: "pb-anno-roles-settings" });
+    const renderRoles = () => {
+      rolesWrap.empty();
+      const roles = this.plugin._annoRoles();
+      roles.forEach((r, i) => {
+        const row = rolesWrap.createDiv({ cls: "pb-anno-role-row" });
+        const sw = row.createEl("input", { attr: { type: "color", value: r.color } });
+        sw.addClass("pb-anno-role-color");
+        sw.onchange = async () => {
+          var _a, _b;
+          const old = roles[i].color;
+          roles[i].color = sw.value;
+          for (const a of Object.values((_b = (_a = this.plugin.annotationIndex) == null ? void 0 : _a.items) != null ? _b : {})) {
+            if (a.color === old) a.color = sw.value;
+          }
+          this.plugin.settings.annotationRoles = roles;
+          await this.plugin.saveSettings();
+        };
+        const lab = row.createEl("input", { attr: { type: "text", value: r.label, placeholder: "分类名称" } });
+        lab.addClass("pb-anno-role-label");
+        lab.onchange = async () => {
+          roles[i].label = lab.value.trim() || r.label;
+          this.plugin.settings.annotationRoles = roles;
+          await this.plugin.saveSettings();
+        };
+      });
+      const reset = rolesWrap.createEl("button", { text: "恢复默认", cls: "pb-anno-role-reset" });
+      reset.onclick = async () => {
+        this.plugin.settings.annotationRoles = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.annotationRoles));
+        await this.plugin.saveSettings();
+        renderRoles();
+      };
+    };
+    renderRoles();
+    new obsidian8.Setting(el).setName("PDF 划词工具条").setDesc("在 PDF 里选中文字时，旁边弹出「记 / 以此检索」浮条。").addToggle((t) => t.setValue(this.plugin.settings.pdfSelectionToolbar !== false).onChange(async (v) => {
+      this.plugin.settings.pdfSelectionToolbar = v;
+      await this.plugin.saveSettings();
+    }));
+    new obsidian8.Setting(el).setName("悬浮标注面板").setDesc("在 PDF 边缘浮出面板，列出本篇全部标注（按用途分组），点击跳回原文。").addToggle((t) => t.setValue(this.plugin.settings.annoPanelEnabled !== false).onChange(async (v) => {
+      this.plugin.settings.annoPanelEnabled = v;
+      await this.plugin.saveSettings();
+      this.plugin._applyAnnoPanelSetting();
+    }));
+    new obsidian8.Setting(el).setName("标注面板停靠位置").setDesc("面板贴在窗口的哪一边。").addDropdown((d) => d.addOptions({ right: "右侧", left: "左侧", top: "顶部", bottom: "底部" }).setValue(this.plugin.settings.annoPanelEdge || "right").onChange(async (v) => {
+      this.plugin.settings.annoPanelEdge = v;
+      await this.plugin.saveSettings();
+      this.plugin._applyAnnoPanelEdge();
+    }));
+    new obsidian8.Setting(el).setName("原文预览行数").setDesc("列表和网格视图中，每条结果的原文默认显示几行（1–8）；超出后可展开。").addSlider((slider) => slider.setLimits(1, 8, 1).setValue(this.plugin.settings.originalPreviewLines).setDynamicTooltip().onChange(async (val) => {
+      this.plugin.settings.originalPreviewLines = val;
+      await this.plugin.saveSettings();
+      document.body.style.setProperty("--pb-abstract-lines", String(val));
+      document.querySelectorAll(".pb-panel").forEach((panel) => panel.style.setProperty("--pb-abstract-lines", String(val)));
+      requestAnimationFrame(() => {
+        var _a, _b;
+        for (const leaf of this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE)) {
+          const view = leaf.view;
+          const results = (_b = (_a = view == null ? void 0 : view.containerEl) == null ? void 0 : _a.querySelector) == null ? void 0 : _b.call(_a, ".pb-results");
+          if (results && typeof view._refreshOrigDisclosures === "function") {
+            view._refreshOrigDisclosures(results);
+          }
+        }
+      });
+    }));
+    new obsidian8.Setting(el).setName("原文翻译浮窗").setDesc("鼠标停在检索结果的原文节选上时，可显示译文浮窗。可选择关闭、点击翻译或自动翻译。").addDropdown((d) => d.addOptions({ off: "关闭", click: "点击翻译（推荐）", auto: "自动翻译" }).setValue(this.plugin.settings.hoverPopupMode || "click").onChange(async (v) => {
+      this.plugin.settings.hoverPopupMode = v;
+      await this.plugin.saveSettings();
+      this.plugin._applyHoverPopupSetting();
+    }));
+  }
+  // ── Tab: 引用（怎么引）─────────────────────────────────
+  // 引用形态、导出、归档位置，以及只作用于用户自己文字的行内改写。
+  _secCite(el) {
+    var _a;
+    new obsidian8.Setting(el).setName("引用插入格式").setDesc("插入引用时的默认写法：标准引用键（推荐，以 .bib 为准、导出时统一生成参考文献表）/ 脚注 / 行内著者-年。").addDropdown((d) => d.addOptions({ pandoc: "标准引用键（推荐）", footnote: "脚注 [^id]", inline: "行内 著者-年" }).setValue(this.plugin.settings.citationForm || "pandoc").onChange(async (v) => {
+      this.plugin.settings.citationForm = v;
+      await this.plugin.saveSettings();
+    }));
+    new obsidian8.Setting(el).setName("参考文献样式").setDesc("使用脚注、行内或生成参考文献表时的学术格式（APA / MLA / Chicago）。").addDropdown((d) => d.addOptions({ apa: "APA", mla: "MLA", chicago: "Chicago" }).setValue(this.plugin.settings.bibStyle || "apa").onChange(async (v) => {
+      this.plugin.settings.bibStyle = v;
+      await this.plugin.saveSettings();
+    }));
+    el.createEl("h4", { text: "Pandoc 导出设置" });
+    const _bbt = (this.plugin.settings.bbtBibPath || "").trim();
+    if (!_bbt) {
+      el.createEl("p", { cls: "setting-item-description", text: "未配置 BBT .bib（请到「文献库」页设置）。没有 .bib 时，标准引用键会退化为脚注，无法使用 @citekey 导出。" });
+    } else {
+      const _pbib = this.plugin._paperbellBibPath();
+      let _orphan = 0;
+      try {
+        if (_pbib && nodeFs2.existsSync(_pbib)) _orphan = (parseBibTeX(nodeFs2.readFileSync(_pbib, "utf8")) || []).length;
+      } catch (_) {
+      }
+      const _bibs = [_bbt];
+      if (_orphan > 0 && _pbib) _bibs.push(_pbib);
+      el.createEl("p", {
+        cls: "setting-item-description",
+        text: _orphan > 0 ? `注意：有 ${_orphan} 篇文献不在 Zotero/BBT、写在了 paperbell.bib。导出时这个文件也必须加入 pandoc 的 bibliography，否则这些 @key 将无法解析。` : "当前可引用文献都来自你的 BBT 库。只要 pandoc 的 --bibliography 指向同一个 .bib，所有 @key 都能解析。"
+      });
+      new obsidian8.Setting(el).setName("导出时 pandoc 需要的文献库").setDesc(_bibs.join("  +  ")).addButton((b) => b.setButtonText("复制 --bibliography 参数").onClick(() => {
+        const arg = _bibs.map((p) => `--bibliography "${p}"`).join(" ") + " --citeproc";
+        navigator.clipboard.writeText(arg);
+        new obsidian8.Notice("已复制 pandoc 参数；粘进你的导出命令即可");
+      }));
+    }
+    el.createEl("h4", { text: "保存位置" });
+    new obsidian8.Setting(el).setName("文献库目录").setDesc("保存的文献放在这里，每篇一个子文件夹（含笔记与 PDF）。").addText((t) => t.setPlaceholder("PaperSearch/文献").setValue(this.plugin.settings.paperLibraryDir).onChange(async (val) => {
+      this.plugin.settings.paperLibraryDir = val.trim().replace(/\/+$/, "") || "PaperSearch/文献";
+      await this.plugin.saveSettings();
+    }));
+    new obsidian8.Setting(el).setName("文献笔记中的 PDF").setDesc("保存文献时，PDF 以什么方式进入笔记。嵌入可直接在笔记中定位到命中页阅读。").addDropdown((d) => d.addOption("inline", "嵌入笔记").addOption("obsidian-preview", "在新标签页打开").addOption("link", "用系统阅读器打开").addOption("none", "不显示").setValue(this.plugin.settings.pdfLinkMode || "inline").onChange(async (v) => {
+      this.plugin.settings.pdfLinkMode = v;
+      await this.plugin.saveSettings();
+    }));
+    new obsidian8.Setting(el).setName("概念目录").setDesc("概念笔记的存放处。").addText((t) => t.setPlaceholder("PaperSearch/概念").setValue(this.plugin.settings.conceptDir).onChange(async (val) => {
+      this.plugin.settings.conceptDir = val.trim().replace(/\/+$/, "") || "PaperSearch/概念";
+      await this.plugin.saveSettings();
+    }));
+    el.createEl("h4", { text: "当前写作项目" });
+    new obsidian8.Setting(el).setName("论文目录").setDesc("用于把引用反向链接的扫描范围限定在这个目录内。填当前 Obsidian 库内的相对路径。").addText((t) => t.setPlaceholder("Research/我的论文.md").setValue(this.plugin.settings.writingProjectPath || "").onChange(async (v) => {
+      this.plugin.settings.writingProjectPath = v.trim();
+      await this.plugin.saveSettings();
+    }));
+    const lf = this.plugin._detectLongformProjects();
+    if (lf.length) {
+      el.createEl("h5", { text: `检测到 ${lf.length} 个 Longform 项目` });
+      const list = el.createDiv({ cls: "pb-lf-list" });
+      for (const proj of lf) {
+        const item = list.createDiv({ cls: "pb-lf-item" });
+        item.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--background-modifier-border);";
+        const isCurrent = this.plugin.settings.writingProjectPath === proj.path;
+        const info = item.createDiv();
+        info.style.cssText = "flex:1;min-width:0;";
+        info.createDiv({
+          text: `${isCurrent ? "★ " : ""}${proj.title}`,
+          cls: "pb-lf-title"
+        }).style.cssText = `font-size:12px;font-weight:${isCurrent ? "600" : "500"};color:var(--text-normal);`;
+        info.createDiv({
+          text: `${proj.format === "scenes" ? "多章节 · " + (((_a = proj.scenes) == null ? void 0 : _a.length) || 0) + " 章" : "单文件"} · ${proj.path}`,
+          cls: "pb-lf-meta"
+        }).style.cssText = "font-size:10px;color:var(--text-faint);";
+        const btn = item.createEl("button", { text: isCurrent ? "当前" : "设为项目" });
+        btn.disabled = isCurrent;
+        btn.onclick = async () => {
+          this.plugin.settings.writingProjectPath = proj.path;
+          await this.plugin.saveSettings();
+          new obsidian8.Notice(`已切换写作项目：${proj.title}`);
+          this.display();
+        };
+      }
+    } else {
+      el.createEl("p", {
+        text: "未检测到 Longform 项目（当前 Obsidian 库中没有包含 longform 配置的文件）。",
+        cls: "pb-st-effective-hint"
+      });
+    }
+    el.createEl("h4", { text: "行内 AI 改写" });
+    const rwSetting = new obsidian8.Setting(el).setName("AI 改写指令").setDesc("行内 AI 改写使用的指令。生成结果会先预览，采用前请核对事实、限定条件与引用。");
+    let rwTa;
+    rwSetting.addTextArea((ta) => {
+      var _a2;
+      rwTa = ta;
+      ta.setValue((_a2 = this.plugin.settings.rewritePrompt) != null ? _a2 : DEFAULT_REWRITE_PROMPT).onChange(async (val) => {
+        this.plugin.settings.rewritePrompt = val;
+        await this.plugin.saveSettings();
+      });
+      ta.inputEl.rows = 6;
+      ta.inputEl.style.width = "100%";
+      ta.inputEl.style.fontSize = "12px";
+      ta.inputEl.style.lineHeight = "1.5";
+    });
+    rwSetting.addExtraButton((b) => b.setIcon("rotate-ccw").setTooltip("恢复默认提示词").onClick(async () => {
+      this.plugin.settings.rewritePrompt = DEFAULT_REWRITE_PROMPT;
+      await this.plugin.saveSettings();
+      rwTa == null ? void 0 : rwTa.setValue(DEFAULT_REWRITE_PROMPT);
+    }));
+    new obsidian8.Setting(el).setName("常用改写指令").setDesc("每行写一条常用指令（如「精炼至 100 字」「改写为学术风格」）。改写框输入「/」即可快速调用。").addTextArea((ta) => {
+      var _a2;
+      ta.setPlaceholder("改写为学术风格\n精炼内容至100字").setValue((_a2 = this.plugin.settings.promptTemplates) != null ? _a2 : "").onChange(async (val) => {
+        this.plugin.settings.promptTemplates = val;
+        await this.plugin.saveSettings();
+      });
+      ta.inputEl.rows = 5;
+      ta.inputEl.style.width = "100%";
+      ta.inputEl.style.fontFamily = "var(--font-monospace)";
+      ta.inputEl.style.fontSize = "12px";
+    });
+  }
+  // ── Tab: AI 与联网（什么会出网）─────────────────────────
+  // 产品里有两套 AI，此前藏在折叠标题后面，导致「密钥统一在 PaperBell」和
+  // 「自定义 API Key 明文保存在本机」看起来自相矛盾。现在开门见山说清楚。
+  _secNetwork(el) {
+    el.createEl("p", {
+      cls: "setting-item-description",
+      text: "写作时的 AI 转述、核查、综合，用的是 PaperBell 里配置的服务；检索时的检索词优化、相关性说明、文献概要，由本地服务自己调用模型，配置在「高级」页。"
+    });
+    el.createEl("p", {
+      cls: "setting-item-description",
+      text: "PDF、笔记和索引默认保存在本机。联网元数据补全默认开启并在检索后自动运行，可在本页关闭。"
+    });
+    new obsidian8.Setting(el).setName("PaperBell AI 连接状态").setDesc("写作类 AI 的提供方、模型和密钥都在 PaperBell 中配置，PaperSearch 不再保存第二份密钥。").addButton((btn) => btn.setButtonText("检查").setCta().onClick(async () => {
+      var _a, _b;
+      btn.setDisabled(true);
+      try {
+        const cfg = await ((_b = (_a = this.plugin)._requestPaperbellLLMCredentials) == null ? void 0 : _b.call(_a));
+        new obsidian8.Notice((cfg == null ? void 0 : cfg.apiKey) && (cfg == null ? void 0 : cfg.model) ? "PaperBell AI 连接正常" : "PaperBell AI 尚未配置");
+      } catch (e) {
+        new obsidian8.Notice(`检查失败：${(e == null ? void 0 : e.message) || e}`);
+      } finally {
+        btn.setDisabled(false);
+      }
+    })).addButton((btn) => btn.setButtonText("打开 PaperBell").onClick(() => {
+      var _a, _b;
+      return (_b = (_a = this.plugin)._openPaperbellSettings) == null ? void 0 : _b.call(_a, "ai");
+    }));
+    const privacy = el.createEl("details", { cls: "pb-settings-details" });
+    privacy.createEl("summary", { text: "查看各功能的数据流" });
+    const flow = privacy.createEl("ul", { cls: "pb-set-intro" });
+    flow.createEl("li", { text: "本地：PDF 缓存、文献笔记，以及文献、标注、引用和论断来源记录。" });
+    flow.createEl("li", { text: "AI：优化检索词、生成相关性说明、改写、翻译、用 AI 核查原文对论断的支持情况时，会发送完成当前任务所需的研究问题和原文片段；使用 AI 辅助建库时可能发送论文全文，具体以建库方案说明为准。" });
+    flow.createEl("li", { text: "联网解析：元数据补全默认开启，检索后自动向公开数据库发送 DOI、标题或作者；可在下方关闭。" });
+    flow.createEl("li", { text: "Zotero：按你绑定的本地 storage 与 Better BibTeX .bib 读取附件和书目信息。" });
+    el.createEl("hr", { cls: "pb-settings-divider" });
     el.createEl("h4", { text: "联网补全文献元数据" });
     el.createEl("p", {
       text: "默认开启：每次检索后自动从公开数据库补全标题、作者、期刊与被引数。请求会发送 DOI、标题或作者，结果缓存在本地；可在下方关闭。",
@@ -3636,17 +4085,124 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
       new obsidian8.Notice("已清空元数据缓存");
     }));
   }
-  // ── Tab: 高级 / 开发者 ───────────────────────────────────
+  // ── Tab: 高级（出问题时）───────────────────────────────
+  // 页名本身就是提示，不再用开关门控：全部直接显示。
   _secAdvanced(el) {
     el.createEl("p", {
-      text: "以下为高级 / 调试项，多数用户无需改动。",
+      text: "缓存、连接地址与本地服务的模型配置。除非正在排障或使用源码版，建议保留默认值。",
       cls: "setting-item-description"
     });
-    new obsidian8.Setting(el).setName("开发者模式").setDesc("显示运行状态等更底层信息，便于排查问题或使用源码版。").addToggle((t) => t.setValue(!!this.plugin.settings.developerMode).onChange(async (v) => {
-      this.plugin.settings.developerMode = v;
-      await this.plugin.saveSettings();
-      this.display();
+    el.createEl("h4", { text: "缓存" });
+    new obsidian8.Setting(el).setName("PDF 缓存上限").setDesc("本地缓存最多保留多少个 PDF，超出时自动删除最久未用的。0 = 不限制。仅对「在 Obsidian 标签页打开」和「复制进笔记并嵌入」两种方式有效。").addSlider((s) => {
+      var _a;
+      return s.setLimits(0, 30, 1).setValue((_a = this.plugin.settings.pdfCacheMax) != null ? _a : 10).setDynamicTooltip().onChange(async (v) => {
+        this.plugin.settings.pdfCacheMax = v;
+        await this.plugin.saveSettings();
+      });
+    });
+    new obsidian8.Setting(el).setName("清理 PaperSearch 缓存（本地 PDF 副本）").setDesc("PDF 预览/跳转用的本地缓存（PaperSearch缓存/）。打开文献库里的 PDF 会拷一份到这里以保证稳定加载；清理后下次打开会重新拉取一次。").addButton((b) => b.setButtonText("清理").onClick(async () => {
+      const folder = this.app.vault.getAbstractFileByPath("PaperSearch缓存");
+      if (!folder) {
+        new obsidian8.Notice("没有 PaperSearch缓存 文件夹");
+        return;
+      }
+      const ok = await pbConfirm(this.app, {
+        title: "清理 PDF 缓存",
+        message: "确定删除 PaperSearch缓存/ 文件夹及其中所有文件？\n（如果你的笔记还在用「嵌入」模式引用这些 PDF，删除后会变成虚链接。）",
+        confirmText: "删除",
+        danger: true
+      });
+      if (!ok) return;
+      try {
+        await this.app.vault.delete(folder, true);
+        new obsidian8.Notice("已清理 PDF 缓存");
+      } catch (e) {
+        new obsidian8.Notice(`清理失败：${(e == null ? void 0 : e.message) || e}`);
+      }
     }));
+    new obsidian8.Setting(el).setName("文献概要缓存保留天数").setDesc("文献概要结果的保留天数，过期自动清理。0 = 永久保留。已保存为文献笔记的结果长期保留。").addSlider((slider) => {
+      var _a;
+      return slider.setLimits(0, 30, 1).setValue((_a = this.plugin.settings.analysisCacheRetentionDays) != null ? _a : 7).setDynamicTooltip().onChange(async (val) => {
+        this.plugin.settings.analysisCacheRetentionDays = val;
+        await this.plugin.saveSettings();
+      });
+    });
+    const stats = this.plugin._analysisCacheStats();
+    const statHint = el.createEl("div", {
+      text: `当前已缓存 ${stats.total} 条（其中 ${stats.pinned} 条长期保留）`,
+      cls: "setting-item-description"
+    });
+    new obsidian8.Setting(el).setName("清理可过期缓存").setDesc("保留已存为文献笔记的结果，其余缓存全部删除。").addButton((b) => b.setButtonText("清理").onClick(async () => {
+      var _a;
+      const entries = (_a = this.plugin.analysisCache) == null ? void 0 : _a.entries;
+      if (!entries) {
+        new obsidian8.Notice("已清理 0 条");
+        return;
+      }
+      let n = 0;
+      for (const k of Object.keys(entries)) {
+        if (!entries[k].pinned) {
+          delete entries[k];
+          n++;
+        }
+      }
+      await this.plugin.saveSettings();
+      const s = this.plugin._analysisCacheStats();
+      statHint.textContent = `当前已缓存 ${s.total} 条（其中 ${s.pinned} 条长期保留）`;
+      new obsidian8.Notice(`已清理 ${n} 条`);
+    })).addButton((b) => b.setButtonText("全部清空").setWarning().onClick(async () => {
+      const ok = await pbConfirm(this.plugin.app, {
+        title: "全部清空缓存",
+        message: "是否连同长期保留的结果一并删除？\n此操作不可撤销。",
+        confirmText: "全部删除",
+        danger: true
+      });
+      if (!ok) return;
+      this.plugin._clearAnalysisCache();
+      const s = this.plugin._analysisCacheStats();
+      statHint.textContent = `当前已缓存 ${s.total} 条（其中 ${s.pinned} 条长期保留）`;
+      new obsidian8.Notice("已全部清空");
+    }));
+    el.createEl("h4", { text: "排障" });
+    new obsidian8.Setting(el).setName("整理重复文献记录").setDesc("同一篇文献存成了多份笔记时，按稳定标识归并到一处，各自的内容都会保留。").addButton((b) => b.setButtonText("整理").onClick(async () => {
+      var _a;
+      b.setButtonText("整理中…");
+      b.setDisabled(true);
+      try {
+        const r = await this.plugin._rebuildPaperIdentityIndex();
+        new obsidian8.Notice(r && r.papers != null ? `已整理：${(_a = r.files) != null ? _a : 0} 份笔记归并为 ${r.papers} 篇文献` : "整理完成");
+      } catch (e) {
+        new obsidian8.Notice(`整理失败：${(e == null ? void 0 : e.message) || e}`);
+      } finally {
+        b.setButtonText("整理");
+        b.setDisabled(false);
+      }
+    }));
+    new obsidian8.Setting(el).setName("导出诊断日志").setDesc("导出检索、建库和反馈日志，用于故障排查或提交给技术支持。").addButton((b) => b.setButtonText("导出 ZIP").onClick(async () => {
+      b.setButtonText("导出中…");
+      b.setDisabled(true);
+      try {
+        const r = await this.plugin.api._req("/usage-logs/export");
+        const blob = new Blob([r.arrayBuffer], { type: "application/zip" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = `papersearch-logs-${Date.now()}.zip`;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        new obsidian8.Notice("日志已开始下载");
+      } catch (e) {
+        new obsidian8.Notice(`导出失败：${(e == null ? void 0 : e.message) || e}`);
+      } finally {
+        b.setButtonText("导出 ZIP");
+        b.setDisabled(false);
+      }
+    }));
+    new obsidian8.Setting(el).setName("重新运行引导").setDesc("重新检查 PaperBell AI 连接并安装本地服务。").addButton((b) => b.setButtonText("打开引导").onClick(() => {
+      new OnboardingWizard(this.app, this.plugin, () => {
+        this.plugin._bootCoreThenViews();
+      }).open();
+    }));
+    el.createEl("h4", { text: "连接地址" });
     new obsidian8.Setting(el).setName("服务地址").setDesc("本地服务的监听地址，例如 http://127.0.0.1:8000。一般无需改动。").addText((text) => text.setPlaceholder("http://127.0.0.1:8000").setValue(this.plugin.settings.backendUrl).onChange(async (val) => {
       this.plugin.settings.backendUrl = val.trim().replace(/\/+$/, "");
       await this.plugin.saveSettings();
@@ -3654,20 +4210,6 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
     new obsidian8.Setting(el).setName("账号 / 下载站点").setDesc("受保护下载所用的站点（默认 https://paperbell.cn），仅对接本地 / 预发环境时才改。").addText((text) => text.setPlaceholder("https://paperbell.cn").setValue(this.plugin.settings.siteBaseUrl || "").onChange(async (val) => {
       this.plugin.settings.siteBaseUrl = val.trim().replace(/\/+$/, "");
       await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("自检").setDesc("检查本地服务是否在线。").addButton((btn) => btn.setButtonText("测试连接").onClick(async () => {
-      var _a;
-      btn.setButtonText("测试中…");
-      btn.setDisabled(true);
-      try {
-        const h = await this.plugin.api.get("/health");
-        new obsidian8.Notice(`本地服务在线 · 当前文献库：${(_a = h.library) != null ? _a : "—"}`);
-      } catch (e) {
-        new obsidian8.Notice(`连接失败：${e.message}`);
-      } finally {
-        btn.setButtonText("测试连接");
-        btn.setDisabled(false);
-      }
     }));
     el.createEl("h4", { text: "源码运行（开发者）" });
     el.createEl("p", {
@@ -3699,20 +4241,21 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
       this.plugin.settings.localBackendPython = v.trim();
       await this.plugin.saveSettings();
     }));
-    el.createEl("h4", { text: "本机检索 / 嵌入服务（高级）" });
+    el.createEl("h4", { text: "本地服务的检索模型" });
     el.createEl("p", {
-      text: "以下配置用于本地检索和语义匹配，保存在本地服务中，与「开始与状态」里的 AI 写作服务相互独立。",
+      text: "这里配置的模型保存在本地服务中，供检索词优化、相关性说明和文献概要使用，与 PaperBell 里配置的写作 AI 相互独立。",
       cls: "setting-item-description"
     });
     const rt = {
       api_mode: "default",
-      custom_openai_api_key: "",
       custom_openai_base_url: "",
       custom_openai_chat_model: "",
-      custom_openai_wire_api: "",
       embedding_model_override: "",
       use_bundled_embedding: true
     };
+    let keyInput = "";
+    let keyDirty = false;
+    const rtPassthrough = { custom_openai_wire_api: "", reranker_model_override: "" };
     let modeDD, keyT, baseT, modelT, embT, bundleTG;
     const effectiveBox = el.createDiv({ cls: "pb-st-effective" });
     const renderEffective = (s) => {
@@ -3738,17 +4281,35 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
       });
     };
     renderEffective(null);
+    const applyRuntime = (s) => {
+      var _a, _b, _c, _d, _e, _f, _g;
+      rt.api_mode = (_a = s.api_mode) != null ? _a : "default";
+      rt.custom_openai_base_url = (_b = s.custom_openai_base_url) != null ? _b : "";
+      rt.custom_openai_chat_model = (_c = s.custom_openai_chat_model) != null ? _c : "";
+      rt.embedding_model_override = (_d = s.embedding_model_override) != null ? _d : "";
+      rt.use_bundled_embedding = (_e = s.use_bundled_embedding) != null ? _e : true;
+      rtPassthrough.custom_openai_wire_api = (_f = s.custom_openai_wire_api) != null ? _f : "";
+      rtPassthrough.reranker_model_override = (_g = s.reranker_model_override) != null ? _g : "";
+      modeDD == null ? void 0 : modeDD.setValue(rt.api_mode);
+      baseT == null ? void 0 : baseT.setValue(rt.custom_openai_base_url);
+      modelT == null ? void 0 : modelT.setValue(rt.custom_openai_chat_model);
+      embT == null ? void 0 : embT.setValue(rt.embedding_model_override);
+      bundleTG == null ? void 0 : bundleTG.setValue(rt.use_bundled_embedding);
+      if (keyT == null ? void 0 : keyT.inputEl) keyT.inputEl.placeholder = s.custom_api_key_present ? "已保存 · 留空不改动" : "sk-…";
+      renderEffective(s);
+    };
     new obsidian8.Setting(el).setName("API 模式").setDesc("内置 = 使用本地服务自带的接入；自定义 = 填入你自己的 OpenAI 兼容接口。").addDropdown((d) => {
       modeDD = d;
       d.addOption("default", "内置接入").addOption("custom", "自定义接口").setValue(rt.api_mode).onChange((v) => {
         rt.api_mode = v;
       });
     });
-    new obsidian8.Setting(el).setName("自定义 API Key").setDesc("仅「自定义接口」模式生效。密钥明文保存在本机，并仅随请求发送给你配置的服务端。").addText((t) => {
+    new obsidian8.Setting(el).setName("自定义 API Key").setDesc("仅「自定义接口」模式生效。密钥明文保存在本机，并仅随请求发送给你配置的服务端。留空表示沿用已保存的密钥。").addText((t) => {
       keyT = t;
       t.inputEl.type = "password";
       t.setPlaceholder("sk-…").onChange((v) => {
-        rt.custom_openai_api_key = v.trim();
+        keyInput = v.trim();
+        keyDirty = true;
       });
     });
     new obsidian8.Setting(el).setName("自定义接入地址").setDesc("OpenAI 兼容接口的 Base URL，例如 https://api.openai.com/v1").addText((t) => {
@@ -3757,13 +4318,13 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
         rt.custom_openai_base_url = v.trim();
       });
     });
-    new obsidian8.Setting(el).setName("自定义对话模型").setDesc("用于优化检索词、生成相关性说明和综述草稿等 AI 任务的模型名。").addText((t) => {
+    new obsidian8.Setting(el).setName("自定义对话模型").setDesc("用于优化检索词、生成相关性说明和文献概要的模型名。").addText((t) => {
       modelT = t;
       t.setPlaceholder("例如 gpt-4o-mini / deepseek-chat").onChange((v) => {
         rt.custom_openai_chat_model = v.trim();
       });
     });
-    new obsidian8.Setting(el).setName("使用内置 Embedding").setDesc('开启 = 使用本地服务自带的 bge-m3 向量模型（推荐，离线可用）；关闭 = 改用下方"自定义 Embedding"。').addToggle((tg) => {
+    new obsidian8.Setting(el).setName("使用内置 Embedding").setDesc("开启 = 使用本地服务自带的 bge-m3 向量模型（推荐，离线可用）；关闭 = 改用下方「自定义 Embedding」。").addToggle((tg) => {
       bundleTG = tg;
       tg.setValue(rt.use_bundled_embedding).onChange((v) => {
         rt.use_bundled_embedding = v;
@@ -3775,26 +4336,15 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
         rt.embedding_model_override = v.trim();
       });
     });
-    new obsidian8.Setting(el).setName("与本地服务同步配置").setDesc("「读取」拉取本地服务当前配置；「保存」写回；「测试」检查接口连通性。").addButton((b) => b.setButtonText("读取").onClick(async () => {
-      var _a, _b, _c, _d, _e;
+    new obsidian8.Setting(el).setName("与本地服务同步配置").setDesc("「读取」拉取本地服务当前配置；「保存」写回 API 模式、接入地址、对话模型和 Embedding 选项，密钥留空则不改动已保存的密钥；「测试」检查接口连通性。").addButton((b) => b.setButtonText("读取").onClick(async () => {
       b.setButtonText("读取中…");
       b.setDisabled(true);
       try {
         const s = await this.plugin.api.get("/runtime-settings");
-        rt.api_mode = (_a = s.api_mode) != null ? _a : "default";
-        rt.custom_openai_base_url = (_b = s.custom_openai_base_url) != null ? _b : "";
-        rt.custom_openai_chat_model = (_c = s.custom_openai_chat_model) != null ? _c : "";
-        rt.embedding_model_override = (_d = s.embedding_model_override) != null ? _d : "";
-        rt.use_bundled_embedding = (_e = s.use_bundled_embedding) != null ? _e : true;
-        modeDD == null ? void 0 : modeDD.setValue(rt.api_mode);
-        baseT == null ? void 0 : baseT.setValue(rt.custom_openai_base_url);
-        modelT == null ? void 0 : modelT.setValue(rt.custom_openai_chat_model);
-        embT == null ? void 0 : embT.setValue(rt.embedding_model_override);
-        bundleTG == null ? void 0 : bundleTG.setValue(rt.use_bundled_embedding);
-        renderEffective(s);
+        applyRuntime(s);
         new obsidian8.Notice("已读取本地服务配置");
       } catch (e) {
-        new obsidian8.Notice(`读取失败：${e.message}`);
+        new obsidian8.Notice(`读取失败：${(e == null ? void 0 : e.message) || e}`);
       } finally {
         b.setButtonText("读取");
         b.setDisabled(false);
@@ -3803,12 +4353,14 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
       b.setButtonText("保存中…");
       b.setDisabled(true);
       try {
-        await this.plugin.api.postJson("/runtime-settings", rt);
+        const payload = { ...rtPassthrough, ...rt };
+        if (keyDirty) payload.custom_openai_api_key = keyInput;
+        await this.plugin.api.postJson("/runtime-settings", payload);
         const s = await this.plugin.api.get("/runtime-settings");
-        renderEffective(s);
+        applyRuntime(s);
         new obsidian8.Notice("已保存到本地服务");
       } catch (e) {
-        new obsidian8.Notice(`保存失败：${e.message}`);
+        new obsidian8.Notice(`保存失败：${(e == null ? void 0 : e.message) || e}`);
       } finally {
         b.setButtonText("保存");
         b.setDisabled(false);
@@ -3820,474 +4372,51 @@ var PaperSearchSettingTab = class extends obsidian8.PluginSettingTab {
       try {
         const r = await this.plugin.api.postJson("/runtime-settings/test", {
           api_mode: rt.api_mode,
-          custom_openai_api_key: rt.custom_openai_api_key,
           custom_openai_base_url: rt.custom_openai_base_url,
           custom_openai_chat_model: rt.custom_openai_chat_model,
-          custom_openai_wire_api: rt.custom_openai_wire_api
+          // 没输入过密钥就不传，由本地服务用它已存的那份来测
+          ...keyDirty ? { custom_openai_api_key: keyInput } : {}
         });
         new obsidian8.Notice(r.chat_ok ? `接口可用 · 模型：${(_a = r.chat_model) != null ? _a : "—"}` : `测试未通过：${r.chat_error || r.models_error || "未知错误"}`);
       } catch (e) {
-        new obsidian8.Notice(`测试失败：${e.message}`);
+        new obsidian8.Notice(`测试失败：${(e == null ? void 0 : e.message) || e}`);
       } finally {
         b.setButtonText("测试");
         b.setDisabled(false);
       }
     }));
     this.plugin.api.get("/runtime-settings").then((s) => {
-      var _a, _b, _c, _d, _e, _f;
+      var _a;
       if ((_a = this._isStale) == null ? void 0 : _a.call(this)) return;
-      rt.api_mode = (_b = s.api_mode) != null ? _b : "default";
-      rt.custom_openai_base_url = (_c = s.custom_openai_base_url) != null ? _c : "";
-      rt.custom_openai_chat_model = (_d = s.custom_openai_chat_model) != null ? _d : "";
-      rt.embedding_model_override = (_e = s.embedding_model_override) != null ? _e : "";
-      rt.use_bundled_embedding = (_f = s.use_bundled_embedding) != null ? _f : true;
-      modeDD == null ? void 0 : modeDD.setValue(rt.api_mode);
-      baseT == null ? void 0 : baseT.setValue(rt.custom_openai_base_url);
-      modelT == null ? void 0 : modelT.setValue(rt.custom_openai_chat_model);
-      embT == null ? void 0 : embT.setValue(rt.embedding_model_override);
-      bundleTG == null ? void 0 : bundleTG.setValue(rt.use_bundled_embedding);
-      renderEffective(s);
+      applyRuntime(s);
     }).catch(() => {
     });
-  }
-  // ── Tab: 阅读与标注 ──────────────────────────────────────
-  _secReading(el) {
-    new obsidian8.Setting(el).setName("默认视图").setDesc("打开 PaperSearch 面板时默认使用的视图。").addDropdown((drop) => drop.addOption("list", "列表").addOption("grid", "网格").addOption("table", "表格").setValue(this.plugin.settings.defaultView).onChange(async (val) => {
-      this.plugin.settings.defaultView = val;
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("原文预览行数").setDesc("列表和网格视图中，每条结果的原文默认显示几行（1–8）；超出后可展开。").addSlider((slider) => slider.setLimits(1, 8, 1).setValue(this.plugin.settings.originalPreviewLines).setDynamicTooltip().onChange(async (val) => {
-      this.plugin.settings.originalPreviewLines = val;
-      await this.plugin.saveSettings();
-      document.body.style.setProperty("--pb-abstract-lines", String(val));
-      document.querySelectorAll(".pb-panel").forEach((panel) => panel.style.setProperty("--pb-abstract-lines", String(val)));
-      requestAnimationFrame(() => {
-        var _a, _b;
-        for (const leaf of this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-          const view = leaf.view;
-          const results = (_b = (_a = view == null ? void 0 : view.containerEl) == null ? void 0 : _a.querySelector) == null ? void 0 : _b.call(_a, ".pb-results");
-          if (results && typeof view._refreshOrigDisclosures === "function") {
-            view._refreshOrigDisclosures(results);
-          }
-        }
-      });
-    }));
-    new obsidian8.Setting(el).setName("原文翻译浮窗").setDesc("鼠标停在外文上时可显示翻译浮窗。可选择关闭、点击翻译或自动翻译。").addDropdown((d) => d.addOptions({ off: "关闭", click: "点击翻译（推荐）", auto: "自动翻译" }).setValue(this.plugin.settings.hoverPopupMode || "click").onChange(async (v) => {
-      this.plugin.settings.hoverPopupMode = v;
-      await this.plugin.saveSettings();
-      this.plugin._applyHoverPopupSetting();
-    }));
-    new obsidian8.Setting(el).setName("PDF 选中文本工具栏").setDesc("在 PDF 里选中文字时，旁边自动弹出「标注 / 摘录 / 找相似」浮条。").addToggle((t) => t.setValue(this.plugin.settings.pdfSelectionToolbar !== false).onChange(async (v) => {
-      this.plugin.settings.pdfSelectionToolbar = v;
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("标注分类与颜色").setDesc("在 PDF 里划选文字即可着色标注。给每种颜色起个名字（如 观点 / 方法 / 引用），便于之后按用途筛选、检索、转成引用。").setHeading();
-    const rolesWrap = el.createDiv({ cls: "pb-anno-roles-settings" });
-    const renderRoles = () => {
-      rolesWrap.empty();
-      const roles = this.plugin._annoRoles();
-      roles.forEach((r, i) => {
-        const row = rolesWrap.createDiv({ cls: "pb-anno-role-row" });
-        const sw = row.createEl("input", { attr: { type: "color", value: r.color } });
-        sw.addClass("pb-anno-role-color");
-        sw.onchange = async () => {
-          var _a, _b;
-          const old = roles[i].color;
-          roles[i].color = sw.value;
-          for (const a of Object.values((_b = (_a = this.plugin.annotationIndex) == null ? void 0 : _a.items) != null ? _b : {})) {
-            if (a.color === old) a.color = sw.value;
-          }
-          this.plugin.settings.annotationRoles = roles;
-          await this.plugin.saveSettings();
-        };
-        const lab = row.createEl("input", { attr: { type: "text", value: r.label, placeholder: "分类名称" } });
-        lab.addClass("pb-anno-role-label");
-        lab.onchange = async () => {
-          roles[i].label = lab.value.trim() || r.label;
-          this.plugin.settings.annotationRoles = roles;
-          await this.plugin.saveSettings();
-        };
-      });
-      const reset = rolesWrap.createEl("button", { text: "恢复默认", cls: "pb-anno-role-reset" });
-      reset.onclick = async () => {
-        this.plugin.settings.annotationRoles = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.annotationRoles));
-        await this.plugin.saveSettings();
-        renderRoles();
-      };
-    };
-    renderRoles();
-    new obsidian8.Setting(el).setName("悬浮标注面板").setDesc("在 PDF 边缘浮出面板，列出本篇全部标注（按用途分组），点击跳回原文。").addToggle((t) => t.setValue(this.plugin.settings.annoPanelEnabled !== false).onChange(async (v) => {
-      this.plugin.settings.annoPanelEnabled = v;
-      await this.plugin.saveSettings();
-      this.plugin._applyAnnoPanelSetting();
-    }));
-    new obsidian8.Setting(el).setName("标注面板停靠位置").setDesc("面板贴在窗口的哪一边。").addDropdown((d) => d.addOptions({ right: "右侧", left: "左侧", top: "顶部", bottom: "底部" }).setValue(this.plugin.settings.annoPanelEdge || "right").onChange(async (v) => {
-      this.plugin.settings.annoPanelEdge = v;
-      await this.plugin.saveSettings();
-      this.plugin._applyAnnoPanelEdge();
-    }));
-    new obsidian8.Setting(el).setName("没有文献笔记时").setDesc("在 PDF 标注时，若这篇还没有文献笔记：首次询问 / 自动创建 / 只存标注不建笔记。标注本身始终保存。").addDropdown((d) => d.addOptions({ ask: "首次询问（可记住选择）", always: "自动创建文献笔记", never: "仅保存标注，不创建笔记" }).setValue(this.plugin.settings.annoSilentFile || "ask").onChange(async (v) => {
-      this.plugin.settings.annoSilentFile = v;
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("文献笔记中的 PDF").setDesc("原文定位到命中页，可直接在笔记中阅读。").addDropdown((d) => d.addOption("inline", "嵌入笔记").addOption("obsidian-preview", "在新标签页打开").addOption("link", "用系统阅读器打开").addOption("none", "不显示").setValue(this.plugin.settings.pdfLinkMode || "inline").onChange(async (v) => {
-      this.plugin.settings.pdfLinkMode = v;
-      await this.plugin.saveSettings();
-    }));
-  }
-  // ── Tab: 引用与写作 ──────────────────────────────────────
-  _secCiteWrite(el) {
-    var _a;
-    new obsidian8.Setting(el).setName("悬浮文献收集栏").setDesc("文献收集内容现在主要在面板顶部的「文献收集」标签页里。这里可额外开一个贴边的悬浮收集栏（默认关闭）。").addToggle((t) => t.setValue(this.plugin.settings.citePanelEnabled !== false).onChange(async (v) => {
-      this.plugin.settings.citePanelEnabled = v;
-      await this.plugin.saveSettings();
-      this.plugin._applyCitePanelSetting();
-    }));
-    new obsidian8.Setting(el).setName("收集栏停靠位置").setDesc("收集栏贴在窗口的哪一边（默认右侧，与标注面板错开）。").addDropdown((d) => d.addOptions({ right: "右侧", left: "左侧", top: "顶部", bottom: "底部" }).setValue(this.plugin.settings.citePanelEdge || "right").onChange(async (v) => {
-      this.plugin.settings.citePanelEdge = v;
-      await this.plugin.saveSettings();
-      this.plugin._applyCitePanelEdge();
-    }));
-    new obsidian8.Setting(el).setName("引用插入格式").setDesc("插入引用时的默认写法：标准引用键（推荐，以 .bib 为准、导出时统一生成参考文献表）/ 脚注 / 行内著者-年。").addDropdown((d) => d.addOptions({ pandoc: "标准引用键（推荐）", footnote: "脚注 [^id]", inline: "行内 著者-年" }).setValue(this.plugin.settings.citationForm || "pandoc").onChange(async (v) => {
-      this.plugin.settings.citationForm = v;
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("参考文献样式").setDesc("使用脚注、行内或生成参考文献表时的学术格式（APA / MLA / Chicago）。").addDropdown((d) => d.addOptions({ apa: "APA", mla: "MLA", chicago: "Chicago" }).setValue(this.plugin.settings.bibStyle || "apa").onChange(async (v) => {
-      this.plugin.settings.bibStyle = v;
-      await this.plugin.saveSettings();
-    }));
-    el.createEl("h4", { text: "Pandoc 导出设置" });
-    const _bbt = (this.plugin.settings.bbtBibPath || "").trim();
-    if (!_bbt) {
-      el.createEl("p", { cls: "setting-item-description", text: "未配置 BBT .bib（请到「文献库与 Zotero」中设置）。没有 .bib 时，标准引用键会退化为脚注，无法使用 @citekey 导出。" });
-    } else {
-      const _pbib = this.plugin._paperbellBibPath();
-      let _orphan = 0;
-      try {
-        if (_pbib && nodeFs2.existsSync(_pbib)) _orphan = (parseBibTeX(nodeFs2.readFileSync(_pbib, "utf8")) || []).length;
-      } catch (_) {
-      }
-      const _bibs = [_bbt];
-      if (_orphan > 0 && _pbib) _bibs.push(_pbib);
-      el.createEl("p", {
-        cls: "setting-item-description",
-        text: _orphan > 0 ? `注意：有 ${_orphan} 篇文献不在 Zotero/BBT、写在了 paperbell.bib。导出时这个文件也必须加入 pandoc 的 bibliography，否则这些 @key 将无法解析。` : "当前可引用文献都来自你的 BBT 库。只要 pandoc 的 --bibliography 指向同一个 .bib，所有 @key 都能解析。"
-      });
-      new obsidian8.Setting(el).setName("导出时 pandoc 需要的文献库").setDesc(_bibs.join("  +  ")).addButton((b) => b.setButtonText("复制 --bibliography 参数").onClick(() => {
-        const arg = _bibs.map((p) => `--bibliography "${p}"`).join(" ") + " --citeproc";
-        navigator.clipboard.writeText(arg);
-        new obsidian8.Notice("已复制 pandoc 参数；粘进你的导出命令即可");
-      }));
-    }
-    new obsidian8.Setting(el).setName("显示「AI 综述草稿」按钮").setDesc("开启后，可基于当前结果生成 200–300 字综述草稿；使用前请核对内容和引用。默认关闭。").addToggle((t) => t.setValue(!!this.plugin.settings.enableAISummary).onChange(async (v) => {
-      this.plugin.settings.enableAISummary = v;
-      await this.plugin.saveSettings();
-      for (const leaf of this.plugin.app.workspace.getLeavesOfType(VIEW_TYPE)) {
-        const view = leaf.view;
-        if (view == null ? void 0 : view._hasSearched) {
-          try {
-            view._applyAnswerAndRewrite(view.containerEl, view._lastResult || {}, "");
-          } catch (_) {
-          }
-        }
-      }
-    }));
-    const aaSetting = new obsidian8.Setting(el).setName("AI 综述草稿指令").setDesc("生成 AI 综述草稿时使用的指令。可按学科或期刊习惯自定义。");
-    let aaTa;
-    aaSetting.addTextArea((ta) => {
-      var _a2;
-      aaTa = ta;
-      ta.setValue((_a2 = this.plugin.settings.aiAnswerPrompt) != null ? _a2 : DEFAULT_AI_ANSWER_PROMPT).onChange(async (val) => {
-        this.plugin.settings.aiAnswerPrompt = val;
-        await this.plugin.saveSettings();
-      });
-      ta.inputEl.rows = 6;
-      ta.inputEl.style.width = "100%";
-      ta.inputEl.style.fontSize = "12px";
-      ta.inputEl.style.lineHeight = "1.5";
-    });
-    aaSetting.addExtraButton((b) => b.setIcon("rotate-ccw").setTooltip("恢复默认提示词").onClick(async () => {
-      this.plugin.settings.aiAnswerPrompt = DEFAULT_AI_ANSWER_PROMPT;
-      await this.plugin.saveSettings();
-      aaTa == null ? void 0 : aaTa.setValue(DEFAULT_AI_ANSWER_PROMPT);
-    }));
-    const rwSetting = new obsidian8.Setting(el).setName("AI 改写指令").setDesc("行内 AI 改写使用的指令。生成结果会先预览，采用前请核对事实、限定条件与引用。");
-    let rwTa;
-    rwSetting.addTextArea((ta) => {
-      var _a2;
-      rwTa = ta;
-      ta.setValue((_a2 = this.plugin.settings.rewritePrompt) != null ? _a2 : DEFAULT_REWRITE_PROMPT).onChange(async (val) => {
-        this.plugin.settings.rewritePrompt = val;
-        await this.plugin.saveSettings();
-      });
-      ta.inputEl.rows = 6;
-      ta.inputEl.style.width = "100%";
-      ta.inputEl.style.fontSize = "12px";
-      ta.inputEl.style.lineHeight = "1.5";
-    });
-    rwSetting.addExtraButton((b) => b.setIcon("rotate-ccw").setTooltip("恢复默认提示词").onClick(async () => {
-      this.plugin.settings.rewritePrompt = DEFAULT_REWRITE_PROMPT;
-      await this.plugin.saveSettings();
-      rwTa == null ? void 0 : rwTa.setValue(DEFAULT_REWRITE_PROMPT);
-    }));
-    new obsidian8.Setting(el).setName("常用改写指令").setDesc("每行写一条常用指令（如「精炼至 100 字」「改写为学术风格」）。改写框输入「/」即可快速调用。").addTextArea((ta) => {
-      var _a2;
-      ta.setPlaceholder("改写为学术风格\n精炼内容至100字").setValue((_a2 = this.plugin.settings.promptTemplates) != null ? _a2 : "").onChange(async (val) => {
-        this.plugin.settings.promptTemplates = val;
-        await this.plugin.saveSettings();
-      });
-      ta.inputEl.rows = 5;
-      ta.inputEl.style.width = "100%";
-      ta.inputEl.style.fontFamily = "var(--font-monospace)";
-      ta.inputEl.style.fontSize = "12px";
-    });
-    el.createEl("h4", { text: "当前写作项目" });
-    el.createEl("p", {
-      text: "PaperSearch 可根据当前章节生成文献关联摘要、适合位置和引用风险提示；结果仅供整理思路。",
-      cls: "setting-item-description"
-    });
-    const wpBox = el.createDiv({ cls: "pb-st-effective" });
-    const renderWP = () => {
-      var _a2, _b, _c, _d;
-      wpBox.empty();
-      const p = this.plugin.settings.writingProjectPath;
-      if (!p) {
-        wpBox.createEl("div", {
-          text: "未设置。可从下方项目列表选择，或打开任意文件后运行「设为当前写作项目」。",
-          cls: "pb-st-effective-hint"
-        });
-        return;
-      }
-      const row1 = wpBox.createDiv({ cls: "pb-st-effective-row" });
-      row1.createSpan({ text: "当前项目", cls: "pb-st-effective-k" });
-      row1.createSpan({ text: p, cls: "pb-st-effective-v" });
-      const file = this.app.vault.getAbstractFileByPath(p);
-      if (file) {
-        const fm = (_a2 = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a2.frontmatter;
-        if (((_b = fm == null ? void 0 : fm.longform) == null ? void 0 : _b.format) === "scenes") {
-          const sceneFile = this.plugin._resolveActiveScene({
-            path: p,
-            folder: ((_c = file.parent) == null ? void 0 : _c.path) || "",
-            format: "scenes"
-          });
-          const row2 = wpBox.createDiv({ cls: "pb-st-effective-row" });
-          row2.createSpan({ text: "当前章节", cls: "pb-st-effective-k" });
-          row2.createSpan({
-            text: sceneFile ? sceneFile.replace(((_d = file.parent) == null ? void 0 : _d.path) + "/", "") : "（打开本项目中的某个章节文件即可）",
-            cls: "pb-st-effective-v"
-          });
-        }
-      }
-    };
-    renderWP();
-    const lf = this.plugin._detectLongformProjects();
-    if (lf.length) {
-      el.createEl("h5", { text: `检测到 ${lf.length} 个 Longform 项目` });
-      const list = el.createDiv({ cls: "pb-lf-list" });
-      for (const proj of lf) {
-        const item = list.createDiv({ cls: "pb-lf-item" });
-        item.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--background-modifier-border);";
-        const isCurrent = this.plugin.settings.writingProjectPath === proj.path;
-        const info = item.createDiv();
-        info.style.cssText = "flex:1;min-width:0;";
-        info.createDiv({
-          text: `${isCurrent ? "★ " : ""}${proj.title}`,
-          cls: "pb-lf-title"
-        }).style.cssText = `font-size:12px;font-weight:${isCurrent ? "600" : "500"};color:var(--text-normal);`;
-        info.createDiv({
-          text: `${proj.format === "scenes" ? "多章节 · " + (((_a = proj.scenes) == null ? void 0 : _a.length) || 0) + " 章" : "单文件"} · ${proj.path}`,
-          cls: "pb-lf-meta"
-        }).style.cssText = "font-size:10px;color:var(--text-faint);";
-        const btn = item.createEl("button", { text: isCurrent ? "当前" : "设为项目" });
-        btn.disabled = isCurrent;
-        btn.onclick = async () => {
-          this.plugin.settings.writingProjectPath = proj.path;
-          await this.plugin.saveSettings();
-          new obsidian8.Notice(`已切换写作项目：${proj.title}`);
-          this.display();
-        };
-      }
-    } else {
-      el.createEl("p", {
-        text: "未检测到 Longform 项目（当前 Obsidian 库中没有包含 longform 配置的文件）。",
-        cls: "pb-st-effective-hint"
-      });
-    }
-    new obsidian8.Setting(el).setName("手动指定路径").setDesc("直接填入主文档路径（当前 Obsidian 库内的相对路径）。").addText((t) => t.setPlaceholder("Research/我的论文.md").setValue(this.plugin.settings.writingProjectPath || "").onChange(async (v) => {
-      this.plugin.settings.writingProjectPath = v.trim();
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("清除当前项目").addButton((b) => b.setButtonText("清除").onClick(async () => {
-      this.plugin.settings.writingProjectPath = "";
-      await this.plugin.saveSettings();
-      renderWP();
-      this.display();
-    }));
-  }
-  // ── Tab: 存储与目录 ──────────────────────────────────────
-  _secStorage(el) {
-    el.createEl("h4", { text: "文献库组织" });
-    el.createEl("p", {
-      text: "保存的论文按「一篇一个文件夹」存放（含笔记与 PDF）；AI 提取的概念先存为候选，是否转为正式概念由你确认。",
-      cls: "setting-item-description"
-    });
-    new obsidian8.Setting(el).setName("文献库目录").setDesc("保存的论文存放处，每篇一个子文件夹（含笔记与 PDF）。").addText((t) => t.setPlaceholder("PaperSearch/文献").setValue(this.plugin.settings.paperLibraryDir).onChange(async (val) => {
-      this.plugin.settings.paperLibraryDir = val.trim().replace(/\/+$/, "") || "PaperSearch/文献";
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("正式概念目录").setDesc("反复出现、已确立的概念笔记存放处。").addText((t) => t.setPlaceholder("PaperSearch/概念").setValue(this.plugin.settings.conceptDir).onChange(async (val) => {
-      this.plugin.settings.conceptDir = val.trim().replace(/\/+$/, "") || "PaperSearch/概念";
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("候选概念目录").setDesc("AI 提取出、但还未确立的概念草稿存放处。").addText((t) => t.setPlaceholder("PaperSearch/概念/_候选").setValue(this.plugin.settings.conceptCandidateDir).onChange(async (val) => {
-      this.plugin.settings.conceptCandidateDir = val.trim().replace(/\/+$/, "") || "PaperSearch/概念/_候选";
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("文献笔记目录（旧版兼容）").setDesc("未按「每篇一个文件夹」存放时，文献笔记的存放处。一般保持默认即可。").addText((t) => t.setPlaceholder("PaperSearch笔记").setValue(this.plugin.settings.litNoteDir || "PaperSearch笔记").onChange(async (v) => {
-      this.plugin.settings.litNoteDir = v.trim().replace(/\/+$/, "") || "PaperSearch笔记";
-      await this.plugin.saveSettings();
-    }));
-    new obsidian8.Setting(el).setName("PDF 缓存上限").setDesc("本地缓存最多保留多少个 PDF，超出时自动删除最久未用的。0 = 不限制。仅对「在 Obsidian 标签页打开」和「复制进笔记并嵌入」两种方式有效。").addSlider((s) => {
-      var _a;
-      return s.setLimits(0, 30, 1).setValue((_a = this.plugin.settings.pdfCacheMax) != null ? _a : 10).setDynamicTooltip().onChange(async (v) => {
-        this.plugin.settings.pdfCacheMax = v;
-        await this.plugin.saveSettings();
-      });
-    });
-    new obsidian8.Setting(el).setName("清理 PaperSearch 缓存（本地 PDF 副本）").setDesc("PDF 预览/跳转用的本地缓存（PaperSearch缓存/）。打开文献库里的 PDF 会拷一份到这里以保证稳定加载；清理后下次打开会重新拉取一次。").addButton((b) => b.setButtonText("清理").onClick(async () => {
-      const folder = this.app.vault.getAbstractFileByPath("PaperSearch缓存");
-      if (!folder) {
-        new obsidian8.Notice("没有 PaperSearch缓存 文件夹");
-        return;
-      }
-      const ok = await pbConfirm(this.app, {
-        title: "清理 PDF 缓存",
-        message: "确定删除 PaperSearch缓存/ 文件夹及其中所有文件？\n（如果你的笔记还在用「嵌入」模式引用这些 PDF，删除后会变成虚链接。）",
-        confirmText: "删除",
-        danger: true
-      });
-      if (!ok) return;
-      try {
-        await this.app.vault.delete(folder, true);
-        new obsidian8.Notice("已清理 PDF 缓存");
-      } catch (e) {
-        new obsidian8.Notice(`清理失败：${e.message}`);
-      }
-    }));
-    el.createEl("h4", { text: "单篇分析缓存" });
-    el.createEl("p", {
-      text: "回到单篇分析时无需重新调用 AI。已保存为文献笔记的分析结果会长期保留。",
-      cls: "setting-item-description"
-    });
-    new obsidian8.Setting(el).setName("单篇分析缓存保留天数").setDesc("单篇分析结果的保留天数，过期自动清理。0 = 永久保留。").addSlider((slider) => {
-      var _a;
-      return slider.setLimits(0, 30, 1).setValue((_a = this.plugin.settings.analysisCacheRetentionDays) != null ? _a : 7).setDynamicTooltip().onChange(async (val) => {
-        this.plugin.settings.analysisCacheRetentionDays = val;
-        await this.plugin.saveSettings();
-      });
-    });
-    const stats = this.plugin._analysisCacheStats();
-    const statHint = el.createEl("div", {
-      text: `当前已缓存 ${stats.total} 条（其中 ${stats.pinned} 条长期保留）`,
-      cls: "setting-item-description"
-    });
-    new obsidian8.Setting(el).setName("清理可过期缓存").setDesc("保留已存为文献笔记的分析结果，其余缓存全部删除。").addButton((b) => b.setButtonText("清理").onClick(async () => {
-      var _a;
-      const entries = (_a = this.plugin.analysisCache) == null ? void 0 : _a.entries;
-      if (!entries) {
-        new obsidian8.Notice("已清理 0 条");
-        return;
-      }
-      let n = 0;
-      for (const k of Object.keys(entries)) {
-        if (!entries[k].pinned) {
-          delete entries[k];
-          n++;
-        }
-      }
-      await this.plugin.saveSettings();
-      const s = this.plugin._analysisCacheStats();
-      statHint.textContent = `当前已缓存 ${s.total} 条（其中 ${s.pinned} 条长期保留）`;
-      new obsidian8.Notice(`已清理 ${n} 条`);
-    })).addButton((b) => b.setButtonText("全部清空").setWarning().onClick(async () => {
-      const ok = await pbConfirm(this.plugin.app, {
-        title: "全部清空缓存",
-        message: "是否连同长期保留的分析结果一并删除？\n此操作不可撤销。",
-        confirmText: "全部删除",
-        danger: true
-      });
-      if (!ok) return;
-      this.plugin._clearAnalysisCache();
-      const s = this.plugin._analysisCacheStats();
-      statHint.textContent = `当前已缓存 ${s.total} 条（其中 ${s.pinned} 条长期保留）`;
-      new obsidian8.Notice("已全部清空");
-    }));
-    new obsidian8.Setting(el).setName("导出诊断日志").setDesc("导出检索、建库和反馈日志，用于故障排查或提交给技术支持。").addButton((b) => b.setButtonText("导出 ZIP").onClick(async () => {
-      b.setButtonText("导出中…");
-      b.setDisabled(true);
-      try {
-        const r = await this.plugin.api._req("/usage-logs/export");
-        const blob = new Blob([r.arrayBuffer], { type: "application/zip" });
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = `papersearch-logs-${Date.now()}.zip`;
-        a.click();
-        URL.revokeObjectURL(a.href);
-        new obsidian8.Notice("日志已开始下载");
-      } catch (e) {
-        new obsidian8.Notice(`导出失败：${e.message}`);
-      } finally {
-        b.setButtonText("导出 ZIP");
-        b.setDisabled(false);
-      }
-    }));
-  }
-  // ── Tab: 通用 ────────────────────────────────────────────
-  _secGeneral(el) {
-    new obsidian8.Setting(el).setName("重新运行配置向导").setDesc("重新检查 PaperBell AI 连接并安装本地服务。").addButton((b) => b.setButtonText("打开向导").onClick(() => {
-      new OnboardingWizard(this.app, this.plugin, () => {
-        this.plugin._bootCoreThenViews();
-      }).open();
-    }));
-  }
-};
-
-// src/views/citation-palette-view.ts
-var obsidian9 = __toESM(require("obsidian"));
-var CitationPaletteView = class extends obsidian9.ItemView {
-  // 旧「文献收集栏」侧栏已废弃：功能搬到悬浮「文献收集栏」(_ensureCitePanel)。
-  // 仍注册本视图，仅为把用户工作区里残留的旧侧栏 leaf 一打开就自动关掉。
-  getViewType() {
-    return CITATION_PALETTE_VIEW_TYPE;
-  }
-  getDisplayText() {
-    return "文献收集栏";
-  }
-  getIcon() {
-    return "quote";
-  }
-  async onOpen() {
-    setTimeout(() => {
-      try {
-        this.leaf.detach();
-      } catch (_) {
-      }
-    }, 0);
   }
 };
 
 // src/views/companion-view.ts
-var obsidian10 = __toESM(require("obsidian"));
-var WritingCompanionView = class extends obsidian10.ItemView {
+var obsidian9 = __toESM(require("obsidian"));
+var DEBOUNCE_MS = 1600;
+var QUERY_MAX = 800;
+var SECTION_MAX = 1600;
+var SNIPPET_MAX = 150;
+var MIN_QUERY = 12;
+var WritingCompanionView = class extends obsidian9.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
+    this._rows = [];
+    this._lastQuery = "";
+    this._timer = null;
+    this._abort = null;
+    this._seq = 0;
+    this._cursorMemo = { path: "", offset: 0 };
   }
   getViewType() {
     return COMPANION_VIEW_TYPE;
   }
   getDisplayText() {
-    return "PaperSearch · 写作伴侣";
+    return "PaperSearch · 相关文献";
   }
   getIcon() {
     return "book-open";
@@ -4296,165 +4425,352 @@ var WritingCompanionView = class extends obsidian10.ItemView {
     const root = this.containerEl.children[1];
     root.empty();
     root.addClass("pb-companion");
-    this._evt = this.app.workspace.on("active-leaf-change", () => this._render());
-    this.registerEvent(this._evt);
-    this._mcEvt = this.app.metadataCache.on("changed", (file) => {
-      if (!this.plugin._isPaperNoteFile(file)) return;
-      if (this._renderTimer) clearTimeout(this._renderTimer);
-      this._renderTimer = setTimeout(() => this._render(), 800);
-    });
-    this.registerEvent(this._mcEvt);
-    this._render();
+    this._buildShell(root);
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => this._schedule())
+    );
+    this.registerEvent(
+      this.app.workspace.on("editor-change", () => this._schedule())
+    );
+    this._schedule(200);
   }
   async onClose() {
-    if (this._renderTimer) {
-      clearTimeout(this._renderTimer);
-      this._renderTimer = null;
+    var _a;
+    if (this._timer) {
+      clearTimeout(this._timer);
+      this._timer = null;
     }
+    (_a = this._abort) == null ? void 0 : _a.abort();
+    this._abort = null;
   }
-  async _render() {
-    var _a, _b, _c;
-    const root = (_b = (_a = this.containerEl) == null ? void 0 : _a.children) == null ? void 0 : _b[1];
-    if (!root) return;
-    root.empty();
-    const project = this._resolveCurrentProject();
-    if (!project) {
-      this._renderEmpty(
-        root,
-        "请先在设置中指定当前写作项目",
-        "设置 → 引用与写作 → 当前写作项目"
-      );
-      return;
-    }
-    const activeFile = this.app.workspace.getActiveFile();
-    if (!activeFile) {
-      this._renderEmpty(root, "请打开项目中的某一节");
-      return;
-    }
-    const inProject = activeFile.path.startsWith(project.folder + "/") || activeFile.path === project.path;
-    if (!inProject) {
-      this._renderEmpty(
-        root,
-        "当前文件不在写作项目内",
-        `项目：${project.title}
-打开本项目中的任意章节文件，即可看到对应文献`
-      );
-      return;
-    }
-    const sceneRel = activeFile.path === project.path ? "__main__" : activeFile.path.replace(project.folder + "/", "");
-    const matches = [];
-    for (const f of this.plugin._listPaperNotes()) {
-      const fm = (_c = this.app.metadataCache.getFileCache(f)) == null ? void 0 : _c.frontmatter;
-      if (!fm) continue;
-      const arr = fm.analyzed_for_scenes;
-      if (Array.isArray(arr) && arr.includes(sceneRel)) {
-        matches.push({ file: f, fm });
-      }
-    }
+  // ── 外壳：标题栏（含裸图标刷新）+ 内容区 ────────────────
+  _buildShell(root) {
     const head = root.createDiv({ cls: "pb-comp-head" });
-    head.createDiv({ text: "本节相关文献", cls: "pb-comp-title" });
-    head.createDiv({
-      text: activeFile.basename,
-      cls: "pb-comp-subtitle"
-    });
-    if (matches.length === 0) {
-      this._renderEmpty(
-        root,
-        "本节还没有关联文献",
-        "打开任意文献笔记 → 命令面板 →「分析当前文献与写作项目的关联」\n或：从本节内容直接搜索文献"
-      );
+    head.style.display = "flex";
+    head.style.alignItems = "flex-start";
+    head.style.justifyContent = "space-between";
+    head.style.gap = "8px";
+    const titleWrap = head.createDiv();
+    titleWrap.style.minWidth = "0";
+    titleWrap.createDiv({ text: "相关文献", cls: "pb-comp-title" });
+    this._subEl = titleWrap.createDiv({ text: "跟随当前段落", cls: "pb-comp-subtitle" });
+    const refresh = head.createDiv({ cls: "clickable-icon" });
+    refresh.setAttribute("aria-label", "刷新");
+    obsidian9.setIcon(refresh, "refresh-cw");
+    refresh.onclick = () => this._tick({ force: true });
+    this._bodyEl = root.createDiv();
+  }
+  _setSubtitle(text) {
+    if (this._subEl) this._subEl.textContent = text;
+  }
+  // ── 防抖闸门 ───────────────────────────────────────────
+  _schedule(delay = DEBOUNCE_MS) {
+    if (this._timer) clearTimeout(this._timer);
+    this._timer = setTimeout(() => {
+      this._timer = null;
+      this._tick().catch(() => {
+      });
+    }, delay);
+  }
+  // ── 一轮：取段落 → 判重 → 检索 ─────────────────────────
+  async _tick(opts = {}) {
+    const force = !!opts.force;
+    const file = this.app.workspace.getActiveFile();
+    if (!file || file.extension !== "md") {
+      this._lastQuery = "";
+      this._setSubtitle("未打开笔记");
+      this._renderNoFile();
       return;
     }
-    const list = root.createDiv({ cls: "pb-comp-list" });
-    matches.sort((a, b) => (b.fm.citation_count || 0) - (a.fm.citation_count || 0)).forEach(({ file, fm }) => {
-      const card = list.createDiv({ cls: "pb-comp-card" });
-      card.onclick = () => this.app.workspace.getLeaf(true).openFile(file);
-      const title = fm.csl_title || fm.paper_title || file.basename;
-      card.createDiv({ text: title, cls: "pb-comp-card-title" });
-      const meta = [];
-      if (fm.year) meta.push(fm.year);
-      if (fm.citation_count) meta.push(`被引 ${fm.citation_count}`);
-      if (fm.role) meta.push(fm.role);
-      if (meta.length) {
-        card.createDiv({ text: meta.join(" · "), cls: "pb-comp-card-meta" });
+    const ctx = await this._readContext(file);
+    if (!ctx) {
+      this._renderNoFile("读不到这篇笔记的正文");
+      return;
+    }
+    const raw = opts.scope === "section" ? this._sectionSlice(file, ctx) : this._cursorSlice(ctx);
+    const query = this._clean(raw).slice(0, opts.scope === "section" ? SECTION_MAX : QUERY_MAX);
+    this._setSubtitle(file.basename);
+    if (query.length < MIN_QUERY) {
+      this._lastQuery = "";
+      this._renderNoFile("这篇笔记还没有正文内容");
+      return;
+    }
+    const norm = query.replace(/\s+/g, "").trim();
+    if (!force && norm === this._lastQuery && this._rows.length) return;
+    this._lastQuery = norm;
+    this._search(query, opts.scope === "section" ? "section" : "cursor");
+  }
+  // ── 正文读取：优先活动编辑器（拿得到光标），否则读盘 ─────
+  async _readContext(file) {
+    var _a;
+    let text = null;
+    let offset = null;
+    const mdView = this.app.workspace.getActiveViewOfType(obsidian9.MarkdownView);
+    const editor = ((_a = mdView == null ? void 0 : mdView.file) == null ? void 0 : _a.path) === file.path ? mdView.editor : null;
+    if (editor) {
+      text = editor.getValue();
+      offset = editor.posToOffset(editor.getCursor());
+      this._cursorMemo = { path: file.path, offset };
+    } else {
+      try {
+        text = await this.app.vault.cachedRead(file);
+      } catch (_) {
+        return null;
       }
-      if (fm.tldr) {
-        card.createDiv({ text: fm.tldr.slice(0, 120) + (fm.tldr.length > 120 ? "…" : ""), cls: "pb-comp-card-tldr" });
+      offset = this._cursorMemo.path === file.path ? this._cursorMemo.offset : 0;
+    }
+    if (typeof text !== "string") return null;
+    const body = text.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "");
+    const fmLen = text.length - body.length;
+    const off = Math.max(0, Math.min(body.length, (offset != null ? offset : 0) - fmLen));
+    return { body, fmLen, off };
+  }
+  // 光标附近窗口：前 500 / 后 300，文档够长时保证取满 QUERY_MAX
+  _cursorSlice({ body, off }) {
+    const len = body.length;
+    if (len <= QUERY_MAX) return body;
+    let start = Math.max(0, off - 500);
+    let end = Math.min(len, start + QUERY_MAX);
+    start = Math.max(0, end - QUERY_MAX);
+    return body.slice(start, end);
+  }
+  // 整节：光标所在标题 → 下一个标题之间的全部内容
+  _sectionSlice(file, { body, fmLen, off }) {
+    var _a, _b, _c, _d, _e, _f, _g, _h;
+    const heads = ((_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.headings) || [];
+    if (!heads.length) return body.slice(0, SECTION_MAX);
+    const abs = off + fmLen;
+    let startAbs = 0;
+    let endAbs = Infinity;
+    for (let i = 0; i < heads.length; i++) {
+      const s = (_d = (_c = (_b = heads[i].position) == null ? void 0 : _b.start) == null ? void 0 : _c.offset) != null ? _d : 0;
+      if (s > abs) {
+        if (i === 0) endAbs = s;
+        break;
       }
+      startAbs = s;
+      endAbs = (_h = (_g = (_f = (_e = heads[i + 1]) == null ? void 0 : _e.position) == null ? void 0 : _f.start) == null ? void 0 : _g.offset) != null ? _h : Infinity;
+    }
+    const a = Math.max(0, startAbs - fmLen);
+    const b = endAbs === Infinity ? body.length : Math.max(a, endAbs - fmLen);
+    return body.slice(a, b);
+  }
+  // markdown 标记清洗：query 里留纯文本，别把 [[ ]] 和 ``` 喂给检索
+  _clean(s) {
+    return String(s != null ? s : "").replace(/```[\s\S]*?```/g, " ").replace(/`([^`]*)`/g, "$1").replace(/^\s*>+\s?/gm, "").replace(/^#{1,6}\s*/gm, "").replace(/!?\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, "$1").replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/%%[\s\S]*?%%/g, " ").replace(/\^[A-Za-z0-9-]{4,}\s*$/gm, "").replace(/[*_~]/g, "").replace(/\s+/g, " ").trim();
+  }
+  // ── 检索：与检索面板同一条 /analyze-stream 契约 ──────────
+  _search(query, scope) {
+    var _a;
+    (_a = this._abort) == null ? void 0 : _a.abort();
+    const ctl = this._abort = new AbortController();
+    const seq = ++this._seq;
+    const alive = () => seq === this._seq && !ctl.signal.aborted;
+    this._rows = [];
+    this._renderLoading();
+    const library = this.plugin.state.lastLibrary || "default";
+    const body = {
+      text: query,
+      library,
+      top_k: 5,
+      recall_top_k: 20,
+      max_chunks_per_document: 2,
+      optimize_query: false,
+      annotate_chunks: false,
+      ui_mode_scope: "preset",
+      ui_preset_mode: "balanced",
+      generate_answer: false,
+      validate_retrieval: false
+    };
+    this.plugin.api.streamJson("/analyze-stream", body, (evt) => {
+      var _a2, _b;
+      if (!alive()) return;
+      const t = evt.type;
+      if (t === "initial" || t === "final") {
+        const chunks = (_b = (_a2 = evt.result) == null ? void 0 : _a2.retrieved_chunks) != null ? _b : [];
+        this._rows = chunks.map((c, i) => this._chunkToRow(c, i));
+        if (this._rows.length) this._renderRows(scope);
+        else this._renderNoHit(scope);
+      } else if (t === "error") {
+        this._renderServiceDown("本地服务未就绪", evt.detail || "本地服务返回错误");
+      }
+    }, { signal: ctl.signal }).catch(async (err) => {
+      if (!alive() || (err == null ? void 0 : err.name) === "AbortError") return;
+      if (this._rows.length) return;
+      let dg;
+      try {
+        dg = await this.plugin.api.diagnose();
+      } catch (_) {
+        dg = { hint: (err == null ? void 0 : err.message) || "无法连接本地服务" };
+      }
+      if (!alive()) return;
+      this._renderServiceDown("本地服务未就绪", dg.hint || "无法连接本地服务", dg.repair);
     });
-    const foot = root.createDiv({ cls: "pb-comp-foot" });
-    const draftBtn = foot.createEl(
-      "button",
-      { text: "生成本节开篇草稿" }
-    );
-    draftBtn.classList.add("mod-cta");
-    draftBtn.onclick = () => {
-      this.app.commands.executeCommandById(`${this.plugin.manifest.id}:draft-scene-opening`);
+  }
+  // RetrievedChunk → 卡片 row（原文未转义，渲染用；进 payload 时再按 search-view 转义）
+  _chunkToRow(c, idx) {
+    var _a;
+    const file = c.source_file || c.document_id || "未命名文献";
+    const stem = String(file).replace(/\.pdf$/i, "");
+    return {
+      id: c.chunk_id || `c${idx}`,
+      // relation = 规范化后的关系键（RELATION_META 的键）；relation_type = 后端原文。
+      // 不再映射成 support / theory / data 那套角色标签：关系判定说的是「这段片段跟
+      // 你的问题什么关系」，角色标签说的是「这篇文献在论证里担什么角色」，不是一个维度。
+      relation: pbNormalizeRelation(c.relation_type),
+      relation_type: c.relation_type || "",
+      cites: void 0,
+      paperTitle: stem,
+      title: stem,
+      venue: c.section_title || "",
+      page: (_a = c.page_number) != null ? _a : null,
+      origFull: c.parent_text || c.text || "",
+      reasonShort: c.relevance_label || "",
+      _docId: c.document_id || "",
+      _sourceFile: c.source_file || ""
     };
   }
-  _renderEmpty(root, title, hint) {
-    const box = root.createDiv({ cls: "pb-comp-empty" });
+  // ── 渲染 ───────────────────────────────────────────────
+  _clearBody() {
+    if (!this._bodyEl) return null;
+    this._bodyEl.empty();
+    return this._bodyEl;
+  }
+  _renderLoading() {
+    const body = this._clearBody();
+    if (!body) return;
+    const box = body.createDiv({ cls: "pb-comp-empty" });
+    box.createDiv({ text: "正在检索…", cls: "pb-comp-empty-title" });
+  }
+  _renderRows(scope) {
+    const body = this._clearBody();
+    if (!body) return;
+    if (scope === "section") this._setSubtitle(`${this._subFileName()} · 整节`);
+    const list = body.createDiv({ cls: "pb-comp-list" });
+    this._rows.forEach((row) => {
+      const card = list.createDiv({ cls: "pb-comp-card" });
+      card.style.cursor = "grab";
+      card.setAttribute("draggable", "true");
+      card.dataset.id = row.id;
+      card.createDiv({ text: row.title, cls: "pb-comp-card-title" });
+      const meta = [];
+      if (row.venue) meta.push(row.venue);
+      if (row.page != null && row.page !== "") meta.push(`第 ${row.page} 页`);
+      if (meta.length) card.createDiv({ text: meta.join(" · "), cls: "pb-comp-card-meta" });
+      const quote = String(row.origFull).replace(/\s+/g, " ").trim();
+      if (quote) {
+        card.createDiv({
+          text: quote.length > SNIPPET_MAX ? quote.slice(0, SNIPPET_MAX) + "…" : quote,
+          cls: "pb-comp-card-tldr"
+        });
+      }
+      card.addEventListener("dragstart", (e) => {
+        e.dataTransfer.effectAllowed = "copy";
+        const esc = (s) => String(s != null ? s : "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const payload = [{
+          // relation = 规范化后的关系键；relation_type = 后端原文，
+          // main.ts 的 evidence_role 用它（别再传旧的 tag 角色标签）
+          id: row.id,
+          relation: row.relation,
+          relation_type: row.relation_type,
+          title: esc(row.title),
+          venue: esc(row.venue),
+          cites: row.cites,
+          origFull: esc(row.origFull),
+          reasonShort: esc(row.reasonShort),
+          paperTitle: esc(row.paperTitle),
+          page: row.page,
+          _docId: row._docId,
+          _sourceFile: row._sourceFile
+        }];
+        e.dataTransfer.setData("application/paperbell-cards", JSON.stringify(payload));
+        card.addClass("pb-dragging");
+      });
+      card.addEventListener("dragend", () => card.removeClass("pb-dragging"));
+    });
+  }
+  _subFileName() {
+    var _a;
+    return ((_a = this.app.workspace.getActiveFile()) == null ? void 0 : _a.basename) || "";
+  }
+  // 空态一：没有活动 Markdown 文件
+  _renderNoFile(hint) {
+    const body = this._clearBody();
+    if (!body) return;
+    const box = body.createDiv({ cls: "pb-comp-empty" });
+    box.createDiv({ text: "打开一篇正在写的笔记", cls: "pb-comp-empty-title" });
+    box.createDiv({
+      text: hint || "侧栏会跟着光标所在段落自动找相关文献",
+      cls: "pb-comp-empty-hint"
+    });
+  }
+  // 空态二：本地服务不可用
+  _renderServiceDown(title, hint, repair) {
+    const body = this._clearBody();
+    if (!body) return;
+    const box = body.createDiv({ cls: "pb-comp-empty" });
     box.createDiv({ text: title, cls: "pb-comp-empty-title" });
-    if (hint) {
-      hint.split("\n").forEach((line) => {
-        box.createDiv({ text: line, cls: "pb-comp-empty-hint" });
+    if (hint) box.createDiv({ text: hint, cls: "pb-comp-empty-hint" });
+    const canRepair = !!repair && !!this.plugin._openCoreSetup;
+    if (canRepair) {
+      box.createDiv({
+        text: "本地服务没装或已损坏时，可以打开安装向导重装",
+        cls: "pb-comp-empty-hint"
       });
     }
+    const btn = box.createEl("button", { text: "重试", cls: "pb-empty-action" });
+    btn.onclick = () => this._tick({ force: true });
+    if (canRepair) {
+      const fix = box.createEl("button", { text: "修复服务", cls: "pb-empty-action" });
+      fix.onclick = () => this.plugin._openCoreSetup();
+    }
   }
-  _resolveCurrentProject() {
-    var _a, _b, _c, _d;
-    const path = this.plugin.settings.writingProjectPath;
-    if (!path) return null;
-    const file = this.app.vault.getAbstractFileByPath(path);
-    if (!file) return null;
-    const fm = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
-    return {
-      path,
-      folder: ((_b = file.parent) == null ? void 0 : _b.path) || "",
-      title: (fm == null ? void 0 : fm.title) || ((_c = fm == null ? void 0 : fm.longform) == null ? void 0 : _c.title) || file.basename,
-      format: ((_d = fm == null ? void 0 : fm.longform) == null ? void 0 : _d.format) || "single"
-    };
+  // 空态三：检索无结果
+  _renderNoHit(scope) {
+    const body = this._clearBody();
+    if (!body) return;
+    const box = body.createDiv({ cls: "pb-comp-empty" });
+    box.createDiv({ text: "这一段没有匹配到文献", cls: "pb-comp-empty-title" });
+    if (scope === "section") {
+      box.createDiv({ text: "整节内容也没有命中，换个说法或换文献库再试", cls: "pb-comp-empty-hint" });
+      return;
+    }
+    box.createDiv({
+      text: "这一段太短或太具体时容易落空，可以拿整节内容再检索一次",
+      cls: "pb-comp-empty-hint"
+    });
+    const btn = box.createEl("button", { text: "用整节", cls: "pb-empty-action" });
+    btn.onclick = () => this._tick({ force: true, scope: "section" });
   }
 };
 
 // src/views/search-view.ts
-var obsidian11 = __toESM(require("obsidian"));
+var obsidian10 = __toESM(require("obsidian"));
 var nodePath4 = __toESM(require("path"));
 var nodeCrypto = __toESM(require("crypto"));
 
 // src/ui/row-html.ts
 function rowHTML(r) {
-  var _a, _b, _c, _d, _e, _f;
-  const tm = TAG_META[r.tag];
-  const RELATION_HINT = {
-    "同一问题": "关注同一研究问题",
-    "同一机制": "讨论相同机制 / 因果链",
-    "同一对象/场景": "研究同一对象或情境",
-    "同一对象·场景": "研究同一对象或情境",
-    "对照/补充": "提供反例、适用边界或补充视角",
-    "对照·补充": "提供反例、适用边界或补充视角",
-    "同一方法": "使用相同方法 / 实证策略",
-    "背景/间接": "提供背景或间接相关",
-    "背景·间接": "提供背景或间接相关"
-  };
+  var _a, _b, _c, _d;
+  const relKey = pbNormalizeRelation(r.relation_type);
+  const rm = RELATION_META[relKey];
   const relText = pbEscapeHtml((_a = r.relation_type) != null ? _a : "");
-  const relHint = (_c = RELATION_HINT[(_b = r.relation_type) != null ? _b : ""]) != null ? _c : "由 AI 在生成相关说明时判断";
-  const tagTitle = `判定依据：${relText || "（待判定）"}
-${relHint}`;
-  const hasCites = r.cites !== void 0 && r.cites !== null && r.cites !== "";
-  const citeFmt = typeof r.cites === "number" ? r.cites.toLocaleString() : r.cites;
+  const relTitle = `关系判定：${relText || "（未给出）"}
+${rm.hint}`;
   const hasPage = r.page !== null && r.page !== void 0 && r.page !== "";
-  const page = pbEscapeHtml((_d = r.page) != null ? _d : "");
+  const page = pbEscapeHtml((_b = r.page) != null ? _b : "");
   return `
-<div class="pb-result-card" data-id="${pbEscapeHtml(r.id)}" data-tag="${pbEscapeHtml(r.tag)}" data-cites="${pbEscapeHtml(r.cites)}" data-rel="${pbEscapeQuotes(relText)}" data-doc="${(_e = r.docScore) != null ? _e : 0}" data-doc-id="${pbEscapeHtml(r._docId || "")}" data-source-file="${pbEscapeHtml(r._sourceFile || "")}">
+<div class="pb-result-card" data-id="${pbEscapeHtml(r.id)}" data-relation="${pbEscapeHtml(relKey)}" data-rel="${pbEscapeQuotes(relText)}" data-doc="${(_c = r.docScore) != null ? _c : 0}" data-doc-id="${pbEscapeHtml(r._docId || "")}" data-source-file="${pbEscapeHtml(r._sourceFile || "")}">
   <div class="pb-card-top">
     <label class="pb-cb-label">
       <input type="checkbox" class="pb-cb" data-id="${pbEscapeHtml(r.id)}">
     </label>
     <span class="pb-meta-paper" title="${pbEscapeQuotes(r.paperTitle)}">${r.paperTitle}</span>
-    <span class="pb-rtag ${tm.cls}" data-tag="${pbEscapeHtml(r.tag)}" title="${pbEscapeQuotes(tagTitle)}">${tm.label}</span>
+    <!-- 状态回显：由 search-view 渲染后填「已记」/「已引 ×2」，空着就不占位 -->
+    <span class="pb-card-state"></span>
+    <span class="pb-rtag ${pbEscapeHtml(rm.cls)}" data-relation="${pbEscapeHtml(relKey)}" title="${pbEscapeQuotes(relTitle)}">${pbEscapeHtml(rm.label)}</span>
   </div>
-  <span class="pb-rtag-tbl ${tm.cls}" data-tag="${pbEscapeHtml(r.tag)}">${tm.label}</span>
+  <span class="pb-rtag-tbl ${pbEscapeHtml(rm.cls)}" data-relation="${pbEscapeHtml(relKey)}">${pbEscapeHtml(rm.label)}</span>
 
   <div class="pb-orig-wrap" role="group" data-page="${page}" aria-label="原文节选">
     <div class="pb-orig-open" role="button" tabindex="0"
@@ -4476,12 +4792,14 @@ ${relHint}`;
     <div class="pb-orig-popup"><div class="pb-orig-popup-body">${r.origFull}</div></div>
   </div>
 
+  <!-- 固定标签：让下面这段文字的身份永远清楚是「检索解释」，不是文献自己的结论 -->
+  <div class="pb-reason-label">为何命中</div>
   <div class="pb-reason-wrap">
     <div class="pb-reason-short">${r.reasonShort}</div>
     <span class="pb-expand-hint" title="悬停查看完整相关说明">${CHEV}</span>
     <div class="pb-reason-popup">${r.reasonFull}</div>
   </div>
-  ${((_f = r.keywords) == null ? void 0 : _f.length) ? `<div class="pb-keywords-row">${r.keywords.map((k) => `<span class="pb-kw-chip">${k}</span>`).join("")}</div>` : ""}
+  ${((_d = r.keywords) == null ? void 0 : _d.length) ? `<div class="pb-keywords-row">${r.keywords.map((k) => `<span class="pb-kw-chip">${k}</span>`).join("")}</div>` : ""}
   <div class="pb-card-meta">
     <!-- author / journal 在 _chunkToRow 里初值为空，真正的值由 _patchCardMeta
          从 CrossRef / Semantic Scholar 回填，没走过 _chunkToRow 的转义 -->
@@ -4489,37 +4807,30 @@ ${relHint}`;
     ${r.journal || r.section ? `<span class="pb-meta-sub" title="${r.journal ? "期刊" : "出自章节"}">${r.journal ? pbEscapeHtml(r.journal) : "§ " + r.section}</span>` : ""}
     ${hasPage ? `<span class="pb-meta-page">第 ${page} 页</span>` : ""}
     <span class="pb-meta-right">
-      ${hasCites ? `<span class="pb-meta-cites">被引 ${citeFmt}</span>` : ""}
       ${r.sim ? `<span class="pb-sim">${r.sim}</span>` : ""}
-      <span class="pb-fb" data-id="${pbEscapeHtml(r.id)}">
+      <span class="pb-fb pb-fb--quiet" data-id="${pbEscapeHtml(r.id)}">
         <span class="pb-fb-btn pb-fb-up" data-v="upvote" role="button" title="标记为相关">▲</span>
         <span class="pb-fb-btn pb-fb-down" data-v="downvote" role="button" title="标记为不相关">▼</span>
       </span>
-      <span class="pb-focus-btn" data-id="${pbEscapeHtml(r.id)}" role="button" title="分析这篇文献">
+      <!-- 卡片上只保留「片段」级动作。「保存 PDF / 单篇分析」是文献级动作，
+           已移到主面板的「文献」标签页，别再放回来。 -->
+      <span class="pb-note-btn" data-id="${pbEscapeHtml(r.id)}" role="button"
+            title="把这个片段记进片段库">
         <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
-          <path d="M8 1l1.6 4.4L14 7l-4.4 1.6L8 13l-1.6-4.4L2 7l4.4-1.6L8 1z"
-                fill="currentColor"/>
-        </svg>
-        单篇分析
-      </span>
-      <span class="pb-collect-btn" data-id="${pbEscapeHtml(r.id)}" role="button"
-            title="保存 PDF 与文献笔记，并跳到命中页">
-        <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
-          <path d="M3 2.5h7l3 3v8H3z" stroke="currentColor" stroke-width="1.3"
+          <path d="M4 2h8v12l-4-3-4 3V2z" stroke="currentColor" stroke-width="1.3"
                 stroke-linejoin="round"/>
-          <path d="M6 8.5l1.6 1.6L11 6.5" stroke="currentColor" stroke-width="1.3"
-                stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        保存
+        记
       </span>
     </span>
   </div>
-  <div class="pb-drag-hint">⠿ 拖到笔记中选择插入方式</div>
+  <div class="pb-drag-hint">⠿ 拖到笔记中插入原文与出处</div>
 </div>`;
 }
 
 // src/views/search-view.ts
-var PaperSearchView = class extends obsidian11.ItemView {
+var relSlug = (key) => `r${RELATION_KEYS.indexOf(key)}`;
+var PaperSearchView = class extends obsidian10.ItemView {
   constructor(leaf, plugin) {
     super(leaf);
     this.plugin = plugin;
@@ -4534,7 +4845,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
     return "search";
   }
   async onOpen() {
-    var _a, _b, _c, _d;
+    var _a, _b;
     const root = this.containerEl.children[1];
     root.empty();
     root.addClass("pb-panel");
@@ -4546,18 +4857,28 @@ var PaperSearchView = class extends obsidian11.ItemView {
     this.containerEl.querySelectorAll(".pb-brand").forEach((el) => el.remove());
     const brand = this.containerEl.createEl("div", { cls: "pb-brand", text: "PaperSearch" });
     this.containerEl.appendChild(brand);
-    const view = (_b = (_a = this.plugin.settings) == null ? void 0 : _a.defaultView) != null ? _b : "list";
-    if (view !== "list") {
-      const btn = root.querySelector(`.pb-vt-btn[data-view="${view}"]`);
-      if (btn) btn.click();
-    }
-    const lines = (_d = (_c = this.plugin.settings) == null ? void 0 : _c.originalPreviewLines) != null ? _d : 5;
+    const lines = (_b = (_a = this.plugin.settings) == null ? void 0 : _a.originalPreviewLines) != null ? _b : 5;
     root.style.setProperty("--pb-abstract-lines", String(lines));
+    this.applyPendingTab();
+  }
+  // 切到指定标签页。mod: 'search' | 'papers' | 'fragments'
+  switchModule(mod) {
+    const root = this.containerEl.children[1];
+    const btn = root == null ? void 0 : root.querySelector(`.pb-mod-btn[data-mod="${mod}"]`);
+    if (!btn) return false;
+    btn.click();
+    return true;
+  }
+  // plugin.activateView(tab) 把目标页寄存在 _pendingTab；视图挂载后由它消费
+  applyPendingTab() {
+    var _a;
+    const tab = (_a = this.plugin) == null ? void 0 : _a._pendingTab;
+    if (!tab) return;
+    if (this.switchModule(tab)) this.plugin._pendingTab = null;
   }
   async onClose() {
     var _a;
-    if (this._searchTimer) window.clearInterval(this._searchTimer);
-    this._searchTimer = null;
+    this._stopSearchTimer();
     (_a = this._origDisclosureObserver) == null ? void 0 : _a.disconnect();
     this._origDisclosureObserver = null;
     if (this._origDisclosureFrame) cancelAnimationFrame(this._origDisclosureFrame);
@@ -4585,7 +4906,8 @@ var PaperSearchView = class extends obsidian11.ItemView {
     setTimeout(() => input.classList.remove("pushed"), 2e3);
     this._runSearch(root);
   }
-  // 手动刷新本地服务连接：服务被用户在外部重启后，直接检查当前地址并重新同步库状态。
+  // 手动刷新本地服务连接：用户在插件外面重启过服务时，
+  // 直接探当前地址并重新同步库列表，不必重载整个插件。
   async _refreshCoreConnection(root, button) {
     if (this._connectionRefreshInFlight) return;
     this._connectionRefreshInFlight = true;
@@ -4596,7 +4918,6 @@ var PaperSearchView = class extends obsidian11.ItemView {
     }
     const cm = this.plugin.coreManager;
     try {
-      // 清掉一次性的 CORS 探测缓存，避免服务重启后沿用旧结果。
       if (this.plugin.api) this.plugin.api._corsCache = null;
       let reachable = false;
       try {
@@ -4618,7 +4939,6 @@ var PaperSearchView = class extends obsidian11.ItemView {
         await this.plugin._restartCore();
         await this.plugin.api.get("/health");
       }
-
       const data = await this.plugin.api.get("/libraries");
       const raw = Array.isArray(data == null ? void 0 : data.libraries) ? data.libraries : [];
       const libs = raw.map((item) => typeof item === "string" ? item : (item == null ? void 0 : item.name) || (item == null ? void 0 : item.library) || (item == null ? void 0 : item.id) || "").filter(Boolean);
@@ -4626,20 +4946,19 @@ var PaperSearchView = class extends obsidian11.ItemView {
       this._hasLibraries = libs.length > 0;
       this._librariesReady = true;
       if (this._libStats) this._libStats.clear();
-
       const widget = root == null ? void 0 : root.querySelector(".pb-lib-widget");
       const searchButton = root == null ? void 0 : root.querySelector(".pb-btn-search");
       if (libs.length) {
-        const current = widget == null ? "" : widget.dataset.lib;
-        const remembered = this.plugin.settings.lastLibrary || "";
+        const current = widget == null ? void 0 : widget.dataset.lib;
+        const remembered = this.plugin.state.lastLibrary || "";
         const target = libs.includes(current) ? current : libs.includes(remembered) ? remembered : libs.find((name) => name !== "default") || libs[0];
         if (widget && target) {
           widget.dataset.lib = target;
           const label = widget.querySelector(".pb-lib-cur");
           if (label) label.textContent = target;
         }
-        if (target && this.plugin.settings.lastLibrary !== target) {
-          this.plugin.settings.lastLibrary = target;
+        if (target && this.plugin.state.lastLibrary !== target) {
+          this.plugin.state.lastLibrary = target;
           await this.plugin.saveSettings();
         }
         if (searchButton) {
@@ -4659,10 +4978,10 @@ var PaperSearchView = class extends obsidian11.ItemView {
           searchButton.removeAttribute("aria-busy");
         }
       }
-      new obsidian11.Notice("本地服务连接已刷新");
+      new obsidian10.Notice("本地服务连接已刷新");
     } catch (e) {
       cm._setStatus("failed", e.message || "连接失败");
-      new obsidian11.Notice(`刷新连接失败：${e.message || e}`, 8e3);
+      new obsidian10.Notice(`刷新连接失败：${e.message || e}`, 8e3);
     } finally {
       if (button) {
         button.disabled = false;
@@ -4677,16 +4996,16 @@ var PaperSearchView = class extends obsidian11.ItemView {
     return `
 <!-- 顶层模块切换 Tab bar -->
 <div class="pb-module-tabs" role="tablist" aria-label="PaperSearch 主要模块">
-  <div class="pb-mod-btn active" data-mod="search" role="tab" tabindex="0" aria-selected="true">文献检索</div>
-  <div class="pb-mod-btn" data-mod="lib" role="tab" tabindex="-1" aria-selected="false">文献库管理</div>
-  <div class="pb-mod-btn" data-mod="collect" role="tab" tabindex="-1" aria-selected="false">文献收集</div>
+  <div class="pb-mod-btn active" data-mod="search" role="tab" tabindex="0" aria-selected="true">检索</div>
+  <div class="pb-mod-btn" data-mod="papers" role="tab" tabindex="-1" aria-selected="false">文献</div>
+  <div class="pb-mod-btn" data-mod="fragments" role="tab" tabindex="-1" aria-selected="false">片段</div>
 </div>
 
 <div class="pb-section pb-search-area">
   <div class="pb-search-hd">
     <span class="pb-src-label">检索条件</span>
     <div class="pb-search-hd-actions">
-      <button class="pb-core-refresh-btn" type="button" title="刷新本地服务连接" aria-label="刷新本地服务连接"></button>
+      <button class="pb-core-refresh-btn clickable-icon" type="button" title="刷新本地服务连接" aria-label="刷新本地服务连接"></button>
       <div class="pb-view-toggle" title="切换视图">
       <div class="pb-vt-btn active" data-view="list" title="列表视图" role="button">
         <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
@@ -4708,7 +5027,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
           <rect x="1" y="1" width="14" height="14" rx="1.5" stroke="currentColor" stroke-width="1.4"/>
           <path d="M1 5.5h14M1 10h14M6 5.5v9.5" stroke="currentColor" stroke-width="1.2"/>
         </svg>
-      </div>
+        </div>
       </div>
     </div>
   </div>
@@ -4760,17 +5079,16 @@ var PaperSearchView = class extends obsidian11.ItemView {
           title="为每条结果生成相关性说明">相关性说明</span>
   </div>
 
-  <!-- 新版意图和深度状态仍由设置与历史记录维护，不占用旧版主界面空间 -->
+  <!-- 检索深度预设。意图前缀已删除：那四个按钮长期不可达，却仍在每次检索时
+       替用户改写问题，用户既不知情也关不掉。 -->
   <div class="pb-search-state-controls" hidden aria-hidden="true">
-    <button data-intent="support" type="button"></button>
-    <button data-intent="contrast" type="button"></button>
-    <button data-intent="method" type="button"></button>
-    <button data-intent="definition" type="button"></button>
     <button data-preset="quick" type="button"></button>
     <button data-preset="balanced" type="button"></button>
     <button data-preset="deep" type="button"></button>
   </div>
 
+  <!-- 检索进度：一次检索十几秒到几十秒，只挂一句「正在搜索文献…」的话，
+       用户分不清是在跑还是卡住。这里给阶段、已用时和各环节耗时明细。 -->
   <div class="pb-search-progress" style="display:none" aria-live="polite">
     <div class="pb-search-progress-main">
       <span class="pb-search-progress-state">
@@ -4784,7 +5102,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
 </div>
 
 <div class="pb-expand-divider">
-  <div class="pb-expand-btn" title="展开 / 收起标签筛选" role="button">
+  <div class="pb-expand-btn" title="展开 / 收起关系筛选" role="button">
     <svg class="pb-expand-icon" width="8" height="5" viewBox="0 0 8 5" fill="none">
       <path d="M1 1L4 3.8L7 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
@@ -4792,15 +5110,12 @@ var PaperSearchView = class extends obsidian11.ItemView {
 </div>
 
 <div class="pb-section pb-filter-row" style="display:none">
-  <span class="pb-label">标签：</span>
-  <span class="pb-fc pb-fc-all active" data-tag="all">全部</span>
-  <span class="pb-fc pb-fc-unclassified" data-tag="unclassified">未分类</span>
-  <span class="pb-fc pb-fc-support"  data-tag="support">核心支撑</span>
-  <span class="pb-fc pb-fc-method"   data-tag="method">方法参考</span>
-  <span class="pb-fc pb-fc-contrast" data-tag="contrast">反例与边界</span>
-  <span class="pb-fc pb-fc-bg"       data-tag="bg">背景信息</span>
-  <span class="pb-fc pb-fc-data"     data-tag="data">数据来源</span>
-  <span class="pb-fc pb-fc-theory"   data-tag="theory">理论框架</span>
+  <span class="pb-label">关系：</span>
+  <span class="pb-fc pb-fc-all active" data-relation="all">全部</span>
+  ${RELATION_KEYS.map((key) => {
+      const rm = RELATION_META[key];
+      return `<span class="pb-fc ${pbEscapeHtml(rm.cls)}" data-relation="${pbEscapeHtml(key)}" title="${pbEscapeHtml(rm.hint)}">${pbEscapeHtml(rm.label)}</span>`;
+    }).join("")}
 </div>
 
 <!-- 表格视图列标题（仅 table 模式显示）-->
@@ -4808,7 +5123,6 @@ var PaperSearchView = class extends obsidian11.ItemView {
   <span class="pb-th pb-th-left">文献内容</span>
   <span class="pb-th pb-th-content">相关性说明</span>
   <span class="pb-th pb-th-meta">
-    <span class="pb-th-sort" data-key="cites" data-dir="none">引用数<svg class="pb-sort-icon" width="7" height="9" viewBox="0 0 7 9" fill="none"><path class="pb-si-up" d="M3.5 1L1 3.8h5L3.5 1z" fill="currentColor" opacity=".3"/><path class="pb-si-dn" d="M3.5 8L1 5.2h5L3.5 8z" fill="currentColor" opacity=".3"/></svg></span>
     <span class="pb-th-sort" data-key="sim"   data-dir="none">相关度<svg class="pb-sort-icon" width="7" height="9" viewBox="0 0 7 9" fill="none"><path class="pb-si-up" d="M3.5 1L1 3.8h5L3.5 1z" fill="currentColor" opacity=".3"/><path class="pb-si-dn" d="M3.5 8L1 5.2h5L3.5 8z" fill="currentColor" opacity=".3"/></svg></span>
   </span>
 </div>
@@ -4826,48 +5140,26 @@ var PaperSearchView = class extends obsidian11.ItemView {
       <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
     </svg>
     <p>输入研究问题或关键词后点击「检索」</p>
-    <p>也可选中文本，右键「推送到 PaperSearch」</p>
+    <p>也可选中文本，右键「以选中内容检索」</p>
   </div>
-</div>
-
-<!-- LLM 整合答案：默认关，开启后在结果下方按需生成（流式）-->
-<div class="pb-answer-panel" style="display:none">
-  <div class="pb-answer-hd">
-    <span class="pb-answer-title">✦ AI 综述草稿</span>
-    <span class="pb-answer-toggle" role="button">收起</span>
-  </div>
-  <div class="pb-answer-bd"></div>
-</div>
-
-<div class="pb-section pb-batch" style="display:none">
-  <div class="pb-batch-input-row">
-    <textarea class="pb-inst" rows="1" disabled
-      placeholder="先勾选文献，输入指令或 / 选模板…"></textarea>
-    <button class="pb-btn-gen off" disabled>AI 生成</button>
-  </div>
-</div>
-
-<div class="pb-preview" style="display:none">
-  <div class="pb-preview-hd">
-    <span class="pb-preview-title">生成预览</span>
-    <span class="pb-preview-meta"></span>
-    <button class="pb-btn-regen">重新生成</button>
-  </div>
-  <div class="pb-preview-bd"></div>
-  <button class="pb-btn-insert">插入 AI 草稿（未关联来源）</button>
 </div>
 
 <div class="pb-footer" style="display:none">
   <span>共 <strong>0</strong> 条结果<span class="pb-footer-sel"></span></span>
   <div class="pb-footer-actions">
-    <span class="pb-batch-litnote" role="button" title="将全部或选中的结果保存为文献笔记">保存为文献笔记</span>
-    <span class="pb-batch-collect" role="button" title="将当前检索结果加入文献收集">加入文献收集</span>
+    <span class="pb-footer-save" role="button" title="把勾选的文献存进 vault：建文献笔记；只勾一条时连 PDF 一起收进来并跳到命中页"
+          style="display:none;font-size:10px;color:var(--text-muted);cursor:pointer;padding:2px 8px;border-radius:var(--radius-s,3px);font-family:var(--font-interface)">存笔记</span>
+    <span class="pb-footer-agg" role="button" title="把勾选的片段合成一句带出处的正文，插入当前笔记光标处"
+          style="display:none;font-size:10px;color:var(--interactive-accent);cursor:pointer;padding:2px 8px;border-radius:var(--radius-s,3px);font-family:var(--font-interface)">综合为一句</span>
   </div>
 </div>
 
-<!-- 文献库管理全窗口视图（位于 tab bar 以下） -->
+<!-- 「文献」标签页全窗口视图（位于 tab bar 以下）
+     层1 承载两种内容，由 _libView 决定：
+       'papers' —— 已保存的文献（默认，数据源 = vault 里的文献笔记 + paperIndex）
+       'libs'   —— 文献库管理（库列表 + 新建入口） -->
 <div class="pb-mod-lib" style="display:none">
-  <!-- 层1：库列表 + 新建 -->
+  <!-- 层1：已保存的文献 / 库列表 -->
   <div class="pb-ls-lib-layer">
     <div class="pb-ls-lib-body"><!-- JS 渲染 --></div>
   </div>
@@ -4901,7 +5193,8 @@ var PaperSearchView = class extends obsidian11.ItemView {
   </div>
 </div>
 
-<!-- 文献收集全窗口视图（位于 tab bar 以下）—— JS 渲染 -->
+<!-- 「片段」标签页全窗口视图（位于 tab bar 以下）—— JS 渲染。
+     类名沿用 pb-mod-collect / pb-collect-* ，样式表按这些类落的定位与布局。 -->
 <div class="pb-mod-collect" style="display:none"></div>
 
 <!-- Paper Focus 全窗口分析视图 -->
@@ -4948,15 +5241,12 @@ var PaperSearchView = class extends obsidian11.ItemView {
         btn.setAttribute("aria-selected", "true");
         btn.tabIndex = 0;
         const mod = btn.dataset.mod;
-        const libLayer = root.querySelector(".pb-mod-lib");
-        libLayer.style.display = mod === "lib" ? "flex" : "none";
-        if (mod === "lib" && !this._libRendered) {
-          this._renderLibModule(root);
-          this._libRendered = true;
-        }
-        const collectLayer = root.querySelector(".pb-mod-collect");
-        collectLayer.style.display = mod === "collect" ? "flex" : "none";
-        if (mod === "collect") this._renderCollectModule(root);
+        const papersLayer = root.querySelector(".pb-mod-lib");
+        papersLayer.style.display = mod === "papers" ? "flex" : "none";
+        if (mod === "papers") this._renderPapersModule(root);
+        const fragLayer = root.querySelector(".pb-mod-collect");
+        fragLayer.style.display = mod === "fragments" ? "flex" : "none";
+        if (mod === "fragments") this._renderFragmentsModule(root);
       };
       btn.addEventListener("click", activate);
       btn.addEventListener("keydown", (event) => {
@@ -5001,17 +5291,29 @@ var PaperSearchView = class extends obsidian11.ItemView {
             this._bindCardEvents(results, root);
           }
         }
+        this._updateSelection(root);
         requestAnimationFrame(() => this._refreshOrigDisclosures(results));
       });
     });
     const refreshButton = root.querySelector(".pb-core-refresh-btn");
     if (refreshButton) {
-      obsidian12.setIcon(refreshButton, "refresh-cw");
+      obsidian10.setIcon(refreshButton, "refresh-cw");
       refreshButton.addEventListener("click", () => this._refreshCoreConnection(root, refreshButton));
     }
     root.querySelector(".pb-btn-search").addEventListener("click", () => this._runSearch(root));
     root.querySelector(".pb-search-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") this._runSearch(root);
+    });
+    (_b = root.querySelector(".pb-footer-agg")) == null ? void 0 : _b.addEventListener("click", () => this._aggregateSelectedToSentence(root));
+    (_c = root.querySelector(".pb-footer-save")) == null ? void 0 : _c.addEventListener("click", async () => {
+      const ids = [...root.querySelectorAll(".pb-cb:checked")].map((cb) => cb.dataset.id);
+      if (!ids.length) return;
+      if (ids.length === 1) {
+        const row = (this._rows || []).find((r) => r.id === ids[0]);
+        if (row) await this._collectForReading(root, row);
+        return;
+      }
+      await this._batchAddLitNotes(root);
     });
     const renderProject = () => {
       var _a2;
@@ -5021,28 +5323,28 @@ var PaperSearchView = class extends obsidian11.ItemView {
       if (el) el.title = path || "尚未设置当前写作项目";
     };
     renderProject();
-    (_b = root.querySelector(".pb-set-project")) == null ? void 0 : _b.addEventListener("click", async () => {
+    (_d = root.querySelector(".pb-set-project")) == null ? void 0 : _d.addEventListener("click", async () => {
       var _a2, _b2, _c2;
       const file = this.app.workspace.getActiveFile();
       if (!((_a2 = file == null ? void 0 : file.path) == null ? void 0 : _a2.endsWith(".md"))) {
-        new obsidian11.Notice("请先打开一篇作为当前项目的 Markdown 文档");
+        new obsidian10.Notice("请先打开一篇作为当前项目的 Markdown 文档");
         return;
       }
       if ((_c2 = (_b2 = this.plugin)._isPaperNoteFile) == null ? void 0 : _c2.call(_b2, file)) {
-        new obsidian11.Notice("当前打开的是文献笔记，请打开论文主文档后再设为当前项目");
+        new obsidian10.Notice("当前打开的是文献笔记，请打开论文主文档后再设为当前项目");
         return;
       }
       this.plugin.settings.writingProjectPath = file.path;
       await this.plugin.saveSettings();
       renderProject();
-      new obsidian11.Notice(`当前项目：${file.basename}`);
+      new obsidian10.Notice(`当前项目：${file.basename}`);
     });
     const PRESETS = {
       quick: { top: 5, recall: 20, chunks: 1, optimize: false, annotate: false },
       balanced: { top: 8, recall: 40, chunks: 2, optimize: true, annotate: true },
       deep: { top: 12, recall: 80, chunks: 4, optimize: true, annotate: true }
     };
-    const setPreset = (name, persist = true) => {
+    const setPreset = (name) => {
       var _a2, _b2;
       const preset = PRESETS[name] || PRESETS.balanced;
       root.querySelectorAll("[data-preset]").forEach((el) => {
@@ -5063,30 +5365,10 @@ var PaperSearchView = class extends obsidian11.ItemView {
       this._searchModeScope = "preset";
       const summary = root.querySelector(".pb-search-expert > summary");
       if (summary) summary.textContent = "专家模式";
-      this.plugin.settings.searchMode = name;
-      if (persist) this.plugin.saveSettings();
+      this._searchPreset = name;
     };
     root.querySelectorAll("[data-preset]").forEach((el) => el.addEventListener("click", () => setPreset(el.dataset.preset)));
-    setPreset(this.plugin.settings.searchMode || "balanced", false);
-    const setIntent = (name, persist = true) => {
-      root.querySelectorAll("[data-intent]").forEach((el) => {
-        const active = el.dataset.intent === name;
-        el.classList.toggle("active", active);
-        el.setAttribute("aria-pressed", active ? "true" : "false");
-      });
-      this.plugin.settings.searchIntent = name;
-      if (persist) this.plugin.saveSettings();
-    };
-    root.querySelectorAll("[data-intent]").forEach((el) => el.addEventListener("click", () => setIntent(el.dataset.intent)));
-    setIntent(this.plugin.settings.searchIntent || "support", false);
-    const expert = root.querySelector(".pb-search-expert");
-    if (expert) {
-      expert.open = !!this.plugin.settings.searchExpertMode;
-      expert.addEventListener("toggle", () => {
-        this.plugin.settings.searchExpertMode = expert.open;
-        this.plugin.saveSettings();
-      });
-    }
+    setPreset(this._searchPreset || "balanced", false);
     const markSearchCustom = () => {
       this._searchModeScope = "custom";
       root.querySelectorAll("[data-preset]").forEach((el) => {
@@ -5103,7 +5385,6 @@ var PaperSearchView = class extends obsidian11.ItemView {
       var _a2;
       const seen = /* @__PURE__ */ new Set();
       const items = ((_a2 = data.items) != null ? _a2 : []).filter((it) => {
-        const parsed = this._parseIntentQuery(it.query || "");
         const q = parsed.query;
         const key = `${q}\0${parsed.intent || ""}\0${it.library || ""}`;
         if (!q || seen.has(key)) return false;
@@ -5153,16 +5434,15 @@ var PaperSearchView = class extends obsidian11.ItemView {
       }
     };
     const setLib = (name, { persist = true } = {}) => {
-      var _a2, _b2, _c2;
+      var _a2, _b2;
       libWidget.dataset.lib = name;
       libWidget.querySelector(".pb-lib-cur").textContent = name;
       if (persist) {
-        this.plugin.settings.lastLibrary = name;
+        this.plugin.state.lastLibrary = name;
         this.plugin.saveSettings();
       }
       (_a2 = this._searchAbortCtl) == null ? void 0 : _a2.abort();
-      (_b2 = this._answerAbortCtl) == null ? void 0 : _b2.abort();
-      (_c2 = this._prefetchAbortCtl) == null ? void 0 : _c2.abort();
+      (_b2 = this._prefetchAbortCtl) == null ? void 0 : _b2.abort();
       this._warmup(name);
     };
     const searchButton = root.querySelector(".pb-btn-search");
@@ -5171,7 +5451,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
       searchButton.disabled = true;
       searchButton.setAttribute("aria-busy", "true");
     }
-    const rememberedLibrary = this.plugin.settings.lastLibrary || "";
+    const rememberedLibrary = this.plugin.state.lastLibrary || "";
     if (rememberedLibrary) setLib(rememberedLibrary, { persist: false });
     else {
       const current = libWidget == null ? void 0 : libWidget.querySelector(".pb-lib-cur");
@@ -5186,12 +5466,12 @@ var PaperSearchView = class extends obsidian11.ItemView {
           const data = await this.plugin.api.get("/libraries");
           libs = this._libs = normalizeLibraries(data.libraries);
         } catch (err) {
-          new obsidian11.Notice(`无法获取文献库列表：${err.message}`);
+          new obsidian10.Notice(`无法获取文献库列表：${err.message}`);
           return;
         }
       }
       if (!libs.length) {
-        new obsidian11.Notice("还没有文献库，点「新建文献库」导入你的 PDF");
+        new obsidian10.Notice("还没有文献库，点「新建文献库」导入你的 PDF");
         return;
       }
       (_a2 = root.querySelector(".pb-lib-dropdown")) == null ? void 0 : _a2.remove();
@@ -5264,7 +5544,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
         var _a3, _b3;
         return ((_a3 = b.count) != null ? _a3 : 0) - ((_b3 = a.count) != null ? _b3 : 0);
       });
-      const last = this.plugin.settings.lastLibrary || "";
+      const last = this.plugin.state.lastLibrary || "";
       const lastNonEmpty = (_a2 = nonEmpty.find((s) => s.name === last)) == null ? void 0 : _a2.name;
       const target = lastNonEmpty || ((_b2 = nonEmpty[0]) == null ? void 0 : _b2.name) || this._libs.find((name) => name !== "default") || this._libs[0];
       if (target !== cur) setLib(target);
@@ -5293,9 +5573,9 @@ var PaperSearchView = class extends obsidian11.ItemView {
         }
       });
     });
-    root.querySelectorAll(".pb-fc[data-tag]").forEach((el) => {
+    root.querySelectorAll(".pb-fc[data-relation]").forEach((el) => {
       el.addEventListener("click", () => {
-        root.querySelectorAll(".pb-fc[data-tag]").forEach((f) => f.classList.remove("active"));
+        root.querySelectorAll(".pb-fc[data-relation]").forEach((f) => f.classList.remove("active"));
         el.classList.add("active");
         this._applyFilters(root);
       });
@@ -5303,12 +5583,11 @@ var PaperSearchView = class extends obsidian11.ItemView {
     const SORT_OPTS = [
       { val: "sim", label: "相关度" },
       { val: "doc", label: "文档相关度" },
-      { val: "tag", label: "标签分类" },
-      { val: "rel", label: "关联类型" }
+      { val: "relation", label: "关系判定" }
     ];
     const sortWidget = root.querySelector(".pb-sort-widget");
     sortWidget.querySelector(".pb-sort-trigger").addEventListener("click", (e) => {
-      const menu = new obsidian11.Menu();
+      const menu = new obsidian10.Menu();
       SORT_OPTS.forEach((opt) => {
         menu.addItem((item) => {
           item.setTitle(opt.label).setChecked(sortWidget.dataset.val === opt.val).onClick(() => {
@@ -5336,175 +5615,12 @@ var PaperSearchView = class extends obsidian11.ItemView {
       const btn = root.querySelector(".pb-expand-btn");
       const isOpen = btn.classList.toggle("open");
       root.querySelector(".pb-filter-row").style.display = isOpen ? "" : "none";
-      btn.title = isOpen ? "收起标签筛选" : "展开标签筛选";
+      btn.title = isOpen ? "收起关系筛选" : "展开关系筛选";
     });
     root.addEventListener("change", (e) => {
       if (e.target.classList.contains("pb-cb")) this._updateSelection(root);
     });
     this._bindCardEvents(root, root);
-    const instEl = root.querySelector(".pb-inst");
-    let instSlashPopup = null;
-    const closeInstSlash = () => {
-      instSlashPopup == null ? void 0 : instSlashPopup.remove();
-      instSlashPopup = null;
-    };
-    this.register(closeInstSlash);
-    instEl.addEventListener("input", () => {
-      var _a2, _b2;
-      this._checkGen(root);
-      const val = instEl.value;
-      if (!val.startsWith("/")) {
-        closeInstSlash();
-        return;
-      }
-      const query = val.slice(1).toLowerCase();
-      const templates = ((_b2 = (_a2 = this.plugin.settings) == null ? void 0 : _a2.promptTemplates) != null ? _b2 : DEFAULT_SETTINGS.promptTemplates).split("\n").map((s) => s.trim()).filter(Boolean);
-      const filtered = query ? templates.filter((t) => t.toLowerCase().includes(query)) : templates;
-      if (!filtered.length) {
-        closeInstSlash();
-        return;
-      }
-      if (!instSlashPopup) {
-        instSlashPopup = document.createElement("div");
-        instSlashPopup.className = "pb-slash-popup";
-        document.body.appendChild(instSlashPopup);
-      }
-      instSlashPopup.innerHTML = filtered.map(
-        (t, i) => `<div class="pb-slash-item" data-idx="${i}" data-tpl="${pbEscapeHtml(t)}">${pbEscapeHtml(t)}</div>`
-      ).join("");
-      const rect = instEl.getBoundingClientRect();
-      instSlashPopup.style.cssText = `position:fixed;bottom:${window.innerHeight - rect.top + 4}px;left:${rect.left}px;width:${rect.width}px;z-index:var(--layer-popover,500)`;
-      instSlashPopup.querySelectorAll(".pb-slash-item").forEach((item) => {
-        item.addEventListener("mousedown", (e) => {
-          e.preventDefault();
-          instEl.value = item.dataset.tpl;
-          closeInstSlash();
-          this._checkGen(root);
-          instEl.focus();
-        });
-      });
-    });
-    instEl.addEventListener("keydown", (e) => {
-      if (!instSlashPopup) return;
-      const items = [...instSlashPopup.querySelectorAll(".pb-slash-item")];
-      if (!items.length) return;
-      const active = instSlashPopup.querySelector(".pb-slash-active");
-      const idx = active ? items.indexOf(active) : -1;
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        active == null ? void 0 : active.classList.remove("pb-slash-active");
-        items[idx + 1 < items.length ? idx + 1 : 0].classList.add("pb-slash-active");
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        active == null ? void 0 : active.classList.remove("pb-slash-active");
-        items[idx > 0 ? idx - 1 : items.length - 1].classList.add("pb-slash-active");
-      } else if (e.key === "Enter" && active) {
-        e.preventDefault();
-        instEl.value = active.dataset.tpl;
-        closeInstSlash();
-        this._checkGen(root);
-      } else if (e.key === "Escape") {
-        closeInstSlash();
-      }
-    });
-    instEl.addEventListener("blur", () => setTimeout(closeInstSlash, 150));
-    root.querySelector(".pb-btn-gen").addEventListener("click", () => this._generate(root));
-    (_c = root.querySelector(".pb-batch-litnote")) == null ? void 0 : _c.addEventListener(
-      "click",
-      () => this._batchAddLitNotes(root)
-    );
-    (_d = root.querySelector(".pb-batch-collect")) == null ? void 0 : _d.addEventListener("click", () => {
-      var _a2;
-      const q = (((_a2 = root.querySelector(".pb-search-input")) == null ? void 0 : _a2.value) || "").trim();
-      const n = this.plugin._collectRelatedRefs(this._rows || [], q ? `相关：${q.slice(0, 24)}` : "相关文献");
-      new obsidian11.Notice(n ? `已将 ${n} 篇相关文献加入文献收集` : "没有可加入的结果");
-    });
-    root.querySelector(".pb-btn-regen").addEventListener("click", () => {
-      this._generationSeq = (this._generationSeq || 0) + 1;
-      this._generating = false;
-      const insertBtn = root.querySelector(".pb-btn-insert");
-      if (insertBtn) insertBtn.disabled = false;
-      this._lastGeneratedDraft = null;
-      root.querySelector(".pb-preview").style.display = "none";
-    });
-    root.querySelector(".pb-btn-insert").addEventListener("click", () => {
-      var _a2;
-      if (this._generating) {
-        new obsidian11.Notice("正在关联来源，请稍候");
-        return;
-      }
-      const previewText = (_a2 = root.querySelector(".pb-preview-bd").innerText) == null ? void 0 : _a2.trim();
-      if (!previewText) return;
-      const btn = root.querySelector(".pb-btn-insert");
-      if (btn.classList.contains("pb-btn-insert--picking")) return;
-      navigator.clipboard.writeText(previewText).catch(() => {
-      });
-      btn.textContent = "请点击文档中的插入位置…";
-      btn.classList.add("pb-btn-insert--picking");
-      const cleanup = () => {
-        btn.textContent = this._lastGeneratedDraft ? "插入正文并关联来源" : "插入 AI 草稿（未关联来源）";
-        btn.classList.remove("pb-btn-insert--picking");
-        document.removeEventListener("mousedown", onPickInsert, true);
-        document.removeEventListener("keydown", onEscCancel, true);
-      };
-      const onPickInsert = async (e) => {
-        var _a3, _b2, _c2, _d2, _e, _f;
-        if (root.contains(e.target)) return;
-        const edView = (_b2 = (_a3 = cmView) == null ? void 0 : _a3.EditorView) == null ? void 0 : _b2.findFromDOM(e.target);
-        if (!edView) {
-          cleanup();
-          return;
-        }
-        e.preventDefault();
-        e.stopPropagation();
-        const pos = (_c2 = edView.posAtCoords({ x: e.clientX, y: e.clientY }, false)) != null ? _c2 : edView.state.doc.length;
-        let text = previewText;
-        let bundle = null;
-        if (this._lastGeneratedDraft) {
-          try {
-            const targetLeaf = this.app.workspace.getLeavesOfType("markdown").find((leaf) => {
-              var _a4, _b3;
-              return (_b3 = (_a4 = leaf.containerEl) == null ? void 0 : _a4.contains) == null ? void 0 : _b3.call(_a4, e.target);
-            });
-            const targetPath = ((_e = (_d2 = targetLeaf == null ? void 0 : targetLeaf.view) == null ? void 0 : _d2.file) == null ? void 0 : _e.path) || ((_f = this.app.workspace.getActiveFile()) == null ? void 0 : _f.path) || "";
-            bundle = this.plugin._buildEvidenceBackedDraft(this._lastGeneratedDraft, targetPath);
-            text = bundle.text;
-          } catch (err) {
-            this._lastGeneratedDraft = null;
-            new obsidian11.Notice(`来源关联不完整，将插入为未关联来源的 AI 草稿：${err.message}`, 8e3);
-          }
-        }
-        edView.dispatch({
-          changes: { from: pos, insert: text },
-          selection: { anchor: pos + text.length }
-        });
-        try {
-          if (bundle) await this.plugin._commitEvidenceBackedDraft(bundle);
-        } catch (err) {
-          try {
-            if (edView.state.doc.sliceString(pos, pos + text.length) === text) {
-              edView.dispatch({ changes: { from: pos, to: pos + text.length, insert: "" } });
-            }
-          } catch (_) {
-          }
-          cleanup();
-          new obsidian11.Notice(`来源记录保存失败，已撤销插入：${err.message}`, 9e3);
-          return;
-        }
-        edView.focus();
-        cleanup();
-        new obsidian11.Notice(bundle ? `已插入 ${bundle.claims.length} 条论断并关联来源` : "已插入 AI 草稿（未关联来源）");
-      };
-      const onEscCancel = (e) => {
-        if (e.key === "Escape") cleanup();
-      };
-      document.addEventListener("mousedown", onPickInsert, true);
-      document.addEventListener("keydown", onEscCancel, true);
-      this.register(() => {
-        document.removeEventListener("mousedown", onPickInsert, true);
-        document.removeEventListener("keydown", onEscCancel, true);
-      });
-    });
   }
   _refreshOrigDisclosures(scope) {
     if (!(scope == null ? void 0 : scope.querySelectorAll)) return;
@@ -5553,10 +5669,12 @@ var PaperSearchView = class extends obsidian11.ItemView {
     scope.querySelectorAll(".pb-result-card").forEach((card) => {
       card.setAttribute("draggable", "true");
       card.addEventListener("dragstart", (e) => {
+        var _a;
         const id = card.dataset.id;
         const row = this._rows.find((r) => r.id === id);
         if (!row) return;
-        const tm = TAG_META[row.tag];
+        const relKey = row.relation || "unclassified";
+        const rm = (_a = RELATION_META[relKey]) != null ? _a : RELATION_META.unclassified;
         const checkedIds = [...root.querySelectorAll(".pb-cb:checked")].map((cb) => cb.dataset.id);
         const isMultiDrag = checkedIds.includes(row.id) && checkedIds.length >= 2;
         const dragRows = isMultiDrag ? checkedIds.map((cid) => this._rows.find((r) => r.id === cid)).filter(Boolean) : [row];
@@ -5564,36 +5682,44 @@ var PaperSearchView = class extends obsidian11.ItemView {
         ghost.className = "pb-drag-ghost";
         if (isMultiDrag) {
           ghost.innerHTML = `
-            <span class="pb-drag-ghost-tag pb-rt-${row.tag}">${tm.label} ×${dragRows.length}</span>
-            <span class="pb-drag-ghost-title">已选 ${dragRows.length} 条</span>`;
+            <span class="pb-drag-ghost-tag ${pbEscapeHtml(rm.cls)}">${pbEscapeHtml(rm.label)} ×${pbEscapeHtml(dragRows.length)}</span>
+            <span class="pb-drag-ghost-title">已选 ${pbEscapeHtml(dragRows.length)} 条</span>`;
         } else {
           ghost.innerHTML = `
-            <span class="pb-drag-ghost-tag pb-rt-${row.tag}">${tm.label}</span>
-            <span class="pb-drag-ghost-title">${row.title}</span>
-            <span class="pb-drag-ghost-venue">${row.venue}</span>`;
+            <span class="pb-drag-ghost-tag ${pbEscapeHtml(rm.cls)}">${pbEscapeHtml(rm.label)}</span>
+            <span class="pb-drag-ghost-title">${pbEscapeHtml(row.title)}</span>
+            <span class="pb-drag-ghost-venue">${pbEscapeHtml(row.venue)}</span>`;
         }
         document.body.appendChild(ghost);
         e.dataTransfer.setDragImage(ghost, 20, 16);
         setTimeout(() => ghost.remove(), 0);
         e.dataTransfer.effectAllowed = "copy";
-        const payload = dragRows.map((r) => ({
-          id: r.id,
-          tag: r.tag,
-          title: r.title,
-          venue: r.venue,
-          cites: r.cites,
-          origFull: r.origFull,
-          reasonShort: r.reasonShort,
-          // ── source 锚（引注对象用）──
-          paperTitle: r.paperTitle,
-          page: r.page,
-          _docId: r._docId,
-          _sourceFile: r._sourceFile
-        }));
+        const payload = dragRows.map((r) => {
+          var _a2, _b;
+          return {
+            // relation = 规范化后的关系键；relation_type = 后端原文，
+            // main.ts 的 evidence_role 用它（别再传旧的 tag 角色标签）
+            id: r.id,
+            relation: r.relation,
+            relation_type: r.relation_type,
+            origFull: r.origFull,
+            // ── source 锚（引注对象用）──
+            paperTitle: r.paperTitle,
+            page: r.page,
+            _docId: r._docId,
+            _sourceFile: r._sourceFile,
+            // 库名要跟着走：用户切库之后再拖此前留在屏幕上的结果，
+            // 落地端兜底到 lastLibrary 就会把出处绑到错误的库上。
+            _library: ((_a2 = this._lastSearchParams) == null ? void 0 : _a2.library) || ((_b = root.querySelector(".pb-lib-widget")) == null ? void 0 : _b.dataset.lib) || this.plugin.state.lastLibrary || "default"
+          };
+        });
         e.dataTransfer.setData("application/paperbell-cards", JSON.stringify(payload));
         card.classList.add("pb-dragging");
       });
-      card.addEventListener("dragend", () => card.classList.remove("pb-dragging"));
+      card.addEventListener("dragend", () => {
+        card.classList.remove("pb-dragging");
+        this._scheduleStateRefresh(card);
+      });
     });
     scope.querySelectorAll(".pb-orig-wrap").forEach((wrap) => {
       const card = wrap.closest(".pb-result-card");
@@ -5690,26 +5816,11 @@ var PaperSearchView = class extends obsidian11.ItemView {
       });
       popup.addEventListener("click", (e) => e.stopPropagation());
     });
-    scope.querySelectorAll(".pb-rtag, .pb-rtag-tbl").forEach((el) => {
-      let timer;
-      el.addEventListener("mousedown", () => {
-        timer = setTimeout(() => this._openTagEditor(root, el), 600);
-      });
-      el.addEventListener("mouseup", () => clearTimeout(timer));
-      el.addEventListener("mouseleave", () => clearTimeout(timer));
-    });
-    scope.querySelectorAll(".pb-focus-btn").forEach((btn) => {
+    scope.querySelectorAll(".pb-note-btn").forEach((btn) => {
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         const row = this._rows.find((r) => r.id === btn.dataset.id);
-        if (row) this._showFocusScreen(root, row);
-      });
-    });
-    scope.querySelectorAll(".pb-collect-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const row = this._rows.find((r) => r.id === btn.dataset.id);
-        if (row) this._collectForReading(root, row);
+        if (row) this._noteChunk(root, row, btn.closest(".pb-result-card"));
       });
     });
     scope.querySelectorAll(".pb-fb-btn").forEach((btn) => {
@@ -5721,7 +5832,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
         const row = this._rows.find((r) => r.id === id);
         if (!row) return;
         if (!this._requestId) {
-          new obsidian11.Notice("本次检索无反馈标识，无法记录");
+          new obsidian10.Notice("本次检索无反馈标识，无法记录");
           return;
         }
         const value = btn.dataset.v;
@@ -5740,34 +5851,174 @@ var PaperSearchView = class extends obsidian11.ItemView {
             chunk_score: (_f = row.docScore) != null ? _f : null,
             doc_score: (_g = row.docScore) != null ? _g : null
           });
-          new obsidian11.Notice(value === "upvote" ? "已标记为相关，谢谢反馈" : "已标记为不相关，谢谢反馈");
+          new obsidian10.Notice(value === "upvote" ? "已标记为相关，谢谢反馈" : "已标记为不相关，谢谢反馈");
         } catch (err) {
           wrap.querySelectorAll(".pb-fb-btn").forEach((b) => b.classList.remove("active"));
-          new obsidian11.Notice(`反馈提交失败：${err.message}`);
+          new obsidian10.Notice(`反馈提交失败：${err.message}`);
         }
       });
     });
+    this._paintCardStates(scope);
   }
-  // ── 网格视图：按标签分组 HTML（含顶部控制栏）────────
+  // ── 片段状态回显（已记 / 已引 ×N）──────────────────────
+  //
+  // 为什么不靠 Notice：Notice 三秒就没了，用户回头看这一屏，认不出哪几条自己已经
+  // 处理过。状态必须落在卡片上。
+  //
+  // row.origFull / origShort 在 _chunkToRow 已做过 &<> 转义（给 innerHTML 用），
+  // 而 annotation.text / citation.source_quote 存的是 PDF 原文。比对前先还原。
+  _chunkPlainText(row) {
+    return String((row == null ? void 0 : row.origFull) || (row == null ? void 0 : row.origShort) || "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  }
+  // 去掉全部空白再比——换行位置在抽取管线里不稳定，不能当作差异
+  _squash(s) {
+    return String(s != null ? s : "").replace(/\s+/g, "");
+  }
+  // 这个片段在片段库里对应的标注（同文档 + 同页 + 原文一致）
+  _annoForRow(row) {
+    var _a, _b;
+    const items = Object.values((_b = (_a = this.plugin.annotationIndex) == null ? void 0 : _a.items) != null ? _b : {});
+    if (!items.length) return null;
+    const docId = row._docId || "";
+    const stem = this._annoDocKey(row);
+    const page = parseInt(row.page, 10);
+    const want = this._squash(this._chunkPlainText(row));
+    if (!want) return null;
+    return items.find((a) => {
+      const sameDoc = docId && a.docId === docId || stem && a.doc === stem;
+      if (!sameDoc) return false;
+      if (!Number.isNaN(page) && parseInt(a.page, 10) !== page) return false;
+      return this._squash(a.text) === want;
+    }) || null;
+  }
+  // 这个片段被引用过几次：优先 chunk_id，旧引用没有 chunk_id 时退回「同文献 + 同原文」
+  _citeCountForRow(row) {
+    var _a, _b;
+    const items = Object.values((_b = (_a = this.plugin.citationIndex) == null ? void 0 : _a.items) != null ? _b : {});
+    if (!items.length) return 0;
+    const docId = row._docId || "";
+    const want = this._squash(this._chunkPlainText(row));
+    return items.filter((c) => {
+      if (c == null ? void 0 : c.source_chunk_id) return c.source_chunk_id === row.id;
+      if (!want) return false;
+      return ((c == null ? void 0 : c.source_document_id) || "") === docId && this._squash(c == null ? void 0 : c.source_quote) === want;
+    }).length;
+  }
+  // 标注的文档键：与 main.ts 的 PDF 渲染器同约定（basename → 去 .pdf → 清洗），
+  // 这样「在检索结果里记的」和「在 PDF 里划的」会归到同一篇文献下。
+  _annoDocKey(row) {
+    const base = String(row._sourcePath || row._sourceFile || "").split(/[\\/]/).pop() || "";
+    return base.replace(/\.pdf$/i, "").replace(/[/\\:*?"<>|]/g, "_").trim() || this._litNoteStem(row);
+  }
+  // 一行小字：已记 · 已引 ×2（都没有就空着，不占位）
+  _cardStateText(row) {
+    const parts = [];
+    if (this._annoForRow(row)) parts.push("已记");
+    const n = this._citeCountForRow(row);
+    if (n > 0) parts.push(n > 1 ? `已引 ×${n}` : "已引");
+    return parts.join(" · ");
+  }
+  // 单张卡片就地刷新（点「记」之后只动这一处，不重渲染整张卡）
+  _paintCardState(card, row) {
+    const el = card == null ? void 0 : card.querySelector(".pb-card-state");
+    if (!el) return;
+    el.textContent = this._cardStateText(row);
+  }
+  _paintCardStates(scope) {
+    if (!(scope == null ? void 0 : scope.querySelectorAll)) return;
+    scope.querySelectorAll(".pb-result-card").forEach((card) => {
+      var _a;
+      const row = ((_a = this._rows) != null ? _a : []).find((r) => r.id === card.dataset.id);
+      if (row) this._paintCardState(card, row);
+    });
+  }
+  // 引用是在别处（笔记里的 drop 处理）写进 citationIndex 的，这个视图收不到通知。
+  // 拖完之后补刷两次：1.2 秒接住直接插入，5 秒接住 AI 综合。
+  _scheduleStateRefresh(card) {
+    var _a;
+    if (!card) return;
+    ((_a = card._pbStateTimers) != null ? _a : []).forEach(clearTimeout);
+    const run = () => {
+      var _a2;
+      if (!card.isConnected) return;
+      const row = ((_a2 = this._rows) != null ? _a2 : []).find((r) => r.id === card.dataset.id);
+      if (row) this._paintCardState(card, row);
+    };
+    card._pbStateTimers = [1200, 5e3].map((ms) => setTimeout(run, ms));
+  }
+  // 外部（写入引用 / 删除标注之后）可以调这个把整屏状态刷一遍
+  refreshCardStates() {
+    var _a, _b;
+    const root = (_b = (_a = this.containerEl) == null ? void 0 : _a.children) == null ? void 0 : _b[1];
+    this._paintCardStates((root == null ? void 0 : root.querySelector(".pb-results")) || root);
+  }
+  // ── 「记」：把这个片段写进片段库 ───────────────────────
+  // 颜色取默认角色（_annoRoles()[0]）；用户之后可在片段库里改成别的角色。
+  _noteChunk(root, row, card) {
+    var _a, _b, _c, _d, _e;
+    if (this._annoForRow(row)) {
+      new obsidian10.Notice("这个片段已经在片段库里");
+      return;
+    }
+    const text = this._chunkPlainText(row);
+    if (!text) {
+      new obsidian10.Notice("该结果没有可记录的原文");
+      return;
+    }
+    const library = ((_a = root.querySelector(".pb-lib-widget")) == null ? void 0 : _a.dataset.lib) || ((_b = this._lastSearchParams) == null ? void 0 : _b.library) || "";
+    const role = this.plugin._annoRoles()[0] || {};
+    const annoId = this.plugin._newAnnoId();
+    let paperId = "";
+    try {
+      paperId = ((_c = this.plugin._resolvePaperIdentity({ row, library, meta: row._meta })) == null ? void 0 : _c.paper_id) || "";
+    } catch (_) {
+    }
+    try {
+      this.plugin._writeAnno({
+        id: annoId,
+        evidence_id: `annotation:${annoId}`,
+        ...paperId ? { paper_id: paperId } : {},
+        doc: this._annoDocKey(row),
+        page: parseInt(row.page, 10) || 1,
+        rects: [],
+        // 检索结果没有页面坐标，回跳靠 page + 原文
+        color: role.color,
+        text,
+        role_id: role.id || "unspecified",
+        role_label_snapshot: role.label || "未分类",
+        created_at: Date.now(),
+        // 回跳用：让片段库里的「定位」能打开这篇 PDF 的对应页
+        lib: library,
+        docId: row._docId || "",
+        src: row._sourceFile || ""
+      });
+    } catch (err) {
+      new obsidian10.Notice(`记入片段库失败：${(err == null ? void 0 : err.message) || err}`);
+      return;
+    }
+    (_e = (_d = this.plugin)._refreshCollections) == null ? void 0 : _e.call(_d);
+    this._paintCardState(card, row);
+  }
+  // ── 网格视图：按关系判定分组 HTML（含顶部控制栏）────────
   _gridGroupedHTML() {
-    const ORDER = ["support", "method", "contrast", "bg", "data", "theory"];
     const groups = {};
     this._rows.forEach((r) => {
-      if (!groups[r.tag]) groups[r.tag] = [];
-      groups[r.tag].push(r);
+      const key = r.relation || "unclassified";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
     });
-    const active = ORDER.filter((t) => groups[t]);
-    const navPills = active.map((tag) => {
-      const tm = TAG_META[tag];
-      return `<span class="pb-grid-nav-pill pb-rt-${tag}" data-group="${tag}">${tm.label}&nbsp;<em>${groups[tag].length}</em></span>`;
+    const active = RELATION_KEYS.filter((k) => k !== "unclassified" && groups[k]).concat(groups.unclassified ? ["unclassified"] : []);
+    const navPills = active.map((key) => {
+      const rm = RELATION_META[key];
+      return `<span class="pb-grid-nav-pill ${pbEscapeHtml(rm.cls)}" data-group="${pbEscapeHtml(relSlug(key))}">${pbEscapeHtml(rm.label)}&nbsp;<em>${pbEscapeHtml(groups[key].length)}</em></span>`;
     }).join("");
     const groupsHTML = active.map((tag) => {
-      const tm = TAG_META[tag];
+      const rm = RELATION_META[tag];
       return `
-<div class="pb-grid-group" id="pb-group-${tag}" data-group="${tag}">
-  <div class="pb-grid-group-hd pb-rt-${tag}">
-    <span class="pb-grid-group-label">${tm.label}</span>
-    <span class="pb-grid-group-count">${groups[tag].length} 条</span>
+<div class="pb-grid-group" id="pb-group-${pbEscapeHtml(relSlug(tag))}" data-group="${pbEscapeHtml(relSlug(tag))}" data-relation="${pbEscapeHtml(tag)}">
+  <div class="pb-grid-group-hd ${pbEscapeHtml(rm.cls)}" title="${pbEscapeHtml(rm.hint)}">
+    <span class="pb-grid-group-label">${pbEscapeHtml(rm.label)}</span>
+    <span class="pb-grid-group-count">${pbEscapeHtml(groups[tag].length)} 条</span>
     <span class="pb-grid-group-chev">${CHEV}</span>
   </div>
   <div class="pb-grid-group-body">${groups[tag].map(rowHTML).join("")}</div>
@@ -5820,20 +6071,24 @@ var PaperSearchView = class extends obsidian11.ItemView {
     btn.dataset.expanded = allCollapsed ? "0" : "1";
     btn.textContent = allCollapsed ? "全部展开" : "全部折叠";
   }
-  // ── 综合筛选（来源 + 标签）────────────────────────────
+  // ── 按关系判定筛选 ────────────────────────────────────
   _applyFilters(root) {
     var _a, _b;
-    const tag = (_b = (_a = root.querySelector(".pb-fc.active")) == null ? void 0 : _a.dataset.tag) != null ? _b : "all";
+    const rel = (_b = (_a = root.querySelector(".pb-fc.active")) == null ? void 0 : _a.dataset.relation) != null ? _b : "all";
     root.querySelectorAll(".pb-result-card").forEach((card) => {
-      const matchTag = tag === "all" || card.dataset.tag === tag;
-      card.style.display = matchTag ? "" : "none";
+      const match = rel === "all" || card.dataset.relation === rel;
+      card.style.display = match ? "" : "none";
     });
   }
   // ── 排序 ──────────────────────────────────────────────
   _sortResults(root, key, dir = "desc") {
     const container = root.querySelector(".pb-results");
     const cards = [...container.querySelectorAll(".pb-result-card")];
-    const TAG_ORDER = ["support", "method", "theory", "bg", "data", "contrast", "unclassified"];
+    const relRank = (card) => {
+      var _a;
+      const i = RELATION_KEYS.indexOf((_a = card.dataset.relation) != null ? _a : "");
+      return i <= 0 ? RELATION_KEYS.length : i;
+    };
     cards.sort((a, b) => {
       var _a, _b, _c, _d, _e, _f;
       let diff = 0;
@@ -5841,86 +6096,86 @@ var PaperSearchView = class extends obsidian11.ItemView {
         const sa = parseFloat((_b = (_a = a.querySelector(".pb-sim")) == null ? void 0 : _a.textContent) != null ? _b : "0");
         const sb = parseFloat((_d = (_c = b.querySelector(".pb-sim")) == null ? void 0 : _c.textContent) != null ? _d : "0");
         diff = sb - sa;
-      } else if (key === "tag") {
-        diff = TAG_ORDER.indexOf(a.dataset.tag) - TAG_ORDER.indexOf(b.dataset.tag);
+      } else if (key === "relation") {
+        diff = relRank(a) - relRank(b);
       } else if (key === "doc") {
         diff = parseFloat((_e = b.dataset.doc) != null ? _e : "0") - parseFloat((_f = a.dataset.doc) != null ? _f : "0");
-      } else if (key === "rel") {
-        const REL_ORDER = ["同一问题", "同一机制", "同一对象·场景", "同一方法", "对照·补充", "背景·间接"];
-        diff = REL_ORDER.indexOf(a.dataset.rel) - REL_ORDER.indexOf(b.dataset.rel);
       }
       return dir === "asc" ? -diff : diff;
     });
     cards.forEach((c) => container.appendChild(c));
   }
-  // ── 长按标签弹出编辑器 ───────────────────────────────
-  _openTagEditor(root, tagEl) {
-    root.querySelectorAll(".pb-tag-editor").forEach((e) => e.remove());
-    const card = tagEl.closest(".pb-result-card");
-    const currentTag = tagEl.dataset.tag;
-    const editor = document.createElement("div");
-    editor.className = "pb-tag-editor";
-    editor.innerHTML = `
-      <div class="pb-tag-opts">
-        ${TAG_KEYS.map((k) => `
-          <span class="pb-tag-opt pb-rt-${k} ${k === currentTag ? "chosen" : ""}"
-                data-val="${k}">${TAG_META[k].label}</span>
-        `).join("")}
-      </div>
-      <textarea class="pb-tag-reason" placeholder="（选填）说明修改原因，帮助优化 RAG 排序…"></textarea>
-      <div class="pb-tag-btns">
-        <button class="pb-tag-cancel">取消</button>
-        <button class="pb-tag-confirm">确认反馈</button>
-      </div>`;
-    card.appendChild(editor);
-    editor.querySelectorAll(".pb-tag-opt").forEach((opt) => {
-      opt.addEventListener("click", () => {
-        editor.querySelectorAll(".pb-tag-opt").forEach((o) => o.classList.remove("chosen"));
-        opt.classList.add("chosen");
-      });
-    });
-    editor.querySelector(".pb-tag-cancel").addEventListener("click", () => editor.remove());
-    editor.querySelector(".pb-tag-confirm").addEventListener("click", () => {
-      const chosen = editor.querySelector(".pb-tag-opt.chosen");
-      if (!chosen) return;
-      const val = chosen.dataset.val;
-      const tm = TAG_META[val];
-      card.querySelectorAll(".pb-rtag, .pb-rtag-tbl").forEach((t) => {
-        TAG_KEYS.forEach((k) => t.classList.remove(`pb-rt-${k}`));
-        t.classList.add(tm.cls);
-        t.textContent = tm.label;
-        t.dataset.tag = val;
-      });
-      card.dataset.tag = val;
-      editor.remove();
-      new obsidian11.Notice(`标签已更新为「${tm.label}」`);
-    });
-  }
   // ── 勾选同步 ─────────────────────────────────────────
   _updateSelection(root) {
     const checked = [...root.querySelectorAll(".pb-cb:checked")];
     const n = checked.length;
-    root.querySelector(".pb-footer-sel").textContent = n > 0 ? ` · 已选 ${n} 条` : "";
-    const ta = root.querySelector(".pb-inst");
-    ta.disabled = n === 0;
-    ta.placeholder = n === 0 ? "先勾选文献，输入指令或 / 选模板…" : "描述写作目标，例如：整合为综述段落，150字…";
+    const selEl = root.querySelector(".pb-footer-sel");
+    if (selEl) selEl.textContent = n > 0 ? ` · 已选 ${n} 条` : "";
+    const aggBtn = root.querySelector(".pb-footer-agg");
+    if (aggBtn) aggBtn.style.display = n >= 2 ? "" : "none";
+    const saveBtn = root.querySelector(".pb-footer-save");
+    if (saveBtn) saveBtn.style.display = n >= 1 ? "" : "none";
     root.querySelectorAll(".pb-result-card").forEach((card) => {
       const cb = card.querySelector(".pb-cb");
       card.classList.toggle("pb-card-selected", !!(cb == null ? void 0 : cb.checked));
     });
-    this._checkGen(root);
   }
-  _checkGen(root) {
-    const n = root.querySelectorAll(".pb-cb:checked").length;
-    const inst = root.querySelector(".pb-inst");
-    const v = inst.value.trim();
-    const btn = root.querySelector(".pb-btn-gen");
-    const ok = n > 0 && v.length > 0;
-    btn.disabled = !ok;
-    btn.className = "pb-btn-gen " + (ok ? "on" : "off");
-    const batch = root.querySelector(".pb-section.pb-batch");
-    if (batch) batch.style.display = n > 0 ? "" : "none";
-    inst.disabled = n === 0;
+  // 当前活动 Markdown 视图的 CM6 EditorView + 光标位置
+  _activeMarkdownEditor() {
+    var _a, _b, _c, _d, _e, _f, _g;
+    const md = this.app.workspace.getActiveViewOfType(obsidian10.MarkdownView);
+    if (!md) return null;
+    const view = ((_a = md.editor) == null ? void 0 : _a.cm) || ((_d = (_c = (_b = cmView) == null ? void 0 : _b.EditorView) == null ? void 0 : _c.findFromDOM) == null ? void 0 : _d.call(_c, md.contentEl));
+    if (!(view == null ? void 0 : view.state)) return null;
+    const pos = (_g = (_f = (_e = view.state.selection) == null ? void 0 : _e.main) == null ? void 0 : _f.head) != null ? _g : view.state.doc.length;
+    return { view, pos: Math.min(pos, view.state.doc.length) };
+  }
+  // 勾选的片段 → AI 综述句 + 各来源锚定块，插入当前笔记光标处。
+  // 不做「点选插入位置」那套交互：目标就是当前打开的这篇正文。
+  async _aggregateSelectedToSentence(root) {
+    const ids = [...root.querySelectorAll(".pb-cb:checked")].map((cb) => cb.dataset.id);
+    const rows = ids.map((id) => {
+      var _a;
+      return ((_a = this._rows) != null ? _a : []).find((r) => r.id === id);
+    }).filter(Boolean);
+    if (rows.length < 2) {
+      new obsidian10.Notice("请先勾选至少 2 条检索结果");
+      return;
+    }
+    const target = this._activeMarkdownEditor();
+    if (!target) {
+      new obsidian10.Notice("请先打开一篇笔记");
+      return;
+    }
+    const cards = rows.map((r) => ({
+      id: r.id,
+      relation: r.relation,
+      relation_type: r.relation_type,
+      title: r.title,
+      venue: r.venue,
+      origFull: r.origFull,
+      reasonShort: r.reasonShort,
+      paperTitle: r.paperTitle,
+      page: r.page,
+      _docId: r._docId,
+      _sourceFile: r._sourceFile
+    }));
+    const btn = root.querySelector(".pb-footer-agg");
+    const restore = btn ? btn.textContent : "";
+    if (btn) {
+      btn.textContent = "综合中…";
+      btn.style.pointerEvents = "none";
+    }
+    try {
+      await this.plugin._aggregateCitations(target.view, target.pos, cards);
+    } catch (err) {
+      new obsidian10.Notice(`综合失败：${(err == null ? void 0 : err.message) || err}`);
+    } finally {
+      if (btn) {
+        btn.textContent = restore;
+        btn.style.pointerEvents = "";
+      }
+    }
   }
   // ── 检索历史：渲染 ────────────────────────────────────
   _renderHistoryState(root) {
@@ -5975,9 +6230,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
     var _a, _b, _c;
     const container = root.querySelector(".pb-results");
     root.querySelector(".pb-search-input").value = h.q;
-    const intentButton = h.intent && root.querySelector(`[data-intent="${h.intent}"]`);
     const presetButton = h.preset && root.querySelector(`[data-preset="${h.preset}"]`);
-    intentButton == null ? void 0 : intentButton.click();
     presetButton == null ? void 0 : presetButton.click();
     if (h.library) {
       const libWidget = root.querySelector(".pb-lib-widget");
@@ -5985,7 +6238,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
         libWidget.dataset.lib = h.library;
         const label = libWidget.querySelector(".pb-lib-cur");
         if (label) label.textContent = h.library;
-        this.plugin.settings.lastLibrary = h.library;
+        this.plugin.state.lastLibrary = h.library;
         this._warmup(h.library);
       }
     }
@@ -6000,6 +6253,13 @@ var PaperSearchView = class extends obsidian11.ItemView {
     this._hasSearched = true;
     container.classList.remove("pb-results-idle");
     root.querySelector(".pb-footer").style.display = "";
+    this._setSearchProgress(
+      root,
+      "done",
+      `检索完成 · ${this._rows.length} 条结果`,
+      h.elapsedMs || ((this._lastResult || {}).timings_ms || {}).total_ms || 0,
+      this._searchTimingDetail(this._lastResult || {})
+    );
     const breadcrumb = `
       <div class="pb-history-nav">
         <div class="pb-history-back" role="button">
@@ -6017,27 +6277,18 @@ var PaperSearchView = class extends obsidian11.ItemView {
     if (view === "grid") this._bindGridGroupToggles(container);
     this._bindCardEvents(container, root);
     this._applyFilters(root);
+    this._updateSelection(root);
     const cnt = root.querySelector(".pb-footer strong");
     if (cnt) cnt.textContent = String(this._rows.length);
-    this._setSearchProgress(
-      root,
-      "done",
-      `检索完成 · ${this._rows.length} 条结果`,
-      h.elapsedMs || ((this._lastResult || {}).timings_ms || {}).total_ms || 0,
-      this._searchTimingDetail(this._lastResult || {})
-    );
     this._applyAnswerAndRewrite(root, this._lastResult || {}, h.q);
     container.querySelector(".pb-history-back").addEventListener("click", () => {
-      var _a2, _b2;
+      var _a2;
       root.querySelector(".pb-search-input").value = "";
       container.classList.add("pb-results-idle");
       this._hasSearched = false;
       this._rows = [];
       root.querySelector(".pb-footer").style.display = "none";
-      (_a2 = root.querySelector(".pb-answer-panel")) == null ? void 0 : _a2.style.setProperty("display", "none");
-      (_b2 = root.querySelector(".pb-qrewrite")) == null ? void 0 : _b2.style.setProperty("display", "none");
-      const progress = root.querySelector(".pb-search-progress");
-      if (progress) progress.style.display = "none";
+      (_a2 = root.querySelector(".pb-qrewrite")) == null ? void 0 : _a2.style.setProperty("display", "none");
       this._renderHistoryState(root);
     });
   }
@@ -6050,23 +6301,8 @@ var PaperSearchView = class extends obsidian11.ItemView {
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
         <p>输入研究问题或关键词后点击「检索」</p>
-        <p>或在文档中选中文字直接推送</p>
+        <p>或在文档中选中文字，右键以选中内容检索</p>
       </div>`;
-  }
-  // 后端 relation_type → 前端标签分类
-  _relationToTag(rel) {
-    const MAP = {
-      "同一问题": "support",
-      "同一机制": "theory",
-      "同一对象/场景": "data",
-      "同一对象·场景": "data",
-      "对照/补充": "contrast",
-      "对照·补充": "contrast",
-      "同一方法": "method",
-      "背景/间接": "bg",
-      "背景·间接": "bg"
-    };
-    return MAP[rel] || "unclassified";
   }
   // RetrievedChunk → 卡片 row 对象
   _chunkToRow(c, idx) {
@@ -6081,11 +6317,11 @@ var PaperSearchView = class extends obsidian11.ItemView {
     const ptxt = esc(c.parent_text || c.text || "");
     return {
       id: c.chunk_id || `c${idx}`,
-      tag: this._relationToTag(rel),
+      // relation = 规范化后的关系键（RELATION_META 的键）；relation_type = 后端原文。
+      // 不再映射成「核心支撑 / 理论框架」那套角色标签：那是用户对论证的判断，插件不猜。
+      relation: pbNormalizeRelation(rel),
       relation_type: rel,
       // 不再写死 srcType / src 假标签（来源信息没有就不显示）
-      cites: void 0,
-      // 后端无引用数
       docScore: Number(score) || 0,
       // ★ 论文标题：用文件名 stem（如 Liu_Yang_2012_Water-Crisis）
       paperTitle: esc(stem),
@@ -6145,17 +6381,15 @@ var PaperSearchView = class extends obsidian11.ItemView {
   //   - 被引数 + ★ 高影响标记
   //   - 同步 this._rows 里的对应字段，便于后续 lit note / 拖拽用
   _patchCardMeta(root, docId, entry) {
-    var _a2, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+    var _a2, _b, _c, _d, _e, _f, _g, _h, _i;
     const cards = root.querySelectorAll(
       `.pb-result-card[data-doc-id=${CSS.escape(docId)}]`
     );
     if (!cards.length) return;
     const title = ((_a2 = entry.csl) == null ? void 0 : _a2.title) || "";
-    const cites = (_b = entry.s2) == null ? void 0 : _b.citationCount;
-    const star = ((_d = (_c = entry.s2) == null ? void 0 : _c.influentialCitationCount) != null ? _d : 0) >= 50;
-    const tldr = ((_e = entry.s2) == null ? void 0 : _e.tldr) || "";
-    const _a = (_f = entry.csl) == null ? void 0 : _f.author;
-    const _yr = ((_j = (_i = (_h = (_g = entry.csl) == null ? void 0 : _g.issued) == null ? void 0 : _h["date-parts"]) == null ? void 0 : _i[0]) == null ? void 0 : _j[0]) || "";
+    const tldr = ((_b = entry.s2) == null ? void 0 : _b.tldr) || "";
+    const _a = (_c = entry.csl) == null ? void 0 : _c.author;
+    const _yr = ((_g = (_f = (_e = (_d = entry.csl) == null ? void 0 : _d.issued) == null ? void 0 : _e["date-parts"]) == null ? void 0 : _f[0]) == null ? void 0 : _g[0]) || "";
     let authorStr = "";
     if (Array.isArray(_a) && _a.length) {
       const f0 = _a[0].family || _a[0].literal || _a[0].given || "";
@@ -6163,7 +6397,16 @@ var PaperSearchView = class extends obsidian11.ItemView {
     } else if (_yr) {
       authorStr = String(_yr);
     }
-    const journal = ((_k = entry.csl) == null ? void 0 : _k["container-title"]) || "";
+    const journal = ((_h = entry.csl) == null ? void 0 : _h["container-title"]) || "";
+    if (title) {
+      const esc = (v) => String(v != null ? v : "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+      for (const r of this._rows || []) {
+        if ((r._docId || "") !== docId) continue;
+        r.paperTitle = esc(title);
+        r.title = esc(title);
+        if (journal) r.journal = esc(journal);
+      }
+    }
     cards.forEach((card) => {
       var _a3, _b2, _c2, _d2, _e2, _f2;
       const titleEl = card.querySelector(".pb-meta-paper");
@@ -6194,20 +6437,6 @@ var PaperSearchView = class extends obsidian11.ItemView {
           }
         }
       }
-      if (cites != null) {
-        const right = card.querySelector(".pb-meta-right");
-        if (right) {
-          let citeChip = right.querySelector(".pb-meta-cites");
-          if (!citeChip) {
-            citeChip = document.createElement("span");
-            citeChip.className = "pb-meta-cites";
-            right.insertBefore(citeChip, right.firstChild);
-          }
-          citeChip.textContent = `被引 ${cites.toLocaleString()}`;
-          if (star) citeChip.classList.add("pb-meta-cites-star");
-          else citeChip.classList.remove("pb-meta-cites-star");
-        }
-      }
       if ((_a3 = this.plugin.settings.bbtBibPath) == null ? void 0 : _a3.trim()) {
         const right = card.querySelector(".pb-meta-right");
         if (right) {
@@ -6233,7 +6462,7 @@ var PaperSearchView = class extends obsidian11.ItemView {
             bibChip.onclick = async (e) => {
               e.stopPropagation();
               await navigator.clipboard.writeText(`[@${m.citekey}]`);
-              new obsidian11.Notice(`已复制 [@${m.citekey}]`);
+              new obsidian10.Notice(`已复制 [@${m.citekey}]`);
             };
           } else {
             bibChip.textContent = "未在 .bib";
@@ -6258,13 +6487,13 @@ var PaperSearchView = class extends obsidian11.ItemView {
         if (!tldrEl) {
           tldrEl = document.createElement("div");
           tldrEl.className = "pb-tldr";
-          const reasonWrap = card.querySelector(".pb-reason-wrap");
-          (_f2 = reasonWrap == null ? void 0 : reasonWrap.parentNode) == null ? void 0 : _f2.insertBefore(tldrEl, reasonWrap);
+          const anchor = card.querySelector(".pb-reason-label") || card.querySelector(".pb-reason-wrap");
+          (_f2 = anchor == null ? void 0 : anchor.parentNode) == null ? void 0 : _f2.insertBefore(tldrEl, anchor);
         }
         tldrEl.textContent = `TL;DR · ${tldr}`;
       }
     });
-    const rows = (_l = this._rows) != null ? _l : [];
+    const rows = (_i = this._rows) != null ? _i : [];
     for (const r of rows) {
       if ((r._docId || "") === docId) {
         if (title) {
@@ -6273,7 +6502,6 @@ var PaperSearchView = class extends obsidian11.ItemView {
         }
         if (authorStr) r.author = authorStr;
         if (journal) r.journal = journal;
-        if (cites != null) r.cites = cites;
         r._meta = entry;
       }
     }
@@ -6292,138 +6520,24 @@ var PaperSearchView = class extends obsidian11.ItemView {
       if (entry) this._patchCardMeta(root, id, entry);
     }
   }
-  // AI 综合回答：credentials 向 PaperBell 请求，PaperSearch 发起 LLM 调用（按句渐显）
-  async _generateAISummaryStream(bd, triggerBtn) {
-    var _a, _b;
-    const s = this.plugin.settings;
-    if (!((_a = this._rows) == null ? void 0 : _a.length)) {
-      bd.empty();
-      bd.createEl("div", { cls: "pb-answer-gen", text: "没有检索结果" });
-      return;
-    }
-    (_b = this._answerAbortCtl) == null ? void 0 : _b.abort();
-    const ctl = this._answerAbortCtl = new AbortController();
-    const stripHtml = (x) => String(x != null ? x : "").replace(/<[^>]+>/g, "");
-    const topN = this._rows.slice(0, 8);
-    const sources = topN.map((r, i) => {
-      const title = r.paperTitle || r.title;
-      const text = stripHtml(r.origFull || r.origShort).slice(0, 400);
-      const bib = this.plugin._matchBib({ source_doc: r._sourceFile, title, _sourceFile: r._sourceFile });
-      const tag = (bib == null ? void 0 : bib.citekey) ? `[@${bib.citekey}]` : `[${i + 1}]`;
-      return `${tag} ${title}
-${text}`;
-    }).join("\n\n");
-    const sys = s.aiAnswerPrompt && s.aiAnswerPrompt.trim() || DEFAULT_AI_ANSWER_PROMPT;
-    const user = `检索主题：${this._lastQuery || ""}
-
-召回文献片段（每条开头方括号是它的引用标号 / citekey）：
-${sources}
-
-请写文献综述式综合回答：`;
-    bd.empty();
-    const status = bd.createEl("div", { cls: "pb-answer-gen pb-answer-gen-loading" });
-    status.textContent = "正在生成…";
-    const stream = bd.createEl("div", { cls: "pb-answer-stream" });
-    try {
-      const full = await this.plugin._requestPaperbellCompletion({
-        system: sys,
-        messages: [{ role: "user", content: user }],
-        temperature: 0.4,
-        maxTokens: 2e3
-      });
-      if (ctl.signal.aborted) return;
-      status.remove();
-      await this._revealText(stream, full, ctl);
-      if (ctl.signal.aborted) return;
-      this._renderAnswerMd(bd, full);
-    } catch (e) {
-      if (ctl.signal.aborted) return;
-      bd.empty();
-      const rb = bd.createEl("div", {
-        cls: "pb-answer-gen",
-        text: `生成失败：${e.message}，点此重试`
-      });
-      rb.setAttribute("role", "button");
-      rb.onclick = () => this._generateAISummaryStream(bd, triggerBtn);
-    }
-  }
-  // 按句/标点切块逐块追加，模拟「逐渐显现」（requestUrl 不能真流式时用）
-  async _revealText(el, text, ctl) {
-    var _a;
-    const chunks = String(text).match(/[^。！？!?\n]+[。！？!?\n]?/g) || [text];
-    let acc = "";
-    for (const c of chunks) {
-      if ((_a = ctl == null ? void 0 : ctl.signal) == null ? void 0 : _a.aborted) return;
-      acc += c;
-      el.textContent = acc;
-      el.scrollTop = el.scrollHeight;
-      await new Promise((r) => setTimeout(r, 55));
-    }
-  }
-  // 把答案文本规整后用 Obsidian Markdown 渲染进 el
-  _renderAnswerMd(el, text) {
-    const md = String(text != null ? text : "").split("\n").map((l) => l.replace(/^[ \t]+/, "")).join("\n").replace(/\n{3,}/g, "\n\n");
-    el.empty();
-    el.style.display = "";
-    try {
-      if (obsidian11.MarkdownRenderer.render) {
-        obsidian11.MarkdownRenderer.render(this.app, md, el, "", this);
-      } else {
-        obsidian11.MarkdownRenderer.renderMarkdown(md, el, "", this);
-      }
-    } catch (_) {
-      el.textContent = md;
-    }
-  }
-  _intentPrefixes() {
-    return {
-      support: "支持证据、理论依据与实证结果：",
-      contrast: "反例、相反结论、边界条件与批评：",
-      method: "研究设计、方法、数据、测量与操作步骤：",
-      definition: "权威定义、理论来源、概念边界与经典出处："
-    };
-  }
-  _parseIntentQuery(value) {
+  // 后端返回的改写检索词里可能还带着历史版本加的意图前缀（老历史记录里也有），
+  // 显示前剥掉，别让用户看见一句自己没写过的话。前缀本身已不再生成。
+  _stripLegacyIntentPrefix(value) {
     const raw = String(value || "").trim();
-    for (const [intent, prefix] of Object.entries(this._intentPrefixes())) {
-      if (raw.startsWith(prefix)) return { query: raw.slice(prefix.length).trim(), intent };
-    }
-    return { query: raw, intent: "" };
+    const LEGACY = [
+      "支持证据、理论依据与实证结果：",
+      "反例、相反结论、边界条件与批评：",
+      "研究设计、方法、数据、测量与操作步骤：",
+      "权威定义、理论来源、概念边界与经典出处："
+    ];
+    for (const p of LEGACY) if (raw.startsWith(p)) return raw.slice(p.length).trim();
+    return raw;
   }
-  // 检索完成后：填充 LLM 综合答案 + 智能改写检索词提示
+  // 检索完成后：智能改写检索词提示
   _applyAnswerAndRewrite(root, result, typedQuery) {
-    const panel = root.querySelector(".pb-answer-panel");
-    if (panel) {
-      if (!this.plugin.settings.enableAISummary) {
-        panel.style.display = "none";
-      } else {
-        const bd = panel.querySelector(".pb-answer-bd");
-        const tg = panel.querySelector(".pb-answer-toggle");
-        const directAns = ((result == null ? void 0 : result.answer) || "").trim();
-        let generated = !!directAns;
-        if (directAns) this._renderAnswerMd(bd, directAns);
-        const expand = () => {
-          bd.style.display = "";
-          tg.textContent = "收起";
-          if (!generated) {
-            generated = true;
-            this._generateAISummaryStream(bd, null);
-          }
-        };
-        const collapse = () => {
-          bd.style.display = "none";
-          tg.textContent = "展开";
-        };
-        tg.onclick = () => {
-          bd.style.display === "none" ? expand() : collapse();
-        };
-        collapse();
-        panel.style.display = "";
-      }
-    }
     const chip = root.querySelector(".pb-qrewrite");
     const rqRaw = ((result == null ? void 0 : result.retrieval_query) || (result == null ? void 0 : result.optimized_query) || "").trim();
-    const rq = this._parseIntentQuery(rqRaw).query;
+    const rq = this._stripLegacyIntentPrefix(rqRaw);
     if (chip) {
       if (rq && rq !== (typedQuery || "").trim()) {
         chip.querySelector(".pb-qrewrite-text").textContent = rq;
@@ -6445,9 +6559,11 @@ ${sources}
     if (this._searchTimer) window.clearInterval(this._searchTimer);
     this._searchTimer = null;
   }
+  // 把后端回传的各环节耗时拼成一行明细。
+  // 只报 ≥0.5ms 的环节——0 毫秒的条目只会稀释真正的耗时大头。
   _searchTimingDetail(source = {}) {
     const timings = source.timings_ms || source.timings || source;
-    const retrievalTimings = source.retrieval_timings_ms || ((source.retrieval_debug || {}).baseline_timings_ms || {});
+    const retrievalTimings = source.retrieval_timings_ms || (source.retrieval_debug || {}).baseline_timings_ms || {};
     const parts = [];
     const add = (label, value) => {
       const ms = Number(value) || 0;
@@ -6470,7 +6586,9 @@ ${sources}
     const elapsedEl = panel.querySelector(".pb-search-elapsed");
     const detailEl = panel.querySelector(".pb-search-progress-detail");
     if (labelEl) labelEl.textContent = label;
-    if (elapsedEl) elapsedEl.textContent = `${state === "running" ? "已用时 " : "总耗时 "}${pbFormatSearchDuration(elapsedMs)}`;
+    if (elapsedEl) {
+      elapsedEl.textContent = `${state === "running" ? "已用时 " : "总耗时 "}${pbFormatSearchDuration(elapsedMs)}`;
+    }
     if (detailEl) {
       detailEl.textContent = detail;
       detailEl.style.display = detail ? "" : "none";
@@ -6478,34 +6596,33 @@ ${sources}
   }
   // ── 检索流程（POST /analyze-stream，NDJSON 流式）────────
   _runSearch(root) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p2;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o;
     if (this._librariesReady === false) {
-      new obsidian11.Notice("正在选择可用文献库，请稍候");
+      new obsidian10.Notice("正在选择可用文献库，请稍候");
       return;
     }
     if (this._hasLibraries === false) {
-      new obsidian11.Notice("还没有可检索的文献库，请先在「文献库管理」中导入 PDF");
+      new obsidian10.Notice("还没有可检索的文献库，请先在「文献」标签页里新建一个");
       return;
     }
     const query = root.querySelector(".pb-search-input").value.trim();
     if (!query) return;
     this._lastQuery = query;
-    const intent = this.plugin.settings.searchIntent || "support";
-    const preset = this.plugin.settings.searchMode || "balanced";
-    const INTENT_PREFIX = this._intentPrefixes();
+    const preset = this._searchPreset || "balanced";
     const library = (_b = (_a = root.querySelector(".pb-lib-widget")) == null ? void 0 : _a.dataset.lib) != null ? _b : "default";
-    this.plugin.settings.lastLibrary = library;
+    this.plugin.state.lastLibrary = library;
     this.plugin.saveSettings();
     this._searchHistory = [
-      { q: query, ts: Date.now(), library, intent, preset },
-      ...((_c = this._searchHistory) != null ? _c : []).filter((h) => !(h.q === query && h.intent === intent && h.library === library))
+      { q: query, ts: Date.now(), library, preset },
+      ...((_c = this._searchHistory) != null ? _c : []).filter((h) => !(h.q === query && h.library === library))
     ].slice(0, 20);
     const container = root.querySelector(".pb-results");
     const _p = (field) => root.querySelector(`[data-field="${field}"]`);
     const searchParams = {
-      text: `${INTENT_PREFIX[intent] || ""}${query}`,
+      // 发用户的原话。此前这里会静默拼上一句意图前缀，而选意图的按钮
+      // 长期不可达——用户既不知道自己的问题被改写过，也关不掉。
+      text: query,
       raw_text: query,
-      intent,
       preset,
       mode_scope: this._searchModeScope || "preset",
       library,
@@ -6516,8 +6633,6 @@ ${sources}
       annotate_chunks: (_m = (_l = root.querySelector('.pb-ai-toggle[data-key="annotate"]')) == null ? void 0 : _l.classList.contains("active")) != null ? _m : false
     };
     this._stopSearchTimer();
-    (_p2 = this._searchAbortCtl) == null ? void 0 : _p2.abort();
-    const ctl = this._searchAbortCtl = new AbortController();
     const searchStartedAt = performance.now();
     let progressLabel = "正在连接本地检索服务…";
     let progressDetail = "";
@@ -6535,8 +6650,7 @@ ${sources}
     };
     refreshProgress();
     this._searchTimer = window.setInterval(refreshProgress, 100);
-    (_n = root.querySelector(".pb-answer-panel")) == null ? void 0 : _n.style.setProperty("display", "none");
-    (_o = root.querySelector(".pb-qrewrite")) == null ? void 0 : _o.style.setProperty("display", "none");
+    (_n = root.querySelector(".pb-qrewrite")) == null ? void 0 : _n.style.setProperty("display", "none");
     container.classList.remove("pb-results-idle");
     container.innerHTML = `
       <div class="pb-search-running">
@@ -6561,6 +6675,7 @@ ${sources}
       }
       this._bindCardEvents(container, root);
       this._applyFilters(root);
+      this._updateSelection(root);
       const cnt = root.querySelector(".pb-footer strong");
       if (cnt) cnt.textContent = String(this._rows.length);
       const hEntry = this._searchHistory.find((h) => h.q === query && h.intent === intent && h.library === library);
@@ -6573,8 +6688,10 @@ ${sources}
     this._lastSearchParams = searchParams;
     const body = this._buildAnalyzeBody(searchParams);
     let gotAny = false;
+    (_o = this._searchAbortCtl) == null ? void 0 : _o.abort();
+    const ctl = this._searchAbortCtl = new AbortController();
     this.plugin.api.streamJson("/analyze-stream", body, (evt) => {
-      var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2;
+      var _a2, _b2, _c2, _d2, _e2, _f2, _g2, _h2, _i2;
       if (ctl.signal.aborted) return;
       const t = evt.type;
       if (t === "progress") {
@@ -6611,25 +6728,27 @@ ${sources}
           if (card) {
             const rs = card.querySelector(".pb-reason-short");
             const rp = card.querySelector(".pb-reason-popup");
-            const rc = card.querySelector(".pb-rel-chip");
             if (rs) rs.innerHTML = merged.reasonShort;
             if (rp) rp.innerHTML = merged.reasonFull;
-            if (rc && merged.relation_type) rc.textContent = merged.relation_type;
-            card.dataset.tag = merged.tag;
+            const relKey = merged.relation || "unclassified";
+            const rm = (_c2 = RELATION_META[relKey]) != null ? _c2 : RELATION_META.unclassified;
+            card.dataset.relation = relKey;
             card.dataset.rel = merged.relation_type || "";
             card.querySelectorAll(".pb-rtag, .pb-rtag-tbl").forEach((tagEl) => {
-              TAG_KEYS.forEach((key) => tagEl.classList.remove(`pb-rt-${key}`));
-              tagEl.classList.add(TAG_META[merged.tag].cls);
-              tagEl.dataset.tag = merged.tag;
-              tagEl.textContent = TAG_META[merged.tag].label;
+              RELATION_KEYS.forEach((k) => tagEl.classList.remove(RELATION_META[k].cls));
+              tagEl.classList.add(rm.cls);
+              tagEl.dataset.relation = relKey;
+              tagEl.textContent = rm.label;
+              tagEl.title = `关系判定：${merged.relation_type || "（未给出）"}
+${rm.hint}`;
             });
           }
         }
       } else if (t === "final") {
-        const chunks = (_d2 = (_c2 = evt.result) == null ? void 0 : _c2.retrieved_chunks) != null ? _d2 : [];
+        const chunks = (_e2 = (_d2 = evt.result) == null ? void 0 : _d2.retrieved_chunks) != null ? _e2 : [];
         this._rows = chunks.map((c, i) => this._chunkToRow(c, i));
         this._lastResult = evt.result;
-        this._requestId = (_f2 = (_e2 = evt.result) == null ? void 0 : _e2.request_id) != null ? _f2 : "";
+        this._requestId = (_g2 = (_f2 = evt.result) == null ? void 0 : _f2.request_id) != null ? _g2 : "";
         this._hasSearched = true;
         root.querySelector(".pb-footer").style.display = "";
         if (!this._rows.length) {
@@ -6643,27 +6762,38 @@ ${sources}
             searchParams.library,
             query
           );
-          if (((_g2 = this.plugin.settings.metadataResolver) == null ? void 0 : _g2.enabled) !== false) {
+          if (((_h2 = this.plugin.settings.metadataResolver) == null ? void 0 : _h2.enabled) !== false) {
             this.plugin.metaResolver.resolveBatch(this._rows.slice(0, 10), { signal: ctl.signal }).catch(() => {
             });
           }
         }
         this._applyAnswerAndRewrite(root, evt.result, query);
-        const elapsed = finishSearch("done", `检索完成 · ${this._rows.length} 条结果`, evt.result || {});
-        const hEntry = this._searchHistory.find((h) => h.q === query && h.intent === intent && h.library === library);
-        if (hEntry) hEntry.elapsedMs = elapsed;
         gotAny = true;
+        finishSearch(
+          "done",
+          this._rows.length ? `检索完成 · ${this._rows.length} 条结果` : "检索完成 · 未找到结果",
+          evt.result
+        );
       } else if (t === "error") {
-        finishSearch("error", "检索失败", null, evt.detail || "本地服务返回错误");
+        finishSearch("error", "检索失败");
         container.innerHTML = `<div class="pb-empty-state pb-ls-error">
-             <p>检索失败</p><p>${pbEscapeHtml((_h2 = evt.detail) != null ? _h2 : "本地服务返回错误")}</p></div>`;
+             <p>检索失败</p><p>${pbEscapeHtml((_i2 = evt.detail) != null ? _i2 : "本地服务返回错误")}</p></div>`;
       }
     }, { signal: ctl.signal }).catch(async (err) => {
-      if (ctl.signal.aborted || (err == null ? void 0 : err.name) === "AbortError") return;
-      if (gotAny) {
-        finishSearch("error", "检索未完整完成", this._lastResult || {}, err.message || "连接中断，已保留已返回结果");
+      if (ctl.signal.aborted || (err == null ? void 0 : err.name) === "AbortError") {
+        this._stopSearchTimer();
         return;
       }
+      if (gotAny) {
+        finishSearch(
+          "error",
+          "检索未完整完成",
+          this._lastResult || {},
+          err.message || "连接中断，已保留已返回结果"
+        );
+        return;
+      }
+      finishSearch("error", "检索未完成");
       let dg;
       try {
         dg = await this.plugin.api.diagnose();
@@ -6675,7 +6805,6 @@ ${sources}
            <p>${pbEscapeHtml(dg.title)}</p>
            <p class="pb-empty-hint">${pbEscapeHtml(dg.hint)}</p>
            ${action}</div>`;
-      finishSearch("error", dg.title || "检索失败", null, dg.hint || err.message || "");
       const rb = container.querySelector(".pb-empty-repair");
       if (rb) rb.onclick = () => {
         var _a2, _b2;
@@ -6684,101 +6813,6 @@ ${sources}
       const ry = container.querySelector(".pb-empty-retry");
       if (ry) ry.onclick = () => this._runSearch(root);
     });
-  }
-  // ── AI 生成：要求结构化 Claim → source_numbers，插入时才能建立真实 Evidence 映射 ──
-  _generate(root) {
-    var _a;
-    const checked = [...root.querySelectorAll(".pb-cb:checked")];
-    const n = checked.length;
-    if (!n) return;
-    const rows = checked.map((cb) => this._rows.find((r) => r.id === cb.dataset.id)).filter(Boolean);
-    const inst = ((_a = root.querySelector(".pb-inst")) == null ? void 0 : _a.value.trim()) || "";
-    const preview = root.querySelector(".pb-preview");
-    const bd = root.querySelector(".pb-preview-bd");
-    const meta = root.querySelector(".pb-preview-meta");
-    const insertBtn = root.querySelector(".pb-btn-insert");
-    const generationToken = this._generationSeq = (this._generationSeq || 0) + 1;
-    this._generating = true;
-    this._lastGeneratedDraft = null;
-    meta.textContent = `· 基于 ${n} 条原文片段`;
-    preview.style.display = "";
-    bd.textContent = "生成中…";
-    if (insertBtn) {
-      insertBtn.textContent = "正在关联来源…";
-      insertBtn.disabled = true;
-    }
-    (async () => {
-      var _a2;
-      const strip = (x) => String(x != null ? x : "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-      const papers = rows.map((r, i) => {
-        const t = r.paperTitle || r.title || r.source_doc || `文献${i + 1}`;
-        const psg = strip(r.origFull || r.origShort).slice(0, 500);
-        return `[${i + 1}] ${t}${r.page ? `（第 ${r.page} 页）` : ""}
-命中片段：${psg || "（无）"}`;
-      }).join("\n\n");
-      const sys = [
-        "你是严谨的中文学术写作助手。只能根据给定原文生成有明确原文依据的论断。",
-        '返回严格 JSON：{"claims":[{"text":"一条完整论断句","source_numbers":[1,2]}]}。',
-        "每条 text 必须是一条能与给定原文直接比对的完整论断；每条都必须至少有一个来源编号；编号只能来自给定文献。",
-        "不得生成没有来源的过渡句、评价句或结论；不得把来源未表达的内容写成事实。",
-        "不要在 text 内写 [1]、脚注、Markdown 或解释，来源只放在 source_numbers。",
-        "除非指令要求换语言，否则用中文。"
-      ].join("\n");
-      const user = `指令：${inst || "综合这些文献，生成若干条可供修改且逐句关联来源的学术论断"}
-
-可用文献：
-${papers}`;
-      let raw = "";
-      try {
-        raw = await this.plugin._requestPaperbellCompletion({
-          system: sys,
-          messages: [{ role: "user", content: user }],
-          temperature: 0.2,
-          maxTokens: 1600,
-          responseFormat: { type: "json_object" }
-        });
-        if (generationToken !== this._generationSeq) return;
-      } catch (e) {
-        if (generationToken !== this._generationSeq) return;
-        bd.textContent = "生成失败：" + (e.message || "未知错误");
-        if (insertBtn) {
-          insertBtn.textContent = "插入 AI 草稿（未关联来源）";
-          insertBtn.disabled = false;
-        }
-        this._generating = false;
-        new obsidian11.Notice("AI 生成失败：" + (e.message || "未知错误"));
-        return;
-      }
-      const cleaned = String(raw || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
-      try {
-        const parsed = JSON.parse(cleaned || "{}");
-        const claims = (Array.isArray(parsed.claims) ? parsed.claims : []).map((c) => ({
-          text: String((c == null ? void 0 : c.text) || "").trim(),
-          source_numbers: [...new Set((Array.isArray(c == null ? void 0 : c.source_numbers) ? c.source_numbers : []).map((x) => parseInt(x, 10)))]
-        }));
-        const valid = claims.length > 0 && claims.every((c) => c.text && c.source_numbers.length > 0 && c.source_numbers.every((x) => Number.isInteger(x) && x >= 1 && x <= rows.length));
-        if (!valid) throw new Error("存在无来源论断或来源编号越界");
-        const library = ((_a2 = root.querySelector(".pb-lib-widget")) == null ? void 0 : _a2.dataset.lib) || this.plugin.settings.lastLibrary || "default";
-        this._lastGeneratedDraft = { claims, rows, library };
-        bd.textContent = claims.map((c) => `${c.text} ${c.source_numbers.map((x) => `[${x}]`).join("")}`).join("\n\n");
-        meta.textContent = `· ${claims.length} 条论断 · ${n} 条来源 · 插入时关联来源`;
-        if (insertBtn) {
-          insertBtn.textContent = "插入正文并关联来源";
-          insertBtn.disabled = false;
-        }
-        this._generating = false;
-      } catch (err) {
-        this._lastGeneratedDraft = null;
-        bd.textContent = cleaned || "模型没有返回可用内容";
-        meta.textContent = "· 部分论断未关联来源";
-        if (insertBtn) {
-          insertBtn.textContent = "插入 AI 草稿（未关联来源）";
-          insertBtn.disabled = false;
-        }
-        this._generating = false;
-        new obsidian11.Notice(`部分 AI 论断未关联来源，将作为普通草稿插入：${err.message}`, 9e3);
-      }
-    })();
   }
   // ── 写作项目：上下文提取 + 关联分析（Longform 场景感知）──
   async _extractWritingContext() {
@@ -6798,7 +6832,7 @@ ${papers}`;
     if (fmMatch) {
       body = raw.slice(fmMatch[0].length);
       try {
-        fm = (_b = (_a = obsidian11.parseYaml) == null ? void 0 : _a(fmMatch[1])) != null ? _b : {};
+        fm = (_b = (_a = obsidian10.parseYaml) == null ? void 0 : _a(fmMatch[1])) != null ? _b : {};
       } catch (_) {
       }
     }
@@ -6856,7 +6890,7 @@ ${papers}`;
   // 论文 ↔ 写作项目 关联分析（按需触发，结果缓存到 paper-focus cache 的 writingFit 字段）
   async _analyzeFitWithProject(row, f) {
     const ctx = await this._extractWritingContext();
-    if (!ctx) throw new Error("请先设置当前写作项目（命令：「设为当前写作项目」）");
+    if (!ctx) throw new Error("请先在设置 →「引用」页指定论文目录");
     const sceneKey = ctx.focusSceneRel || "__main__";
     const sceneMtime = ctx.focusSceneMtime || ctx.mtime;
     const cacheKey = this.plugin._analysisCacheKey({
@@ -6895,9 +6929,9 @@ ${papers}`;
       maxTokens: 1500,
       responseFormat: { type: "json_object" }
     });
-    let parsed;
+    let parsed2;
     try {
-      parsed = JSON.parse(out);
+      parsed2 = JSON.parse(out);
     } catch (e) {
       throw new Error("LLM 返回非 JSON");
     }
@@ -6910,11 +6944,11 @@ ${papers}`;
       scene_rel: ctx.focusSceneRel || "",
       scene_title: ctx.focusSceneTitle || "",
       scene_mtime: ctx.focusSceneMtime || 0,
-      fit_summary: parsed.fit_summary || "",
-      best_placement: parsed.best_placement || "",
-      specific_use: parsed.specific_use || [],
-      risks: parsed.risks || [],
-      suggested_angle: parsed.suggested_angle || ""
+      fit_summary: parsed2.fit_summary || "",
+      best_placement: parsed2.best_placement || "",
+      specific_use: parsed2.specific_use || [],
+      risks: parsed2.risks || [],
+      suggested_angle: parsed2.suggested_angle || ""
     };
     const existing = this.plugin._readAnalysisCache(cacheKey) || {};
     this.plugin._writeAnalysisCache(cacheKey, {
@@ -6969,7 +7003,7 @@ ${papers}`;
     var _a, _b, _c;
     const library = ((_a = root.querySelector(".pb-lib-widget")) == null ? void 0 : _a.dataset.lib) || ((_b = this._lastSearchParams) == null ? void 0 : _b.library) || "default";
     if (!row._docId && !row._sourceFile && !row._sourcePath) {
-      new obsidian11.Notice("该结果缺少 PDF 标识，无法定位原文");
+      new obsidian10.Notice("该结果缺少 PDF 标识，无法定位原文");
       return;
     }
     (_c = root.querySelector(".pb-pdf-modal")) == null ? void 0 : _c.remove();
@@ -7019,7 +7053,7 @@ ${papers}`;
         await this.plugin.openPdfInObsidian(library, row._docId, row._sourceFile);
         close();
       } catch (err) {
-        new obsidian11.Notice(`打开失败：${err.message}`);
+        new obsidian10.Notice(`打开失败：${err.message}`);
       }
     };
   }
@@ -7034,15 +7068,16 @@ ${papers}`;
     return this.plugin._matchHitRects(textContent, hitText, viewport);
   }
   // ── Paper Focus：全窗口分析视图（带本地缓存）──────────
-  _showFocusScreen(root, row) {
-    var _a, _b, _c, _d, _e;
+  // opts.library / opts.query：从「文献」页进来时没有检索上下文，由调用方指定
+  _showFocusScreen(root, row, opts = {}) {
+    var _a, _b, _c, _d;
     const screen = root.querySelector(".pb-focus-screen");
     const body = screen.querySelector(".pb-fs-body");
     screen.querySelector(".pb-fs-back").onclick = () => screen.classList.remove("active");
     screen.classList.add("active");
     const stripHtml = (s) => String(s != null ? s : "").replace(/<[^>]+>/g, "");
-    const library = (_b = (_a = root.querySelector(".pb-lib-widget")) == null ? void 0 : _a.dataset.lib) != null ? _b : "default";
-    const query = this._lastQuery || ((_d = (_c = root.querySelector(".pb-search-input")) == null ? void 0 : _c.value) == null ? void 0 : _d.trim()) || "";
+    const library = opts.library || ((_a = root.querySelector(".pb-lib-widget")) == null ? void 0 : _a.dataset.lib) || "default";
+    const query = opts.query || this._lastQuery || ((_c = (_b = root.querySelector(".pb-search-input")) == null ? void 0 : _b.value) == null ? void 0 : _c.trim()) || "";
     const cacheKey = this.plugin._analysisCacheKey({
       library,
       documentId: row._docId,
@@ -7056,7 +7091,7 @@ ${papers}`;
       source_file: row._sourceFile || "",
       hit_chunks: [{
         chunk_id: row.id,
-        page_number: (_e = row.page) != null ? _e : null,
+        page_number: (_d = row.page) != null ? _d : null,
         chunk_index: null,
         text: stripHtml(row.origShort),
         parent_text: stripHtml(row.origFull),
@@ -7075,11 +7110,12 @@ ${papers}`;
       return `${d} 天前`;
     };
     const renderFocus = (f, cacheMeta) => {
-      var _a2, _b2;
+      var _a2, _b2, _c3, _d2, _e, _f;
       const e = pbEscapeHtml;
-      const metaParts = [row.venue, row.cites ? `被引 ${e(row.cites)} 次` : ""].filter(Boolean);
-      const roleChips = f.roles.map((r) => `<span class="pb-focus-role pb-rt-${e(r.tag)}">${e(r.label)}</span>`).join("");
-      const chunkLabel = `查看本次命中的 ${e((_a2 = f.hitCount) != null ? _a2 : 1)} 个片段`;
+      const _c2 = (_d2 = (_c3 = (_b2 = (_a2 = this.plugin)._readDocMeta) == null ? void 0 : _b2.call(_a2, row._docId)) == null ? void 0 : _c3.s2) == null ? void 0 : _d2.citationCount;
+      const metaParts = [row.venue, _c2 != null ? `被引 ${e(_c2)} 次` : ""].filter(Boolean);
+      const roleChips = f.roles.map((r) => `<span class="pb-focus-role pb-fr-${e(r.tag)}">${e(r.label)}</span>`).join("");
+      const chunkLabel = `查看本次命中的 ${e((_e = f.hitCount) != null ? _e : 1)} 个片段`;
       const cacheBar = cacheMeta ? `<div class="pb-fs-cache-bar">
              <span>已缓存 · ${ageText(Date.now() - cacheMeta.createdAt)}</span>
              <span class="pb-fs-rerun" role="button">重新分析</span>
@@ -7131,7 +7167,7 @@ ${papers}`;
             <div class="pb-fs-detail-text" data-mode="orig">${e(f.hitChunk)}</div>
           </details>
         </div>`;
-      (_b2 = body.querySelector(".pb-fs-rerun")) == null ? void 0 : _b2.addEventListener(
+      (_f = body.querySelector(".pb-fs-rerun")) == null ? void 0 : _f.addEventListener(
         "click",
         () => runApi(true)
       );
@@ -7164,7 +7200,7 @@ ${papers}`;
             trEl.dataset.mode = "zh";
             trBtn.textContent = "查看原文";
           } catch (e2) {
-            new obsidian11.Notice(`翻译失败：${e2.message}`);
+            new obsidian10.Notice(`翻译失败：${e2.message}`);
           } finally {
             trBtn.disabled = false;
           }
@@ -7212,7 +7248,7 @@ ${papers}`;
   }
   // /paper-focus 响应 → focus 视图 f 对象
   _focusRespToF(resp, row) {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k;
     const a = (_a = resp == null ? void 0 : resp.analysis) != null ? _a : {};
     const ROLE_TAG = {
       "直接支持": "support",
@@ -7224,8 +7260,11 @@ ${papers}`;
     };
     const primary = a.primary_role || "参考文献";
     const roles = [
-      { label: primary, tag: (_c = (_b = ROLE_TAG[primary]) != null ? _b : row.tag) != null ? _c : "support" },
-      ...((_d = a.secondary_roles) != null ? _d : []).map((s) => {
+      // 这里的 tag 只是 pb-fr-* 配色键，来自 paper-focus 基于全文给出的角色名。
+      // 它说的是「这篇文献在论证里担什么角色」，跟片段卡片的关系判定（relation，
+      // 「这段跟你的问题什么关系」）是两个维度，两套 class 也刻意分开，别混用。
+      { label: primary, tag: (_b = ROLE_TAG[primary]) != null ? _b : "support" },
+      ...((_c = a.secondary_roles) != null ? _c : []).map((s) => {
         var _a2;
         return {
           label: s,
@@ -7233,18 +7272,18 @@ ${papers}`;
         };
       })
     ];
-    const takeaways = ((_e = a.hit_chunk_takeaways) != null ? _e : []).map((t) => t.note).filter(Boolean);
-    const chars = ((_f = resp == null ? void 0 : resp.document_text_chars) != null ? _f : 0).toLocaleString("zh-CN");
+    const takeaways = ((_d = a.hit_chunk_takeaways) != null ? _d : []).map((t) => t.note).filter(Boolean);
+    const chars = ((_e = resp == null ? void 0 : resp.document_text_chars) != null ? _e : 0).toLocaleString("zh-CN");
     return {
       roles,
       roleLabel: primary,
-      hitCount: (_g = resp == null ? void 0 : resp.hit_chunk_count) != null ? _g : 1,
-      analysisMeta: `${(_h = resp == null ? void 0 : resp.hit_chunk_count) != null ? _h : 1} 个原文片段 · 已分析约 ${chars} 字正文`,
+      hitCount: (_f = resp == null ? void 0 : resp.hit_chunk_count) != null ? _f : 1,
+      analysisMeta: `${(_g = resp == null ? void 0 : resp.hit_chunk_count) != null ? _g : 1} 个原文片段 · 已分析约 ${chars} 字正文`,
       judgement: a.overall_judgement || "—",
       advice: a.usage_advice || "—",
-      contributions: ((_i = a.contribution_points) != null ? _i : []).length ? a.contribution_points : ["（无）"],
-      limitations: ((_j = a.limitations) != null ? _j : []).length ? a.limitations : ["（无）"],
-      userInput: this._lastQuery || ((_l = (_k = row.keywords) == null ? void 0 : _k.join(" ")) != null ? _l : ""),
+      contributions: ((_h = a.contribution_points) != null ? _h : []).length ? a.contribution_points : ["（无）"],
+      limitations: ((_i = a.limitations) != null ? _i : []).length ? a.limitations : ["（无）"],
+      userInput: this._lastQuery || ((_k = (_j = row.keywords) == null ? void 0 : _j.join(" ")) != null ? _k : ""),
       hitChunk: takeaways.length ? takeaways.join("；") : (row.origFull || row.origShort || "").replace(/<[^>]+>/g, "")
     };
   }
@@ -7264,14 +7303,15 @@ ${papers}`;
     });
     await job.promise;
   }
-  // ── 「文献收集」标签页：把悬浮收集栏的内容搬进面板内 ──
-  _renderCollectModule(root) {
+  // ── 「片段」标签页：把悬浮收集栏的内容搬进面板内 ──
+  //    对象只有一种：PDF 标注（annotationIndex）。文献不在这里，在「文献」页。
+  _renderFragmentsModule(root) {
     const plugin = this.plugin;
     const layer = root.querySelector(".pb-mod-collect");
     layer.empty();
     const hd = layer.createDiv({ cls: "pb-collect-head" });
     const titleRow = hd.createDiv({ cls: "pb-cc-titlerow" });
-    titleRow.createSpan({ cls: "pb-cc-title pb-collect-title", text: "文献收集" });
+    titleRow.createSpan({ cls: "pb-cc-title pb-collect-title", text: "片段" });
     plugin._collectTabCountEl = titleRow.createSpan({ cls: "pb-collect-count" });
     const gsel = titleRow.createEl("select", { cls: "pb-cite-panel-filter pb-cc-groupsel dropdown", attr: { "aria-label": "分组方式" } });
     for (const o of [["doc", "按文献"], ["time", "按时间"], ["color", "按颜色"]]) {
@@ -7306,9 +7346,212 @@ ${papers}`;
     const n = plugin._populateCollectList(listEl);
     if (plugin._collectTabCountEl) plugin._collectTabCountEl.textContent = n ? String(n) : "";
   }
-  async _renderLibModule(root) {
+  // ── 「文献」标签页入口：默认列已保存的文献 ─────────────
+  //    保存过的文献一篇都没有时，直接落到文献库管理那一层（先有库才有文献）。
+  _renderPapersModule(root) {
+    const fileLayer = root.querySelector(".pb-ls-file-layer");
+    const createLayer = root.querySelector(".pb-ls-create-layer");
+    if (fileLayer) fileLayer.style.display = "none";
+    if (createLayer) createLayer.style.display = "none";
+    const papers = this._collectSavedPapers();
+    this._hasSavedPapers = papers.length > 0;
+    if (!papers.length) {
+      this._libView = "libs";
+      this._renderLibModule(root, {
+        hint: "还没有保存过文献。先建文献库导入 PDF，检索后把文献存成笔记，这里就会列出来。"
+      });
+      return;
+    }
+    this._libView = "papers";
+    this._renderSavedPapers(root, papers);
+  }
+  // vault 里的文献笔记 + paperIndex → 一行一篇的展示数据
+  _collectSavedPapers() {
+    var _a, _b;
+    const plugin = this.plugin;
+    let files = [];
+    try {
+      files = ((_a = plugin._listPaperNotes) == null ? void 0 : _a.call(plugin)) || [];
+    } catch (_) {
+      files = [];
+    }
+    const byPath = /* @__PURE__ */ new Map();
+    for (const item of Object.values(((_b = plugin.paperIndex) == null ? void 0 : _b.items) || {})) {
+      if (item == null ? void 0 : item.note_path) byPath.set(item.note_path, item);
+    }
+    const READ_LABEL = { collected: "待读", reading: "在读", done: "已读" };
+    const rows = files.map((file) => {
+      var _a2, _b2, _c, _d;
+      const fm = ((_a2 = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a2.frontmatter) || {};
+      return {
+        file,
+        fm,
+        title: String(fm.csl_title || fm.paper_title || file.basename),
+        year: String((_c = (_b2 = fm.csl_issued_year) != null ? _b2 : fm.year) != null ? _c : "").trim(),
+        read: READ_LABEL[fm.read_status] || "",
+        cited: Array.isArray(fm.cited_in) ? fm.cited_in.length : 0,
+        paper: byPath.get(file.path) || null,
+        mtime: ((_d = file.stat) == null ? void 0 : _d.mtime) || 0
+      };
+    });
+    rows.sort((a, b) => b.mtime - a.mtime);
+    return rows;
+  }
+  // 已保存文献列表：点行开笔记，行上两个动作 = 打开 PDF / 文献概要
+  _renderSavedPapers(root, papers) {
+    const body = root.querySelector(".pb-ls-lib-body");
+    body.empty();
+    const manage = body.createDiv({
+      cls: "pb-ls-create-btn pb-ls-manage-btn",
+      attr: { role: "button", tabindex: "0" }
+    });
+    manage.innerHTML = `
+      <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+        <path d="M2 3.2h12M2 8h12M2 12.8h12" stroke="currentColor" stroke-width="1.5"
+              stroke-linecap="round"/>
+      </svg>
+      管理`;
+    const openManage = () => {
+      this._libView = "libs";
+      this._renderLibModule(root);
+    };
+    manage.addEventListener("click", openManage);
+    manage.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+      openManage();
+    });
+    body.createDiv({
+      cls: "pb-ls-loading",
+      text: `已保存 ${papers.length} 篇文献`,
+      attr: { style: "text-align:left;padding:0 2px 8px" }
+    });
+    const list = body.createDiv({ cls: "pb-ls-lib-list" });
+    for (const p of papers) {
+      const item = list.createDiv({
+        cls: "pb-ls-lib-item",
+        attr: { role: "button", tabindex: "0" }
+      });
+      const info = item.createDiv({ cls: "pb-ls-lib-info" });
+      info.createDiv({ cls: "pb-ls-lib-name", text: p.title }).title = p.title;
+      const meta = [
+        p.year,
+        p.read,
+        p.cited ? `被引用于 ${p.cited} 篇正文` : "未在正文引用"
+      ].filter(Boolean).join(" · ");
+      info.createDiv({ cls: "pb-ls-lib-stats", text: meta });
+      const acts = item.createDiv({
+        cls: "pb-ls-paper-acts",
+        attr: { style: "display:flex;align-items:center;gap:8px;flex-shrink:0;margin-left:8px" }
+      });
+      const addAct = (icon, fallback, label, handler) => {
+        const el = acts.createSpan({
+          cls: "pb-ls-paper-act clickable-icon",
+          attr: { role: "button", tabindex: "0", title: label, "aria-label": label }
+        });
+        try {
+          obsidian10.setIcon(el, icon);
+        } catch (_) {
+        }
+        if (!el.firstChild) el.setText(fallback);
+        const run = (e) => {
+          e.stopPropagation();
+          handler();
+        };
+        el.addEventListener("click", run);
+        el.addEventListener("keydown", (e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          run(e);
+        });
+        return el;
+      };
+      addAct("file-text", "PDF", "打开 PDF", () => this._openPaperPdf(p));
+      addAct("sparkles", "概要", "文献概要", () => this._showPaperFocusFromNote(root, p));
+      const openNote = () => this.app.workspace.getLeaf("tab").openFile(p.file);
+      item.addEventListener("click", (e) => {
+        if (e.target.closest(".pb-ls-paper-act")) return;
+        openNote();
+      });
+      item.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        if (e.target.closest(".pb-ls-paper-act")) return;
+        e.preventDefault();
+        openNote();
+      });
+    }
+  }
+  // 文献笔记 → PDF：优先 vault 内原生附件，其次回后端按 library/doc 取
+  async _openPaperPdf(p) {
+    var _a;
+    const fm = p.fm || {};
+    const attachment = (((_a = p.paper) == null ? void 0 : _a.attachments) || [])[0] || {};
+    const native = String(fm.pdf || "").trim();
+    const nativeFile = native ? this.app.vault.getAbstractFileByPath(native) : null;
+    if (nativeFile) {
+      try {
+        await this.app.workspace.getLeaf("tab").openFile(nativeFile);
+        return;
+      } catch (_) {
+      }
+    }
+    const library = fm.library || attachment.library || this.plugin.state.lastLibrary || "default";
+    const docId = fm.document_id || attachment.document_id || "";
+    const srcFile = fm.source_file || attachment.source_file || "";
+    if (!docId && !srcFile) {
+      new obsidian10.Notice("这篇文献没有关联到 PDF");
+      return;
+    }
+    try {
+      await this._openPdfInObsidian(library, docId, srcFile);
+    } catch (err) {
+      new obsidian10.Notice(`打开 PDF 失败：${err.message}`);
+    }
+  }
+  // 文献笔记 → paper-focus 概要（复用检索结果那条链路，只是 hit_chunks 为空）
+  _showPaperFocusFromNote(root, p) {
+    var _a, _b;
+    const fm = p.fm || {};
+    const attachment = (((_a = p.paper) == null ? void 0 : _a.attachments) || [])[0] || {};
+    const docId = fm.document_id || attachment.document_id || "";
+    const srcFile = fm.source_file || attachment.source_file || "";
+    if (!docId && !srcFile) {
+      new obsidian10.Notice("这篇文献没有关联到文献库里的 PDF，无法生成概要");
+      return;
+    }
+    const library = fm.library || attachment.library || this.plugin.state.lastLibrary || "default";
+    const e = pbEscapeHtml;
+    const row = {
+      id: "",
+      page: null,
+      _docId: docId,
+      _sourceFile: srcFile,
+      paperTitle: e(p.title),
+      title: e(srcFile || p.file.basename),
+      venue: e(String(fm.csl_container_title || "")),
+      cites: (_b = fm.citation_count) != null ? _b : null,
+      origShort: "",
+      origFull: "",
+      reasonShort: "",
+      reasonFull: "",
+      relation_type: ""
+    };
+    this._showFocusScreen(root, row, { library, query: p.title });
+  }
+  // opts.hint：文献一篇都没有时，在库列表顶部说明这里为什么是空的
+  async _renderLibModule(root, opts = {}) {
     var _a;
     const body = root.querySelector(".pb-ls-lib-body");
+    this._libView = "libs";
+    const hintHTML = opts.hint ? `<div class="pb-ls-loading" style="text-align:left;padding:0 2px 10px">${pbEscapeHtml(opts.hint)}</div>` : "";
+    const backBtnHTML = this._hasSavedPapers ? `
+      <div class="pb-ls-create-btn pb-ls-back-btn" role="button">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
+          <path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        文献列表
+      </div>` : "";
     const createBtnHTML = `
       <div class="pb-ls-create-btn" role="button">
         <svg width="11" height="11" viewBox="0 0 16 16" fill="none">
@@ -7317,8 +7560,14 @@ ${papers}`;
         </svg>
         新建文献库
       </div>`;
-    body.innerHTML = createBtnHTML + `<div class="pb-ls-lib-list"><div class="pb-ls-loading">加载文献库…</div></div>`;
-    body.querySelector(".pb-ls-create-btn").addEventListener("click", () => this._renderCreateForm(root, "create"));
+    const headHTML = hintHTML + backBtnHTML + createBtnHTML;
+    const bindHead = () => {
+      var _a2, _b;
+      (_a2 = body.querySelector(".pb-ls-create-btn:not(.pb-ls-back-btn)")) == null ? void 0 : _a2.addEventListener("click", () => this._renderCreateForm(root, "create"));
+      (_b = body.querySelector(".pb-ls-back-btn")) == null ? void 0 : _b.addEventListener("click", () => this._renderPapersModule(root));
+    };
+    body.innerHTML = headHTML + `<div class="pb-ls-lib-list"><div class="pb-ls-loading">加载文献库…</div></div>`;
+    bindHead();
     let libs;
     try {
       const data = await this.plugin.api.get("/libraries");
@@ -7327,14 +7576,14 @@ ${papers}`;
     } catch (err) {
       const list = body.querySelector(".pb-ls-lib-list");
       list.innerHTML = `<div class="pb-ls-loading pb-ls-error pb-ls-connect-error">
-        <span>无法连接本地服务：${pbEscapeHtml(err.message)}</span>
-        <button class="pb-ls-refresh-btn" type="button" title="服务就绪后重新加载文献库" aria-label="刷新文献库连接">
-          <span class="pb-ls-refresh-icon"></span><span>刷新连接</span>
-        </button>
-      </div>`;
+           <span>无法连接本地服务：${pbEscapeHtml(err.message)}</span>
+           <button class="pb-ls-refresh-btn" type="button" title="服务就绪后重新加载文献库" aria-label="刷新文献库连接">
+             <span class="pb-ls-refresh-icon"></span><span>刷新连接</span>
+           </button>
+         </div>`;
       const refreshBtn = list.querySelector(".pb-ls-refresh-btn");
       if (refreshBtn) {
-        obsidian12.setIcon(refreshBtn.querySelector(".pb-ls-refresh-icon"), "refresh-cw");
+        obsidian10.setIcon(refreshBtn.querySelector(".pb-ls-refresh-icon"), "refresh-cw");
         refreshBtn.addEventListener("click", async () => {
           if (refreshBtn.disabled) return;
           refreshBtn.disabled = true;
@@ -7368,8 +7617,8 @@ ${papers}`;
                 stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>`;
-    body.innerHTML = createBtnHTML + `<div class="pb-ls-lib-list">${libs.map(libItemHTML).join("")}</div>`;
-    body.querySelector(".pb-ls-create-btn").addEventListener("click", () => this._renderCreateForm(root, "create"));
+    body.innerHTML = headHTML + `<div class="pb-ls-lib-list">${libs.map(libItemHTML).join("")}</div>`;
+    bindHead();
     this._renderBuildIndicator(root);
     body.querySelectorAll(".pb-ls-lib-item").forEach((item) => {
       item.addEventListener("click", (e) => {
@@ -7399,7 +7648,7 @@ ${papers}`;
         }, 200);
         const files = [...e.dataTransfer.files || []].filter((f) => /\.pdf$/i.test(f.name));
         if (!files.length) {
-          new obsidian11.Notice("请拖入 PDF 文件");
+          new obsidian10.Notice("请拖入 PDF 文件");
           return;
         }
         const libName = item.dataset.name;
@@ -7420,7 +7669,7 @@ ${papers}`;
         e.stopPropagation();
         const name = btn.dataset.name;
         if (name === "default") {
-          new obsidian11.Notice("默认库不可删除");
+          new obsidian10.Notice("默认库不可删除");
           return;
         }
         const ok = await pbConfirm(this.plugin.app, {
@@ -7434,12 +7683,12 @@ ${papers}`;
         btn.innerHTML = '<span class="pb-ls-loading-inline">删除中…</span>';
         try {
           await this.plugin.api.del(`/libraries/${encodeURIComponent(name)}`);
-          new obsidian11.Notice(`已删除文献库「${name}」`);
+          new obsidian10.Notice(`已删除文献库「${name}」`);
           (_a2 = this._libStats) == null ? void 0 : _a2.delete(name);
           this._libs = null;
           const searchWidget = root.querySelector(".pb-lib-widget");
           const searchButton = root.querySelector(".pb-btn-search");
-          if (this.plugin.settings.lastLibrary === name || (searchWidget == null ? void 0 : searchWidget.dataset.lib) === name) {
+          if (this.plugin.state.lastLibrary === name || (searchWidget == null ? void 0 : searchWidget.dataset.lib) === name) {
             try {
               const data = await this.plugin.api.get("/libraries");
               const remaining = (Array.isArray(data.libraries) ? data.libraries : []).map((item) => typeof item === "string" ? item : (item == null ? void 0 : item.name) || (item == null ? void 0 : item.library) || (item == null ? void 0 : item.id) || "").filter(Boolean);
@@ -7464,7 +7713,7 @@ ${papers}`;
                 return ((_a3 = item.count) != null ? _a3 : 0) > 0;
               })) == null ? void 0 : _b.name) || remaining.find((libraryName) => libraryName !== "default") || remaining[0] || "";
               if (next) {
-                this.plugin.settings.lastLibrary = next;
+                this.plugin.state.lastLibrary = next;
                 this._hasLibraries = true;
                 if (searchWidget) searchWidget.dataset.lib = next;
                 const current = searchWidget == null ? void 0 : searchWidget.querySelector(".pb-lib-cur");
@@ -7473,7 +7722,7 @@ ${papers}`;
                 this._warmup(next);
                 await this.plugin.saveSettings();
               } else {
-                this.plugin.settings.lastLibrary = "";
+                this.plugin.state.lastLibrary = "";
                 this._hasLibraries = false;
                 if (searchWidget) searchWidget.dataset.lib = "";
                 const current = searchWidget == null ? void 0 : searchWidget.querySelector(".pb-lib-cur");
@@ -7484,18 +7733,18 @@ ${papers}`;
             } catch (refreshError) {
               this._libs = null;
               this._hasLibraries = false;
-              this.plugin.settings.lastLibrary = "";
+              this.plugin.state.lastLibrary = "";
               if (searchWidget) searchWidget.dataset.lib = "";
               const current = searchWidget == null ? void 0 : searchWidget.querySelector(".pb-lib-cur");
               if (current) current.textContent = "列表刷新失败，请重载";
               if (searchButton) searchButton.disabled = true;
               await this.plugin.saveSettings();
-              new obsidian11.Notice(`文献库已删除，但列表刷新失败：${refreshError.message}`, 8e3);
+              new obsidian10.Notice(`文献库已删除，但列表刷新失败：${refreshError.message}`, 8e3);
             }
           }
           this._renderLibModule(root);
         } catch (err) {
-          new obsidian11.Notice(`删除失败：${err.message}`);
+          new obsidian10.Notice(`删除失败：${err.message}`);
           this._renderLibModule(root);
         }
       });
@@ -7540,7 +7789,7 @@ ${papers}`;
   // mode='create' → action=create
   // mode='add'    → action=append，lib 为目标库对象
   _renderCreateForm(root, mode = "create", lib = null) {
-    var _a, _b, _c, _d, _e;
+    var _a, _b, _c, _d;
     (_b = (_a = this.plugin)._clearSpotlight) == null ? void 0 : _b.call(_a);
     const layer = root.querySelector(".pb-ls-create-layer");
     const body = layer.querySelector(".pb-ls-create-body");
@@ -7761,12 +8010,15 @@ ${papers}`;
     const fileRelativeName = (file, source) => source === "folder" && file.webkitRelativePath ? file.webkitRelativePath : file.name;
     const renderPickedFiles = (container, files, source) => {
       if (!container) return;
-      container.innerHTML = files.map((f, index) => `<div class="pb-lc-file-row">
+      container.innerHTML = files.map(
+        (f, index) => `<div class="pb-lc-file-row">
            <span class="pb-ls-src pb-ls-src-pdf">PDF</span>
-           <span class="pb-lc-file-name" title="${pbEscapeHtml(fileRelativeName(f, source))}">${pbEscapeHtml(fileRelativeName(f, source))}</span>
+           <span class="pb-lc-file-name" title="${pbEscapeHtml(fileRelativeName(f, source))}"
+                 >${pbEscapeHtml(fileRelativeName(f, source))}</span>
            <span class="pb-lc-file-size">${(f.size / 1024 / 1024).toFixed(1)} MB</span>
            <button class="pb-lc-file-remove" type="button" data-remove-file="${index}" title="移除">移除</button>
-         </div>`).join("");
+         </div>`
+      ).join("");
       container.querySelectorAll("[data-remove-file]").forEach((button) => {
         button.addEventListener("click", (event) => {
           event.stopPropagation();
@@ -7796,10 +8048,10 @@ ${papers}`;
       fileInput.value = "";
     });
     body.querySelector(".pb-lc-submit").addEventListener("click", () => {
-      var _a2, _b2, _c2, _d2, _e2, _f, _g, _h, _i;
+      var _a2, _b2, _c2, _d2, _e, _f;
       const activeSrc = (_b2 = (_a2 = body.querySelector(".pb-lc-src-btn.active")) == null ? void 0 : _a2.dataset.src) != null ? _b2 : "folder";
       const scheme = (_d2 = (_c2 = body.querySelector(".pb-scheme-radio:checked")) == null ? void 0 : _c2.value) != null ? _d2 : "full_document_llm_boundary_split";
-      const concurrency = (_e2 = concInput == null ? void 0 : concInput.value) != null ? _e2 : "1";
+      const concurrency = (_e = concInput == null ? void 0 : concInput.value) != null ? _e : "1";
       const fd = new FormData();
       fd.append("ingest_mode", scheme);
       fd.append("ingest_preprocess_concurrency", concurrency);
@@ -7809,7 +8061,7 @@ ${papers}`;
       } else {
         const libName = (_f = body.querySelector('[data-field="library_name"]')) == null ? void 0 : _f.value.trim();
         if (!libName) {
-          new obsidian11.Notice("请先填写文献库名称");
+          new obsidian10.Notice("请先填写文献库名称");
           return;
         }
         fd.append("action", "create");
@@ -7817,21 +8069,27 @@ ${papers}`;
       }
       if (activeSrc === "folder") {
         if (!selectedFolderFiles.length) {
-          new obsidian11.Notice("请先选择 PDF 文件夹");
+          new obsidian10.Notice("请先选择 PDF 文件夹");
           return;
         }
         selectedFolderFiles.forEach((f) => fd.append("files", f, f.name));
-        fd.append("relative_paths_json", JSON.stringify(selectedFolderFiles.map((f) => fileRelativeName(f, "folder"))));
+        fd.append(
+          "relative_paths_json",
+          JSON.stringify(selectedFolderFiles.map((f) => fileRelativeName(f, "folder")))
+        );
       } else {
         if (!selectedUploadFiles.length) {
-          new obsidian11.Notice("请先选择 PDF 文件");
+          new obsidian10.Notice("请先选择 PDF 文件");
           return;
         }
         selectedUploadFiles.forEach((f) => fd.append("files", f, f.name));
-        fd.append("relative_paths_json", JSON.stringify(selectedUploadFiles.map((f) => fileRelativeName(f, "upload"))));
+        fd.append(
+          "relative_paths_json",
+          JSON.stringify(selectedUploadFiles.map((f) => fileRelativeName(f, "upload")))
+        );
       }
       const label = isAdd ? `向「${lib.name}」追加` : `建库「${fd.get("library_name")}」`;
-      new obsidian11.Notice(`${label}…`);
+      new obsidian10.Notice(`${label}…`);
       const job = this.plugin.buildManager.start(fd, {
         label,
         libName: isAdd ? lib.name : fd.get("library_name"),
@@ -7892,7 +8150,7 @@ ${papers}`;
       const totalElapsed = Math.max(0, (j.finishedAt || now) - j.startedAt);
       const liveStageElapsed = j.stageStartedAt ? Math.max(0, now - j.stageStartedAt) : 0;
       if (progStat) {
-        progStat.textContent = `${j.stat || ""} · 总耗时 ${pbFormatBuildDuration(totalElapsed)}${j.status === "running" && liveStageElapsed ? ` · 当前阶段 ${pbFormatBuildDuration(liveStageElapsed)}` : ""}`;
+        progStat.textContent = `${j.stat || ""} · 总耗时 ${pbFormatBuildDuration(totalElapsed)}` + (j.status === "running" && liveStageElapsed ? ` · 当前阶段 ${pbFormatBuildDuration(liveStageElapsed)}` : "");
       }
       const completedCount = Number(j.completed || j.done + j.failed + j.skipped || 0);
       const ratio = j.total ? Math.min(100, Math.round(completedCount / j.total * 100)) : j.status === "done" ? 100 : 0;
@@ -7937,16 +8195,6 @@ ${papers}`;
       this._formBuildUnsub();
       this._formBuildUnsub = null;
     }
-    if (this._formBuildTimer) {
-      window.clearInterval(this._formBuildTimer);
-      this._formBuildTimer = null;
-    }
-    if (job.status === "running") {
-      this._formBuildTimer = window.setInterval(() => {
-        const current = this.plugin.buildManager.get(job.id);
-        if (current) paint(current);
-      }, 1e3);
-    }
     let refreshed = false;
     this._formBuildUnsub = this.plugin.buildManager.onChange((j) => {
       if (!j || j.id !== job.id) return;
@@ -7977,7 +8225,6 @@ ${papers}`;
       const sCls = j.status === "running" ? "is-running" : j.status === "done" ? "is-done" : j.status === "cancelled" ? "is-cancel" : "is-error";
       const indet = j.status === "running" && !j.total ? " pb-bb-bar--indet" : "";
       const actions = j.status === "running" ? `<button class="pb-bb-btn" data-bview="${j.id}">查看</button><button class="pb-bb-btn pb-bb-cancel" data-bcancel="${j.id}">取消</button>` : `<button class="pb-bb-btn" data-bview="${j.id}">详情</button>`;
-      const elapsed = pbFormatBuildDuration(Math.max(0, (j.finishedAt || Date.now()) - j.startedAt));
       return `<div class="pb-bb-row ${sCls}">
         <div class="pb-bb-top">
           <span class="pb-bb-title">${this._esc(j.label)}</span>
@@ -7985,7 +8232,7 @@ ${papers}`;
         </div>
         <div class="pb-bb-bar${indet}"><div class="pb-bb-fill" style="width:${pct}%"></div></div>
         <div class="pb-bb-bottom">
-          <span class="pb-bb-stat">${this._esc(j.stat)} · ${elapsed}</span>
+          <span class="pb-bb-stat">${this._esc(j.stat)} · ${pbFormatBuildDuration(Math.max(0, (j.finishedAt || Date.now()) - j.startedAt))}</span>
           <span class="pb-bb-actions">${actions}</span>
         </div>
       </div>`;
@@ -8021,7 +8268,7 @@ ${papers}`;
   _openBuildProgress(root, jobId) {
     const job = this.plugin.buildManager.get(jobId);
     if (!job) {
-      new obsidian11.Notice("该建库任务已结束");
+      new obsidian10.Notice("该建库任务已结束");
       return;
     }
     const layer = root.querySelector(".pb-ls-create-layer");
@@ -8142,7 +8389,7 @@ ${papers}`;
             btn.dataset.src
           );
         } catch (err) {
-          new obsidian11.Notice(`打开 PDF 失败：${err.message}`);
+          new obsidian10.Notice(`打开 PDF 失败：${err.message}`);
         } finally {
           btn.textContent = label;
         }
@@ -8169,11 +8416,11 @@ ${papers}`;
           await this.plugin.api.del(
             `/libraries/${encodeURIComponent(libName)}/documents?${q.toString()}`
           );
-          new obsidian11.Notice("已删除该文献");
+          new obsidian10.Notice("已删除该文献");
           (_a2 = this._libStats) == null ? void 0 : _a2.delete(libName);
           this._renderLibFiles(root, { name: libName });
         } catch (err) {
-          new obsidian11.Notice(`删除失败：${err.message}`);
+          new obsidian10.Notice(`删除失败：${err.message}`);
           btn.textContent = "删除";
         }
       });
@@ -8206,7 +8453,7 @@ ${papers}`;
     const files = this.plugin._listPaperNotes();
     const byDoi = /* @__PURE__ */ new Map();
     const byTitleYear = /* @__PURE__ */ new Map();
-    const normalize = (s) => String(s || "").toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
+    const normalize2 = (s) => String(s || "").toLowerCase().replace(/[^\w\s]/g, " ").replace(/\s+/g, " ").trim();
     for (const f of files) {
       const fm = (_b = this.app.metadataCache.getFileCache(f)) == null ? void 0 : _b.frontmatter;
       if (!fm) continue;
@@ -8215,7 +8462,7 @@ ${papers}`;
       }
       const t = fm.csl_title;
       const y = fm.csl_issued_year || fm.year;
-      if (t && y) byTitleYear.set(`${normalize(t)}|${y}`, f);
+      if (t && y) byTitleYear.set(`${normalize2(t)}|${y}`, f);
     }
     const hits = /* @__PURE__ */ new Set();
     for (const r of refs) {
@@ -8225,7 +8472,7 @@ ${papers}`;
         if (f) matched = f;
       }
       if (!matched && r.title && r.year) {
-        const f = byTitleYear.get(`${normalize(r.title)}|${r.year}`);
+        const f = byTitleYear.get(`${normalize2(r.title)}|${r.year}`);
         if (f) matched = f;
       }
       if (matched) {
@@ -8306,7 +8553,7 @@ ${papers}`;
   _countConceptRefs(conceptName) {
     var _a, _b, _c;
     try {
-      const conceptDir = this.plugin.settings.conceptDir || "PaperSearch概念";
+      const conceptDir = this.plugin.settings.conceptDir || "PaperSearch/概念";
       const cPath = `${conceptDir}/${this._slugFilename(conceptName)}.md`;
       const file = this.app.vault.getAbstractFileByPath(cPath);
       if (!file) return 0;
@@ -8392,12 +8639,12 @@ ${papers}`;
     const library = ((_a = root.querySelector(".pb-lib-widget")) == null ? void 0 : _a.dataset.lib) || ((_b = this._lastSearchParams) == null ? void 0 : _b.library) || "default";
     const query = this._lastQuery || ((_d = (_c = root.querySelector(".pb-search-input")) == null ? void 0 : _c.value) == null ? void 0 : _d.trim()) || "";
     if (!row._docId && !row._sourceFile) {
-      new obsidian11.Notice("该结果缺少 PDF 标识，无法收入");
+      new obsidian10.Notice("该结果缺少 PDF 标识，无法收入");
       return;
     }
     const stem = this._litNoteStem(row);
     const page = parseInt(row.page) || 1;
-    const ntc = new obsidian11.Notice(`正在保存：${row.paperTitle || stem}…`, 0);
+    const ntc = new obsidian10.Notice(`正在保存：${row.paperTitle || stem}…`, 0);
     try {
       ntc.setMessage("正在读取 PDF 并确认身份…");
       const buf = await this.plugin.api.pdfBytes(library, row._docId, row._sourceFile);
@@ -8457,7 +8704,7 @@ ${papers}`;
       });
       this.plugin._pinAnalysisCache(cacheKey);
       ntc.hide();
-      new obsidian11.Notice("已保存");
+      new obsidian10.Notice("已保存");
       const leaf = this.app.workspace.getLeaf("tab");
       const pdfFile = this.app.vault.getAbstractFileByPath(pdfRel);
       if (pdfFile) {
@@ -8467,7 +8714,7 @@ ${papers}`;
       }
     } catch (err) {
       ntc.hide();
-      new obsidian11.Notice(`保存失败：${err.message}`);
+      new obsidian10.Notice(`保存失败：${err.message}`);
     }
   }
   async _getPaperFocus(row, library, query) {
@@ -8512,7 +8759,7 @@ ${papers}`;
   async _batchAddLitNotes(root) {
     var _a, _b, _c, _d, _e;
     if (!((_a = this._rows) == null ? void 0 : _a.length)) {
-      new obsidian11.Notice("当前没有检索结果");
+      new obsidian10.Notice("当前没有检索结果");
       return;
     }
     const checkedIds = new Set(
@@ -8530,7 +8777,7 @@ ${papers}`;
       confirmText: "保存"
     });
     if (!proceed) return;
-    const ntc = new obsidian11.Notice(`批量保存中… 0 / ${targets.length}`, 0);
+    const ntc = new obsidian10.Notice(`批量保存中… 0 / ${targets.length}`, 0);
     let done = 0, ok = 0, fail = 0;
     const tick = () => {
       done++;
@@ -8557,7 +8804,7 @@ ${papers}`;
       }
     }, 4);
     ntc.hide();
-    new obsidian11.Notice(
+    new obsidian10.Notice(
       `批量保存完成 · 成功 ${ok}${fail ? ` · 失败 ${fail}` : ""}`
     );
   }
@@ -8577,7 +8824,7 @@ ${papers}`;
       readStatus = ""
       // collected / reading / done
     } = ctx;
-    const CONCEPT_DIR = this.plugin.settings.conceptCandidateDir || "PaperSearch/概念/_候选";
+    const CONCEPT_DIR = `${(this.plugin.settings.conceptDir || "PaperSearch/概念").replace(/\/+$/, "")}/_候选`;
     const stem = this._litNoteStem(row);
     let hashPath = row._sourcePath || "";
     if (!hashPath && localPdfPath) {
@@ -8851,11 +9098,11 @@ ${body}
           const generatedSections = sectionAt >= 0 ? body.slice(sectionAt) : body;
           await this.app.vault.modify(file, old.trimEnd() + "\n\n" + generatedSections.trim() + "\n");
         }
-        if (!silent) new obsidian11.Notice("已更新统一文献笔记");
+        if (!silent) new obsidian10.Notice("已更新统一文献笔记");
       } else {
         file = await this.app.vault.create(filePath, content);
         if (!silent) {
-          new obsidian11.Notice(
+          new obsidian10.Notice(
             `文献笔记已创建 ✓${concepts.length ? `（含 ${concepts.length} 个概念）` : ""}`
           );
         }
@@ -8868,25 +9115,25 @@ ${body}
       }
       return file;
     } catch (err) {
-      if (!silent) new obsidian11.Notice(`创建笔记失败：${err.message}`);
+      if (!silent) new obsidian10.Notice(`创建笔记失败：${err.message}`);
       return null;
     }
   }
 };
 
 // src/main.ts
-var PaperSearchPlugin = class extends obsidian12.Plugin {
+var PaperSearchPlugin = class extends obsidian11.Plugin {
   // 构建时注入的版本号 vs 磁盘 manifest.json 里声明的版本号。
   // 两者不一致意味着上次更新只换了其中一个文件——最典型的是自动更新写进了新
   // manifest 却没换掉 main.js，于是插件顶着新版本号跑着旧代码，任何「这版已修复」
   // 的判断都不成立。宁可启动时吵一声，也不要让它静默错位。
   _assertBuildMatchesManifest() {
     var _a;
-    const built = true ? "0.8.8" : "";
+    const built = true ? "0.10.0" : "";
     const declared = ((_a = this.manifest) == null ? void 0 : _a.version) || "";
     if (!built || !declared || built === declared) return;
     console.error(`PaperSearch: 版本错位——运行中的代码构建自 ${built}，manifest.json 声明的是 ${declared}。`);
-    new obsidian12.Notice(
+    new obsidian11.Notice(
       `PaperSearch 版本错位：代码 ${built}，清单 ${declared}。请重新安装插件，否则功能与版本号对不上。`,
       0
     );
@@ -8900,13 +9147,10 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     this.metaResolver = new MetadataResolver(this);
     this.registerView(VIEW_TYPE, (leaf) => new PaperSearchView(leaf, this));
     this.registerView(COMPANION_VIEW_TYPE, (leaf) => new WritingCompanionView(leaf, this));
-    this.registerView(CITATION_PALETTE_VIEW_TYPE, (leaf) => new CitationPaletteView(leaf, this));
-    this.addRibbonIcon("quote", "PaperSearch 文献收集栏", () => this._toggleCitePanel());
+    this.addRibbonIcon("highlighter", "PaperSearch 片段", () => this.activateView("fragments"));
     this.app.workspace.onLayoutReady(() => {
       var _a;
-      this.app.workspace.getLeavesOfType(CITATION_PALETTE_VIEW_TYPE).forEach((l) => l.detach());
-      this._ensureCitePanel();
-      this._refreshCitePanel();
+      this.app.workspace.detachLeavesOfType("paperbell-citation-palette");
       const firstPaperMigration = ((_a = this.paperIndex) == null ? void 0 : _a.migration_version) !== 1;
       this._rebuildPaperIndex({
         writeFrontmatter: true,
@@ -8918,13 +9162,13 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
           quarantineBroken: firstPaperMigration
         });
         if (firstPaperMigration) {
-          new obsidian12.Notice(
+          new obsidian11.Notice(
             `文献记录整理完成：${result.files} 份笔记归并为 ${result.papers} 篇文献；已保全并合并 ${merged.sources} 份历史副本内容；有效来源记录 ${anchorAudit.anchored} 条，已隔离含失效来源标记的笔记 ${anchorAudit.quarantined} 份`,
             1e4
           );
         } else if (result.duplicates > 0) {
-          new obsidian12.Notice(
-            `检测到 ${result.duplicates} 组重复文献笔记。请运行「整理并合并重复文献记录」确认并合并`,
+          new obsidian11.Notice(
+            `检测到 ${result.duplicates} 组重复文献笔记，已按稳定标识保留各自内容。如需合并，可在设置 →「高级」页运行「整理重复文献记录」`,
             8e3
           );
         }
@@ -8933,7 +9177,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     this._setupCoreStatusBar();
     this._setupBuildStatusBar();
     this._injectAnnoCalloutCss();
-    if (!this.settings.onboardingDone && !this._coreSetupDismissed) {
+    if (!this.state.onboardingDone && !this._coreSetupDismissed) {
       setTimeout(() => {
         new OnboardingWizard(this.app, this, () => this._bootCoreThenViews()).open();
       }, 800);
@@ -8951,7 +9195,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     this.addRibbonIcon("search", "打开 PaperSearch", () => this.activateView());
     this.addCommand({
       id: "open-papersearch",
-      name: "打开 PaperSearch 面板",
+      name: "打开 PaperSearch",
       callback: () => this.activateView()
     });
     this.addCommand({
@@ -8961,102 +9205,19 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     });
     this.addCommand({
       id: "push-to-papersearch",
-      name: "推送选中文本到 PaperSearch",
+      name: "以选中内容检索",
       editorCallback: (editor) => {
         const sel = editor.getSelection().trim();
         if (!sel) {
-          new obsidian12.Notice("请先选中文本");
+          new obsidian11.Notice("请先选中文本");
           return;
         }
         this._pushSelectionToPanel(sel);
       }
     });
     this.addCommand({
-      id: "draft-scene-opening",
-      name: "插入 AI 开篇草稿（来源待核对）",
-      callback: async () => {
-        var _a, _b, _c;
-        const active = this.app.workspace.getActiveFile();
-        if (!active) {
-          new obsidian12.Notice("请先打开一个章节文件");
-          return;
-        }
-        const projPath = this.settings.writingProjectPath;
-        if (!projPath) {
-          new obsidian12.Notice("请先设置写作项目");
-          return;
-        }
-        if (!this._paperbellPlugin() && !window.registerPPBplugin) {
-          new obsidian12.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
-          return;
-        }
-        const projFile = this.app.vault.getAbstractFileByPath(projPath);
-        const folder = ((_a = projFile == null ? void 0 : projFile.parent) == null ? void 0 : _a.path) || "";
-        const sceneRel = active.path === projPath ? "__main__" : active.path.replace(folder + "/", "");
-        const relevant = [];
-        for (const f of this._listPaperNotes()) {
-          const fm = (_b = this.app.metadataCache.getFileCache(f)) == null ? void 0 : _b.frontmatter;
-          if ((_c = fm == null ? void 0 : fm.analyzed_for_scenes) == null ? void 0 : _c.includes(sceneRel)) {
-            relevant.push({ file: f, fm });
-          }
-        }
-        if (!relevant.length) {
-          new obsidian12.Notice("本节还没有关联文献。请先分析几篇文献与当前写作项目的关系");
-          return;
-        }
-        const top = relevant.sort((a, b) => (b.fm.citation_count || 0) - (a.fm.citation_count || 0)).slice(0, 5);
-        const ntc = new obsidian12.Notice("起草中…", 0);
-        try {
-          const sceneTitle = active.basename;
-          const sceneTxt = (await this.app.vault.read(active)).replace(/^---\n[\s\S]*?\n---\n?/, "").slice(0, 800);
-          const refsText = top.map((r, i) => {
-            const t = r.fm.csl_title || r.fm.paper_title || r.file.basename;
-            const authors = Array.isArray(r.fm.csl_author) ? r.fm.csl_author.map((a) => a.family || a).join(", ") : (r.fm.authors || []).join(", ");
-            const year = r.fm.csl_issued_year || r.fm.year || "";
-            const tldr = r.fm.tldr || "";
-            const ck = r.fm.citekey || r.file.basename;
-            return `[${i + 1}] ${authors} (${year}) "${t}"
-   citekey: ${ck}
-   要点：${tldr}`;
-          }).join("\n\n");
-          const sys = "你是学术写作助手。根据用户提供的本节标题与已读文献清单，写一段 200-300 字的开篇段落，自然融入文献引用（用 Pandoc 风格 @citekey 标注）。文风学术、严谨、避免堆砌。直接输出段落正文，不要添加任何解释或 markdown 标记。";
-          const user = [
-            `本节标题：${sceneTitle}`,
-            `本节已有内容（开头部分）：${sceneTxt || "（空）"}`,
-            "",
-            "可用文献：",
-            refsText,
-            "",
-            "请写本节的开篇段落（200-300 字，用 @citekey 引用相关文献）："
-          ].join("\n");
-          const para = await this._requestPaperbellCompletion({
-            system: sys,
-            messages: [{ role: "user", content: user }],
-            temperature: 0.5,
-            maxTokens: 1200
-          });
-          const raw = await this.app.vault.read(active);
-          const fmMatch = raw.match(/^---\n[\s\S]*?\n---\n?/);
-          const fmTail = fmMatch ? fmMatch[0] : "";
-          const rest = fmMatch ? raw.slice(fmMatch[0].length) : raw;
-          const draft = [
-            "",
-            "> [!draft] AI 开篇草稿（来源待核对）",
-            ...para.split("\n").map((l) => `> ${l}`),
-            ""
-          ].join("\n");
-          await this.app.vault.modify(active, fmTail + draft + rest);
-          ntc.hide();
-          new obsidian12.Notice(`已插入 AI 开篇草稿；请核对其中 ${top.length} 篇文献的引用位置`);
-        } catch (e) {
-          ntc.hide();
-          new obsidian12.Notice(`起草失败：${e.message}`);
-        }
-      }
-    });
-    this.addCommand({
       id: "excerpt-pdf-selection",
-      name: "收入选中文字到文献笔记（在 PDF 中）",
+      name: "记下选中内容（PDF 中）",
       checkCallback: (checking) => {
         var _a, _b;
         const sel = (_b = (_a = window.getSelection()) == null ? void 0 : _a.toString()) == null ? void 0 : _b.trim();
@@ -9064,13 +9225,13 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         const isPdf = (file == null ? void 0 : file.extension) === "pdf";
         if (!isPdf || !sel) return false;
         if (checking) return true;
-        this._excerptToNote(file, sel).catch((e) => new obsidian12.Notice(`收入失败：${e.message}`));
+        this._excerptToNote(file, sel).catch((e) => new obsidian11.Notice(`收入失败：${e.message}`));
         return true;
       }
     });
     this.addCommand({
       id: "search-from-pdf-selection",
-      name: "用选中文字找相似文献（在 PDF 中）",
+      name: "以选中内容检索（PDF 中）",
       checkCallback: (checking) => {
         var _a, _b;
         const sel = (_b = (_a = window.getSelection()) == null ? void 0 : _a.toString()) == null ? void 0 : _b.trim();
@@ -9088,78 +9249,18 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       }
     });
     this.addCommand({
-      id: "search-from-current-scene",
-      name: "从当前章节搜索文献",
-      checkCallback: (checking) => {
-        const active = this.app.workspace.getActiveFile();
-        if (!active) return false;
-        if (checking) return true;
-        (async () => {
-          let txt = "";
-          try {
-            txt = await this.app.vault.read(active);
-          } catch (_) {
-          }
-          const body = txt.replace(/^---\n[\s\S]*?\n---\n?/, "");
-          const h = (body.match(/^#{1,3}\s+(.+)$/m) || [])[1] || "";
-          const tail = body.slice(-400).replace(/[#>*\-]/g, "").replace(/\s+/g, " ").trim();
-          const query = (h + " " + tail).trim().slice(0, 200) || active.basename;
-          await this.activateView();
-          const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-          if ((leaf == null ? void 0 : leaf.view) instanceof PaperSearchView) {
-            leaf.view.pushQuery(query);
-          }
-        })();
-        return true;
-      }
-    });
-    this.addCommand({
-      id: "rebuild-citation-linkback",
-      name: "重新建立项目内的引用反向链接",
-      callback: async () => {
-        var _a;
-        const projPath = this.settings.writingProjectPath;
-        if (!projPath) {
-          new obsidian12.Notice("请先设置写作项目");
-          return;
-        }
-        const projFile = this.app.vault.getAbstractFileByPath(projPath);
-        if (!projFile) {
-          new obsidian12.Notice("项目文件不存在");
-          return;
-        }
-        const folder = ((_a = projFile.parent) == null ? void 0 : _a.path) || "";
-        const sceneFiles = this.app.vault.getMarkdownFiles().filter((f) => f.path === projPath || folder && f.path.startsWith(folder + "/"));
-        this._rebuildLitNoteCitekeyIndex();
-        const ntc = new obsidian12.Notice(`扫描 0 / ${sceneFiles.length}…`, 0);
-        let done = 0;
-        for (const f of sceneFiles) {
-          done++;
-          ntc.setMessage(`扫描 ${done} / ${sceneFiles.length}…`);
-          await this._scanFileAndLinkback(f);
-        }
-        ntc.hide();
-        new obsidian12.Notice(`引用链路已重建（扫了 ${sceneFiles.length} 个文件）`);
-      }
-    });
-    this.addCommand({
       id: "generate-bibliography",
-      name: "生成本文参考文献表（References）",
+      name: "生成参考文献表",
       checkCallback: (checking) => {
-        if (!this.app.workspace.getActiveViewOfType(obsidian12.MarkdownView)) return false;
+        if (!this.app.workspace.getActiveViewOfType(obsidian11.MarkdownView)) return false;
         if (checking) return true;
         this._generateBibliography();
         return true;
       }
     });
     this.addCommand({
-      id: "guide-create-library",
-      name: "上手引导：新建文献库",
-      callback: () => this._guideCreateLibrary()
-    });
-    this.addCommand({
       id: "open-writing-companion",
-      name: "打开写作伴侣（本节相关文献）",
+      name: "打开相关文献",
       callback: async () => {
         const existing = this.app.workspace.getLeavesOfType(COMPANION_VIEW_TYPE)[0];
         if (existing) {
@@ -9178,7 +9279,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         const cit = this._citationAtCursor(editor);
         if (!cit) return false;
         if (checking) return true;
-        this._verifyCitationFidelity(editor, cit).catch((e) => new obsidian12.Notice(`AI 核查失败：${e.message}`));
+        this._verifyCitationFidelity(editor, cit).catch((e) => new obsidian11.Notice(`AI 核查失败：${e.message}`));
         return true;
       }
     });
@@ -9189,7 +9290,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         const text = editor.getValue();
         if (!/%%cite:[\w-]+%%/.test(text)) return false;
         if (checking) return true;
-        this._verifyAllCitations(editor).catch((e) => new obsidian12.Notice(`全文 AI 核查失败：${e.message}`));
+        this._verifyAllCitations(editor).catch((e) => new obsidian11.Notice(`全文 AI 核查失败：${e.message}`));
         return true;
       }
     });
@@ -9205,27 +9306,15 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       }
     });
     this.addCommand({
-      id: "load-citation-demo",
-      name: "加载 AI 证据核查示例（含原文不支持的论断）",
-      callback: () => {
-        this._loadCitationDemo().catch((e) => new obsidian12.Notice("加载示例库失败：" + e.message));
-      }
-    });
-    this.addCommand({
       id: "paraphrase-citation",
-      name: "AI 转述当前原文（自动关联来源）",
+      name: "AI 转述当前原文",
       editorCheckCallback: (checking, editor) => {
         const cit = this._citationAtCursor(editor);
         if (!cit || !cit.source_quote) return false;
         if (checking) return true;
-        this._paraphraseCitation(editor, cit).catch((e) => new obsidian12.Notice(`转述失败：${e.message}`));
+        this._paraphraseAnchoredClaim(editor, cit).catch((e) => new obsidian11.Notice(`转述失败：${e.message}`));
         return true;
       }
-    });
-    this.addCommand({
-      id: "open-citation-palette",
-      name: "展开 / 固定 文献收集栏",
-      callback: () => this._toggleCitePanel()
     });
     this.addCommand({
       id: "scan-existing-citations",
@@ -9236,149 +9325,15 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         const hasPdf = /\[\[[^\]]+\.pdf#page=\d+/.test(text);
         if (!hasCite && !hasPdf) return false;
         if (checking) return true;
-        this._scanExistingCitations(editor).catch((e) => new obsidian12.Notice(`事后扫描失败：${e.message}`));
+        this._scanExistingCitations(editor).catch((e) => new obsidian11.Notice(`事后扫描失败：${e.message}`));
         return true;
       }
     });
     this.addCommand({
-      id: "aggregate-recent-citations",
-      name: "把最近几条引用聚合成综述句",
+      id: "show-claim-status",
+      name: "查看当前论断的核查状态",
       editorCheckCallback: (checking, editor) => {
-        var _a, _b;
         if (!editor) return false;
-        const items = Object.values((_b = (_a = this.citationIndex) == null ? void 0 : _a.items) != null ? _b : {}).filter((c) => c && String(c.source_quote || "").trim());
-        if (items.length < 2) return false;
-        if (checking) return true;
-        const recent = items.sort((a, b) => (b.created_at || 0) - (a.created_at || 0)).slice(0, 4);
-        this._aggregateFromCitations(editor, recent).catch((e) => new obsidian12.Notice(`聚合失败：${e.message}`));
-        return true;
-      }
-    });
-    this.addCommand({
-      id: "set-as-writing-project",
-      name: "设为当前写作项目",
-      checkCallback: (checking) => {
-        const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
-        if (checking) return true;
-        this.settings.writingProjectPath = file.path;
-        this.saveSettings();
-        new obsidian12.Notice(`已设为当前写作项目：${file.basename}`);
-        return true;
-      }
-    });
-    this.addCommand({
-      id: "analyze-fit-with-writing",
-      name: "分析当前文献与写作项目的关联",
-      checkCallback: (checking) => {
-        var _a;
-        const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
-        const fm = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
-        if (!fm || fm.type !== "literature-note") return false;
-        if (!this.settings.writingProjectPath) return false;
-        if (checking) return true;
-        (async () => {
-          var _a2, _b;
-          const docId = fm.document_id || "";
-          const srcFile = fm.source_file || "";
-          let view = (_a2 = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]) == null ? void 0 : _a2.view;
-          if (!view) {
-            await this.activateView();
-            view = (_b = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]) == null ? void 0 : _b.view;
-          }
-          if (!(view == null ? void 0 : view._analyzeFitWithProject)) {
-            new obsidian12.Notice("需要打开 PaperSearch 面板");
-            return;
-          }
-          const row = {
-            id: fm.document_id || file.basename,
-            paperTitle: fm.csl_title || fm.paper_title || file.basename,
-            title: file.basename,
-            _docId: docId,
-            _sourceFile: srcFile,
-            origFull: "",
-            origShort: ""
-          };
-          const f = {
-            roleLabel: fm.role || "",
-            judgement: fm.tldr || "",
-            // 没有 judgement 时用 tldr 兜底
-            contributions: [],
-            limitations: [],
-            advice: "",
-            hitChunk: ""
-          };
-          const ntc = new obsidian12.Notice("正在分析与写作项目的关联…", 0);
-          try {
-            const fit = await view._analyzeFitWithProject(row, f);
-            const section = view._fitResultToMd(fit);
-            const raw = await this.app.vault.read(file);
-            const stripped = raw.replace(/\n## 与当前写作项目的关联[\s\S]*?(?=\n## |\n---\n|$)/g, "");
-            const newContent = stripped.trimEnd() + "\n" + section;
-            await this.app.vault.modify(file, newContent);
-            const sceneRel = fit.scene_rel || "__main__";
-            await this.app.fileManager.processFrontMatter(file, (fm2) => {
-              const arr = Array.isArray(fm2.analyzed_for_scenes) ? fm2.analyzed_for_scenes : [];
-              if (!arr.includes(sceneRel)) arr.push(sceneRel);
-              fm2.analyzed_for_scenes = arr;
-            });
-            new obsidian12.Notice("关联分析已写入文献笔记 ✓");
-          } catch (e) {
-            new obsidian12.Notice(`分析失败：${e.message}`);
-          } finally {
-            ntc.hide();
-          }
-        })();
-        return true;
-      }
-    });
-    this.addCommand({
-      id: "reresolve-current-paper-meta",
-      name: "重新解析当前文献元数据",
-      checkCallback: (checking) => {
-        var _a;
-        const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
-        const fm = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
-        const docId = (fm == null ? void 0 : fm.document_id) || "";
-        const srcFile = (fm == null ? void 0 : fm.source_file) || "";
-        if (!docId && !srcFile) return false;
-        if (checking) return true;
-        const row = { _docId: docId, _sourceFile: srcFile, title: file.basename };
-        this.metaResolver.resolve(row, { force: true }).then((entry) => {
-          new obsidian12.Notice(`已重新解析（来源：${((entry == null ? void 0 : entry.meta_source) || []).join("+") || "失败"}）`);
-        }).catch((e) => new obsidian12.Notice(`解析失败：${e.message}`));
-        return true;
-      }
-    });
-    this.addCommand({
-      id: "rebuild-references-in-vault",
-      name: "重新查找当前文献的库内参考文献",
-      checkCallback: (checking) => {
-        var _a, _b, _c, _d;
-        const file = this.app.workspace.getActiveFile();
-        if (!file) return false;
-        const fm = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
-        if (!(fm == null ? void 0 : fm.document_id)) return false;
-        if (checking) return true;
-        const entry = this._readDocMeta(fm.document_id);
-        if (!((_c = (_b = entry == null ? void 0 : entry.s2) == null ? void 0 : _b.references) == null ? void 0 : _c.length)) {
-          new obsidian12.Notice("该文献还没有 S2 references 数据");
-          return true;
-        }
-        const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-        if ((_d = leaf == null ? void 0 : leaf.view) == null ? void 0 : _d._computeReferencesInVault) {
-          const refs = leaf.view._computeReferencesInVault(entry);
-          new obsidian12.Notice(`在当前 Obsidian 库中匹配到 ${refs.length} 篇参考文献：${refs.slice(0, 3).join(", ")}${refs.length > 3 ? "…" : ""}`);
-        }
-        return true;
-      }
-    });
-    this.addCommand({
-      id: "show-claim-evidence-status",
-      name: "查看当前论断的 AI 核查状态",
-      editorCheckCallback: (checking, editor) => {
         const claim = this._claimAtCursor(editor);
         if (!claim) return false;
         if (checking) return true;
@@ -9387,24 +9342,31 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       }
     });
     this.addCommand({
-      id: "rebuild-paper-identity-index",
-      name: "整理并合并重复文献记录",
-      callback: async () => {
-        const ntc = new obsidian12.Notice("正在整理文献身份记录…", 0);
-        try {
-          const result = await this._rebuildPaperIndex({ writeFrontmatter: true });
-          const merged = await this._mergeDuplicatePaperNotes();
-          await this._backfillEvidenceIdentity();
-          const anchorAudit = await this._reconcileEvidenceAnchors();
-          new obsidian12.Notice(
-            `文献记录已整理：${result.files} 份笔记 → ${result.papers} 篇文献；本次合并 ${merged.sources} 份历史副本，待确认 ${result.unresolved} 份；有效来源记录 ${anchorAudit.anchored} 条，失去来源关联的记录已归档 ${anchorAudit.detached} 条`,
-            9e3
-          );
-        } catch (err) {
-          new obsidian12.Notice(`整理失败：${err.message}`, 9e3);
-        } finally {
-          ntc.hide();
-        }
+      id: "analyze-fit-with-writing",
+      name: "分析当前文献与论文的关联",
+      checkCallback: (checking) => {
+        var _a;
+        const f = this.app.workspace.getActiveFile();
+        if (!f || !f.path.endsWith(".md")) return false;
+        const fm = (_a = this.app.metadataCache.getFileCache(f)) == null ? void 0 : _a.frontmatter;
+        if ((fm == null ? void 0 : fm.type) !== "literature-note") return false;
+        if (checking) return true;
+        this._analyzeFitWithWriting(f).catch((e) => new obsidian11.Notice(`分析失败：${e.message}`));
+        return true;
+      }
+    });
+    this.addCommand({
+      id: "aggregate-recent-citations",
+      name: "把最近几条引用综合为一句",
+      editorCheckCallback: (checking, editor) => {
+        var _a, _b;
+        if (!editor) return false;
+        const items = Object.values((_b = (_a = this.citationIndex) == null ? void 0 : _a.items) != null ? _b : {}).filter((c) => c && String(c.source_quote || "").trim());
+        if (items.length < 2) return false;
+        if (checking) return true;
+        const recent = items.sort((a, b) => (b.created_at || 0) - (a.created_at || 0)).slice(0, 4);
+        this._aggregateFromCitations(editor, recent).catch((e) => new obsidian11.Notice(`综合失败：${e.message}`));
+        return true;
       }
     });
     this.registerEvent(
@@ -9412,12 +9374,28 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         const sel = editor.getSelection().trim();
         if (sel) {
           menu.addItem((item) => {
-            item.setTitle("推送到 PaperSearch").setIcon("search").onClick(() => this._pushSelectionToPanel(sel));
+            item.setTitle("以选中内容检索").setIcon("search").onClick(() => this._pushSelectionToPanel(sel));
           });
         }
         menu.addItem((item) => {
-          item.setTitle("从本节内容搜索文献").setIcon("book-open").onClick(() => this.app.commands.executeCommandById(`${this.manifest.id}:search-from-current-scene`));
+          item.setTitle("从本节内容搜索文献").setIcon("book-open").onClick(() => this._searchFromCurrentScene());
         });
+      })
+    );
+    this.registerEvent(
+      this.app.workspace.on("editor-menu", (menu, editor) => {
+        const cit = this._citationAtCursor(editor);
+        if (!cit) return;
+        menu.addSeparator();
+        if (String(cit.source_quote || "").trim()) {
+          menu.addItem((item) => item.setTitle("AI 转述").setIcon("wand").onClick(() => this._paraphraseAnchoredClaim(editor, cit).catch((e) => new obsidian11.Notice(`AI 转述失败：${e.message}`))));
+        }
+        const neighbors = this._neighborCitations(editor, cit);
+        if (neighbors.length >= 2) {
+          menu.addItem((item) => item.setTitle("综合为一句").setIcon("combine").onClick(() => this._aggregateFromCitations(editor, neighbors).catch((e) => new obsidian11.Notice(`综合失败：${e.message}`))));
+        }
+        menu.addItem((item) => item.setTitle("AI 核查").setIcon("check-circle").onClick(() => this._verifyCitationFidelity(editor, cit).catch((e) => new obsidian11.Notice(`AI 核查失败：${e.message}`))));
+        menu.addItem((item) => item.setTitle("打开原文").setIcon("file-text").onClick(() => this._openCitationSource(cit)));
       })
     );
     this.registerEditorExtension([
@@ -9446,7 +9424,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
           if (page > 0) {
             this.openPdfModalAt({ library, documentId: docId, sourceFile: srcFile, page });
           } else {
-            const ntc = new obsidian12.Notice("打开 PDF 中…", 0);
+            const ntc = new obsidian11.Notice("打开 PDF 中…", 0);
             try {
               await this.openPdfInObsidian(library, docId, srcFile);
             } finally {
@@ -9455,7 +9433,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
           }
         }
       } catch (e) {
-        new obsidian12.Notice(`打开 PDF 失败：${e.message}`);
+        new obsidian11.Notice(`打开 PDF 失败：${e.message}`);
       }
     };
     this.registerObsidianProtocolHandler(PROTOCOL, handleProtocol);
@@ -9463,6 +9441,240 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     this._setupCitationLinkback();
     this._setupClaimStalenessTracking();
     this._setupPdfSelectionToolbar();
+    this._setupPaperbellHandshake();
+  }
+  // ── 维护 / 内部动作 ─────────────────────────────────
+  // 以下动作不再占用命令面板（用户面板里只留他真会主动找的十来条）。实现全部保留：
+  // 由编辑器右键菜单、相关文献面板、设置页按需调用。
+  // 从当前章节内容反向检索文献（编辑器右键菜单「从本节内容搜索文献」）
+  async _searchFromCurrentScene() {
+    const active = this.app.workspace.getActiveFile();
+    if (!active) {
+      new obsidian11.Notice("请先打开一个文件");
+      return;
+    }
+    let txt = "";
+    try {
+      txt = await this.app.vault.read(active);
+    } catch (_) {
+    }
+    const body = txt.replace(/^---\n[\s\S]*?\n---\n?/, "");
+    const h = (body.match(/^#{1,3}\s+(.+)$/m) || [])[1] || "";
+    const tail = body.slice(-400).replace(/[#>*\-]/g, "").replace(/\s+/g, " ").trim();
+    const query = (h + " " + tail).trim().slice(0, 200) || active.basename;
+    await this.activateView();
+    const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
+    if ((leaf == null ? void 0 : leaf.view) instanceof PaperSearchView) {
+      leaf.view.pushQuery(query);
+    }
+  }
+  // 重建引用链路（全量扫写作项目下所有 scene）
+  async _rebuildCitationLinkback() {
+    var _a;
+    const projPath = this.settings.writingProjectPath;
+    if (!projPath) {
+      new obsidian11.Notice("请先设置写作项目");
+      return;
+    }
+    const projFile = this.app.vault.getAbstractFileByPath(projPath);
+    if (!projFile) {
+      new obsidian11.Notice("项目文件不存在");
+      return;
+    }
+    const folder = ((_a = projFile.parent) == null ? void 0 : _a.path) || "";
+    const sceneFiles = this.app.vault.getMarkdownFiles().filter((f) => f.path === projPath || folder && f.path.startsWith(folder + "/"));
+    this._rebuildLitNoteCitekeyIndex();
+    const ntc = new obsidian11.Notice(`扫描 0 / ${sceneFiles.length}…`, 0);
+    let done = 0;
+    try {
+      for (const f of sceneFiles) {
+        done++;
+        ntc.setMessage(`扫描 ${done} / ${sceneFiles.length}…`);
+        await this._scanFileAndLinkback(f);
+      }
+    } finally {
+      ntc.hide();
+    }
+    new obsidian11.Notice(`引用链路已重建（扫了 ${sceneFiles.length} 个文件）`);
+  }
+  // 把某个文件标为「当前写作项目」（不传则取当前活动文件）
+  _setAsWritingProject(file) {
+    const target = file || this.app.workspace.getActiveFile();
+    if (!target) {
+      new obsidian11.Notice("请先打开一个文件");
+      return false;
+    }
+    this.settings.writingProjectPath = target.path;
+    this.saveSettings();
+    new obsidian11.Notice(`已设为当前写作项目：${target.basename}`);
+    return true;
+  }
+  // 分析某篇文献笔记与当前写作项目的关联，结果写回笔记 + 在 frontmatter 标记已分析的 scene
+  async _analyzeFitWithWriting(file) {
+    var _a, _b, _c;
+    const target = file || this.app.workspace.getActiveFile();
+    if (!target) {
+      new obsidian11.Notice("请先打开一篇文献笔记");
+      return false;
+    }
+    const fm = (_a = this.app.metadataCache.getFileCache(target)) == null ? void 0 : _a.frontmatter;
+    if (!fm || fm.type !== "literature-note") {
+      new obsidian11.Notice("当前文件不是文献笔记");
+      return false;
+    }
+    if (!this.settings.writingProjectPath) {
+      new obsidian11.Notice("请先在设置 →「引用」页指定论文目录");
+      return false;
+    }
+    const docId = fm.document_id || "";
+    const srcFile = fm.source_file || "";
+    let view = (_b = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]) == null ? void 0 : _b.view;
+    if (!view) {
+      await this.activateView();
+      view = (_c = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0]) == null ? void 0 : _c.view;
+    }
+    if (!(view == null ? void 0 : view._analyzeFitWithProject)) {
+      new obsidian11.Notice("需要打开 PaperSearch 面板");
+      return false;
+    }
+    const row = {
+      id: fm.document_id || target.basename,
+      paperTitle: fm.csl_title || fm.paper_title || target.basename,
+      title: target.basename,
+      _docId: docId,
+      _sourceFile: srcFile,
+      origFull: "",
+      origShort: ""
+    };
+    const f = {
+      roleLabel: fm.role || "",
+      judgement: fm.tldr || "",
+      // 没有 judgement 时用 tldr 兜底
+      contributions: [],
+      limitations: [],
+      advice: "",
+      hitChunk: ""
+    };
+    const ntc = new obsidian11.Notice("正在分析与写作项目的关联…", 0);
+    try {
+      const fit = await view._analyzeFitWithProject(row, f);
+      const section = view._fitResultToMd(fit);
+      const raw = await this.app.vault.read(target);
+      const stripped = raw.replace(/\n## 与当前写作项目的关联[\s\S]*?(?=\n## |\n---\n|$)/g, "");
+      const newContent = stripped.trimEnd() + "\n" + section;
+      await this.app.vault.modify(target, newContent);
+      const sceneRel = fit.scene_rel || "__main__";
+      await this.app.fileManager.processFrontMatter(target, (fmw) => {
+        const arr = Array.isArray(fmw.analyzed_for_scenes) ? fmw.analyzed_for_scenes : [];
+        if (!arr.includes(sceneRel)) arr.push(sceneRel);
+        fmw.analyzed_for_scenes = arr;
+      });
+      new obsidian11.Notice("关联分析已写入文献笔记 ✓");
+      return true;
+    } catch (e) {
+      new obsidian11.Notice(`分析失败：${e.message}`);
+      return false;
+    } finally {
+      ntc.hide();
+    }
+  }
+  // 重新解析某篇文献笔记的元数据（绕过缓存）
+  async _reresolveCurrentPaperMeta(file) {
+    var _a;
+    const target = file || this.app.workspace.getActiveFile();
+    if (!target) {
+      new obsidian11.Notice("请先打开一篇文献笔记");
+      return false;
+    }
+    const fm = (_a = this.app.metadataCache.getFileCache(target)) == null ? void 0 : _a.frontmatter;
+    const docId = (fm == null ? void 0 : fm.document_id) || "";
+    const srcFile = (fm == null ? void 0 : fm.source_file) || "";
+    if (!docId && !srcFile) {
+      new obsidian11.Notice("当前笔记没有可用的文献标识");
+      return false;
+    }
+    const row = { _docId: docId, _sourceFile: srcFile, title: target.basename };
+    try {
+      const entry = await this.metaResolver.resolve(row, { force: true });
+      new obsidian11.Notice(`已重新解析（来源：${((entry == null ? void 0 : entry.meta_source) || []).join("+") || "失败"}）`);
+      return true;
+    } catch (e) {
+      new obsidian11.Notice(`解析失败：${e.message}`);
+      return false;
+    }
+  }
+  // 重新计算某篇文献笔记的 references_in_vault
+  _rebuildReferencesInVault(file) {
+    var _a, _b, _c, _d;
+    const target = file || this.app.workspace.getActiveFile();
+    if (!target) {
+      new obsidian11.Notice("请先打开一篇文献笔记");
+      return false;
+    }
+    const fm = (_a = this.app.metadataCache.getFileCache(target)) == null ? void 0 : _a.frontmatter;
+    if (!(fm == null ? void 0 : fm.document_id)) {
+      new obsidian11.Notice("当前笔记没有 document_id");
+      return false;
+    }
+    const entry = this._readDocMeta(fm.document_id);
+    if (!((_c = (_b = entry == null ? void 0 : entry.s2) == null ? void 0 : _b.references) == null ? void 0 : _c.length)) {
+      new obsidian11.Notice("该文献还没有 S2 references 数据");
+      return false;
+    }
+    const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
+    if (!((_d = leaf == null ? void 0 : leaf.view) == null ? void 0 : _d._computeReferencesInVault)) {
+      new obsidian11.Notice("需要打开 PaperSearch 面板");
+      return false;
+    }
+    const refs = leaf.view._computeReferencesInVault(entry);
+    new obsidian11.Notice(`在当前 Obsidian 库中匹配到 ${refs.length} 篇参考文献：${refs.slice(0, 3).join(", ")}${refs.length > 3 ? "…" : ""}`);
+    return true;
+  }
+  // 统一 Paper 身份索引：整理并合并重复文献记录
+  async _rebuildPaperIdentityIndex() {
+    const ntc = new obsidian11.Notice("正在整理文献身份记录…", 0);
+    try {
+      const result = await this._rebuildPaperIndex({ writeFrontmatter: true });
+      const merged = await this._mergeDuplicatePaperNotes();
+      await this._backfillEvidenceIdentity();
+      const anchorAudit = await this._reconcileEvidenceAnchors();
+      new obsidian11.Notice(
+        `文献记录已整理：${result.files} 份笔记 → ${result.papers} 篇文献；本次合并 ${merged.sources} 份历史副本，待确认 ${result.unresolved} 份；有效来源记录 ${anchorAudit.anchored} 条，失去来源关联的记录已归档 ${anchorAudit.detached} 条`,
+        9e3
+      );
+      return true;
+    } catch (err) {
+      new obsidian11.Notice(`整理失败：${err.message}`, 9e3);
+      return false;
+    } finally {
+      ntc.hide();
+    }
+  }
+  // 握手：注册本身只是把卡片挂到 PaperBell 的设置入口页，不触碰任何 scope，
+  // 因此可以在启动时就做，不会弹同意框。
+  //
+  // 两个插件谁先加载是不确定的，所以先直接试一次；宿主还没就绪就等它的
+  // ready 事件。_ensurePaperbellClient 内部有缓存，重复调用是幂等的。
+  // 不这样做的话，用户装了 PaperSearch 打开 PaperBell 设置也看不到入口，
+  // 要等他碰巧触发了某个需要宿主的操作才注册上。
+  _setupPaperbellHandshake() {
+    const shake = (renew) => {
+      var _a, _b;
+      if (renew) {
+        try {
+          (_b = (_a = this._paperbellClient) == null ? void 0 : _a.unregister) == null ? void 0 : _b.call(_a);
+        } catch (_) {
+        }
+        this._paperbellClient = null;
+      }
+      try {
+        this._ensurePaperbellClient();
+      } catch (_) {
+      }
+      this._checkPaperbellSchema();
+    };
+    shake(false);
+    this.registerEvent(this.app.workspace.on("paperbell:ready", () => shake(true)));
   }
   // ── 引用链路：scene 文件保存后扫 @citekey，回写 lit note cited_in ──
   _setupCitationLinkback() {
@@ -9518,20 +9730,13 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     this._litNoteCitekeyIndex = map;
   }
   _maybeScanForCitations(file) {
-    var _a, _b;
+    var _a;
     if (!file || !((_a = file.path) == null ? void 0 : _a.endsWith(".md"))) return;
     if (this._unloading) return;
     if (this._isPaperNoteFile(file)) {
       this._litNoteCitekeyIndex = null;
       return;
     }
-    const projPath = this.settings.writingProjectPath;
-    if (!projPath) return;
-    const projFile = this.app.vault.getAbstractFileByPath(projPath);
-    if (!projFile) return;
-    const projFolder = ((_b = projFile.parent) == null ? void 0 : _b.path) || "";
-    const inProject = file.path.startsWith(projFolder + "/") || file.path === projPath;
-    if (!inProject) return;
     if (this._linkbackDebounce.has(file.path)) {
       clearTimeout(this._linkbackDebounce.get(file.path));
     }
@@ -9590,13 +9795,17 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         this.coreManager._restartAttempts = 0;
         await this.coreManager.spawn();
       } catch (e) {
-        new obsidian12.Notice(`PaperSearch 本地服务未启动：${e.message}`);
+        new obsidian11.Notice(`PaperSearch 本地服务未启动：${e.message}`);
       }
       return;
     }
-    if (this.settings.developerMode) return;
+    if (this.settings.localBackendEnabled) {
+      this.coreManager._setStatus("idle", "源码目录未就绪");
+      new obsidian11.Notice("PaperSearch：已开启源码运行，但源码目录里没找到可启动的服务。请在设置 →「高级」页确认源码目录", 8e3);
+      return;
+    }
     this.coreManager._setStatus("idle", "本地服务未安装");
-    new obsidian12.Notice("PaperSearch：本地服务尚未安装，点击状态栏中的「PaperSearch 未就绪」即可安装", 7e3);
+    new obsidian11.Notice("PaperSearch：本地服务尚未安装，点击状态栏中的「PaperSearch 未就绪」即可安装", 7e3);
   }
   // 打开核心安装/管理向导（状态栏 + 检索失败「安装/修复」按钮都走这里）
   _openCoreSetup() {
@@ -9615,23 +9824,31 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       return {};
     }
   }
-  // 找到 PaperBell 宿主插件（兼容其可能的历史 id）
+  // 找到 PaperBell 宿主插件。
+  // id 只有 "paperbell" 一个——稳定版、beta（manifest-beta.json）和 Pro 的
+  // manifest id 全是它，不存在 paperbell-pro / paperbell-build 这类变体。
   _paperbellPlugin() {
-    var _a, _b;
-    const plugins = ((_b = (_a = this.app) == null ? void 0 : _a.plugins) == null ? void 0 : _b.plugins) || {};
-    return plugins.paperbell || plugins["paperbell-build"] || plugins["paperbell-pro"] || null;
+    var _a, _b, _c;
+    return ((_c = (_b = (_a = this.app) == null ? void 0 : _a.plugins) == null ? void 0 : _b.plugins) == null ? void 0 : _c.paperbell) || null;
   }
-  // 打开 PaperBell 的设置页（只调用宿主的 openSettings，不关 Obsidian 原设置窗）
+  // 打开 PaperBell 的设置页（只调用宿主的 openSettings，不关 Obsidian 原设置窗）。
+  // 注意 openSettings 不在 PPBHostApi 契约里，只是宿主实例上碰巧还在的方法，
+  // 宿主换版本可能就没了 —— 所以两种失败要分开说，别让「宿主在但方法没了」
+  // 显示成「请先安装」，那会让用户去装一个已经装好的插件。
   _openPaperbellSettings(tabId = "ai") {
     const host = this._paperbellPlugin();
-    if (!(host == null ? void 0 : host.openSettings)) {
-      new obsidian12.Notice("请先安装并启用 PaperBell 插件");
+    if (!host) {
+      new obsidian11.Notice("请先安装并启用 PaperBell 插件");
+      return;
+    }
+    if (typeof host.openSettings !== "function") {
+      new obsidian11.Notice("当前 PaperBell 版本不支持从这里跳转，请手动打开 PaperBell 设置。");
       return;
     }
     try {
       host.openSettings(tabId);
     } catch (e) {
-      new obsidian12.Notice("打开 PaperBell 设置失败：" + (e.message || String(e)));
+      new obsidian11.Notice("打开 PaperBell 设置失败：" + (e.message || String(e)));
     }
   }
   // 注册 PaperSearch 到 PaperBell，拿到 host client（缓存复用；onunload 释放）
@@ -9663,40 +9880,96 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     if (!info) throw new Error("PaperBell 授权被拒绝");
     return info;
   }
+  // 我们按之编码的宿主契约版本。宿主只在破坏性变更时 bump 它（载荷收窄、
+  // 字段删除、语义改变），所以对不上就意味着有东西需要我们跟进。
+  // 不弹通知打扰用户——普通用户对此无从判断；写进控制台供排查。
+  _checkPaperbellSchema() {
+    const PPB_SCHEMA_EXPECTED = 2;
+    const info = this._paperbellInfo();
+    if (!info || info.schemaVersion === PPB_SCHEMA_EXPECTED) return;
+    console.warn(
+      `PaperSearch: PaperBell 契约版本为 ${info.schemaVersion}，本插件按 ${PPB_SCHEMA_EXPECTED} 编写（宿主 ${info.version}）。若账号授权、AI 或下载相关功能异常，请更新 PaperSearch。`
+    );
+  }
+  // 宿主能力探测：getPluginInfo() 是同步的，且不需要任何 scope、不弹同意框，
+  // 握手前就能调。返回 { version, schemaVersion, isActivated, capabilities }。
+  _paperbellInfo() {
+    var _a, _b, _c;
+    try {
+      return ((_c = (_b = (_a = this._paperbellPlugin()) == null ? void 0 : _a.api) == null ? void 0 : _b.getPluginInfo) == null ? void 0 : _c.call(_b)) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+  hasValidActivation() {
+    var _a;
+    return !!((_a = this._paperbellInfo()) == null ? void 0 : _a.isActivated);
+  }
+  // 宿主是否支持某个 scope。比「看 client 上有没有这个方法」准：
+  // 方法可能存在但这个宿主版本并不提供该能力。
+  _paperbellSupports(scope) {
+    var _a;
+    const caps = (_a = this._paperbellInfo()) == null ? void 0 : _a.capabilities;
+    return Array.isArray(caps) ? caps.includes(scope) : true;
+  }
+  // 尝试读出 PaperBell 的激活码。
+  //
+  // 这三条都是宿主的内部字段，PPBHostApi 契约里没有对应能力——激活码属于宿主
+  // 私有，有意不下发（requestActivationInfo 只给 isActive/expiresAt/plan/userId/email）。
+  // 宿主 0.4.7 起把它们全部私有化了，实测三条都是 undefined，所以这个方法在新版
+  // 宿主上必然返回空串。留着只为兼容 0.4.5 及更早的宿主，调用方必须能接受拿不到。
   _paperbellActivationCode() {
     var _a, _b, _c;
     const host = this._paperbellPlugin();
-    return String(((_a = host == null ? void 0 : host.settings) == null ? void 0 : _a.registrationId) || ((_b = host == null ? void 0 : host.proxyService) == null ? void 0 : _b.activationCode) || ((_c = host == null ? void 0 : host.verificationWorker) == null ? void 0 : _c.activationCode) || "").trim();
-  }
-  hasValidActivation() {
-    return !!this._paperbellActivationCode();
+    return String(
+      ((_a = host == null ? void 0 : host.settings) == null ? void 0 : _a.registrationId) || ((_b = host == null ? void 0 : host.proxyService) == null ? void 0 : _b.activationCode) || ((_c = host == null ? void 0 : host.verificationWorker) == null ? void 0 : _c.activationCode) || ""
+    ).trim();
   }
   async _runOAuthActivation() {
     throw new Error("PaperSearch 不再单独管理 OAuth，请在 PaperBell 插件中完成授权");
   }
   async _clearActivation() {
-    new obsidian12.Notice("PaperSearch 不再单独管理授权，请在 PaperBell 插件中管理账号授权。");
+    new obsidian11.Notice("PaperSearch 不再单独管理授权，请在 PaperBell 插件中管理账号授权。");
   }
-  // 取受保护下载票据：PaperBell 负责授权，PaperSearch 负责平台包选择。
-  // 旧版宿主不会转发 platform/arch，非 Windows 平台在获得下载授权后由 PaperSearch 补发精确请求。
+  // 取受保护下载票据。授权由 PaperBell 负责，平台包的选择由我们负责。
+  //
+  // 麻烦在于 PPBProtectedDownloadParams 只有 product 和 baseUrl，没有 platform/arch，
+  // 宿主拿不到我们的平台信息，回来的票据默认是 Windows 包。非 Windows 平台因此要
+  // 带激活码自己去问一次精确的包——而激活码在 0.4.7+ 的宿主上已经读不到了
+  // （见 _paperbellActivationCode）。
+  //
+  // 所以这里分三种情况：多传 platform/arch 让新宿主有机会直接给对包（旧宿主会忽略
+  // 多余字段）；拿得到激活码就补一次精确请求；两者都不成时不硬抛「无法读取授权
+  // 信息」——那句话会把用户引去重新登录，而问题根本不在登录。
   async _fetchCoreDownloadTicket() {
+    var _a;
     const client = this._ensurePaperbellClient();
     if (!client.requestProtectedDownloadTicket) {
       throw new Error("当前 PaperBell 版本不支持下载授权，请更新 PaperBell 插件");
     }
-    const baseUrl = this._siteBase();
+    const baseUrl = (_a = this._siteBase) == null ? void 0 : _a.call(this);
     const platform = this.coreManager.platform();
     const arch = this.coreManager.arch();
     const ticket = await client.requestProtectedDownloadTicket({
       product: "paperbell-core",
-      baseUrl
+      baseUrl,
+      // 契约暂未定义这两个字段，新宿主若支持就能一步到位；旧宿主忽略即可
+      platform,
+      arch
     });
     if (!(ticket == null ? void 0 : ticket.url)) throw new Error("PaperBell 未返回下载链接");
     if (platform === "win") return ticket;
+    const alias = { mac: ["mac", "darwin", "osx"], linux: ["linux"], win: ["win", "windows"] };
+    const hint = `${ticket.filename || ""} ${ticket.url || ""}`.toLowerCase();
+    if ((alias[platform] || [platform]).some((k) => hint.includes(k))) return ticket;
     const activationCode = this._paperbellActivationCode();
-    if (!activationCode) throw new Error("无法读取 PaperBell 授权信息，请重新登录 PaperBell");
+    if (!activationCode) {
+      throw new Error(
+        `当前 PaperBell 版本只能提供 Windows 版本地服务，无法为 ${platform}/${arch} 取包。请更新 PaperBell 插件后重试，或在设置的「高级」里填入直链手动安装。`
+      );
+    }
     const query = new URLSearchParams({ platform, arch });
-    const response = await obsidian12.requestUrl({
+    const response = await obsidian11.requestUrl({
       url: `${baseUrl}/api/downloads/paperbell-core?${query.toString()}`,
       method: "GET",
       headers: { "X-Activation-Code": activationCode },
@@ -9713,7 +9986,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
   // 一步到位：取票(可传入已取好的) → CoreManager 下载+校验+解压 → 记录安装指纹。返回 ticket。
   async _downloadCoreAuthorized(onProgress, ticket = null) {
     ticket = ticket || await this._fetchCoreDownloadTicket();
-    const sha256 = String(ticket.sha256 || this.settings.coreDownloadSha256 || "").trim();
+    const sha256 = String(ticket.sha256 || "").trim();
     await this.coreManager.download(ticket.url, sha256, onProgress);
     this._rememberInstalledCore(ticket);
     await this.saveSettings();
@@ -9721,10 +9994,10 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
   }
   // 记录本次安装的核心指纹（供「检查并更新」判断是否已是最新）
   _rememberInstalledCore(ticket = {}) {
-    this.settings.coreInstalledVersion = String(ticket.version || "").trim();
-    this.settings.coreInstalledSha256 = String(ticket.sha256 || "").trim();
-    this.settings.coreInstalledFilename = String(ticket.filename || "").trim();
-    this.settings.coreInstalledAt = Date.now();
+    this.state.coreInstalledVersion = String(ticket.version || "").trim();
+    this.state.coreInstalledSha256 = String(ticket.sha256 || "").trim();
+    this.state.coreInstalledFilename = String(ticket.filename || "").trim();
+    this.state.coreInstalledAt = Date.now();
   }
   _coreTicketLabel(ticket = {}) {
     const parts = [];
@@ -9737,13 +10010,13 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
   _isInstalledCoreCurrent(ticket = {}) {
     var _a, _b;
     if (!((_b = (_a = this.coreManager) == null ? void 0 : _a.isInstalled) == null ? void 0 : _b.call(_a))) return false;
-    const installedSha = String(this.settings.coreInstalledSha256 || "").trim().toLowerCase();
+    const installedSha = String(this.state.coreInstalledSha256 || "").trim().toLowerCase();
     const ticketSha = String(ticket.sha256 || "").trim().toLowerCase();
     if (installedSha && ticketSha) return installedSha === ticketSha;
-    const installedVersion = String(this.settings.coreInstalledVersion || "").trim();
+    const installedVersion = String(this.state.coreInstalledVersion || "").trim();
     const ticketVersion = String(ticket.version || "").trim();
     if (installedVersion && ticketVersion) return installedVersion === ticketVersion;
-    const installedFilename = String(this.settings.coreInstalledFilename || "").trim();
+    const installedFilename = String(this.state.coreInstalledFilename || "").trim();
     const ticketFilename = String(ticket.filename || "").trim();
     if (installedFilename && ticketFilename) return installedFilename === ticketFilename;
     return false;
@@ -9761,8 +10034,77 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     }
     return config;
   }
-  // 统一 AI 请求：openai / anthropic 双协议；params = { system?, messages, model?, maxTokens?, temperature?, responseFormat? }
+  // 统一 AI 请求。两条通道，对调用方签名不变：
+  //
+  //   · 直连——从宿主取密钥，自己发请求。少一跳，OpenAI 侧有 JSON mode。
+  //   · 代跑——宿主替我们发。所有用户可用：免费档每天 5 次，已激活不限。
+  //
+  // 宿主的付费墙就建在这个分界上：requestLLMCredentials 只对已激活用户返回，
+  // 理由是「拿到 key 之后子插件直连厂商，任何计数都失效」（宿主源码原话）。
+  // 此前我们只走 credentials，等于未激活用户一调 AI 就撞「授权被拒绝」——
+  // 宿主明明留了带免费额度的代跑通道，我们没接。
   async _requestPaperbellCompletion(params) {
+    if (this.hasValidActivation()) {
+      try {
+        return await this._completionDirect(params);
+      } catch (e) {
+        console.warn("PaperSearch: 直连 AI 失败，改由 PaperBell 代跑：" + (e.message || e));
+      }
+    }
+    return this._completionViaHost(params);
+  }
+  // 要 JSON 时剥掉代码块围栏。调用点是裸 JSON.parse，模型多打一对围栏就抛异常。
+  // 两条通道都要剥：代跑不接 response_format；直连走 Anthropic 时我们也没传，
+  // 只有 OpenAI 那条真有 JSON mode。
+  // 用字符串切而不用正则：跨行围栏的正则容易被转义写坏，切法更直白。
+  _unfenceIfJson(text, params) {
+    var _a;
+    if (((_a = params == null ? void 0 : params.responseFormat) == null ? void 0 : _a.type) !== "json_object") return text;
+    const t = String(text != null ? text : "").trim();
+    if (!t.startsWith("```")) return t;
+    const nl = t.indexOf("\n");
+    const close = t.lastIndexOf("```");
+    if (nl < 0 || close <= nl) return t;
+    return t.slice(nl + 1, close).trim();
+  }
+  // 宿主代跑。免费额度耗尽时返回 errorCode: "quota-exhausted"。
+  async _completionViaHost(params) {
+    var _a, _b;
+    const client = this._ensurePaperbellClient();
+    if (!client.requestCompletion) {
+      throw new Error("当前 PaperBell 版本不支持代为调用 AI，请更新 PaperBell 插件");
+    }
+    const system = ((_a = params.responseFormat) == null ? void 0 : _a.type) === "json_object" ? [params.system, "只输出 JSON 本身，不要包代码块围栏，也不要任何解释文字。"].filter(Boolean).join("\n\n") : params.system;
+    const r = await client.requestCompletion({
+      messages: params.messages,
+      ...system ? { system } : {},
+      ...params.model ? { model: params.model } : {},
+      ...params.maxTokens !== void 0 ? { maxTokens: params.maxTokens } : {},
+      ...params.temperature !== void 0 ? { temperature: params.temperature } : {}
+    });
+    if (!r) throw new Error("PaperBell AI 调用授权被拒绝");
+    if (!r.ok) {
+      if (r.errorCode === "quota-exhausted") {
+        const q = r.quota || {};
+        let when = "";
+        try {
+          if (q.resetsAt) {
+            when = "，" + new Date(q.resetsAt).toLocaleString("zh-CN", { hour: "2-digit", minute: "2-digit" }) + " 重置";
+          }
+        } catch (_) {
+        }
+        throw new Error(
+          `今日免费 AI 额度已用完（每天 ${(_b = q.limit) != null ? _b : 5} 次${when}）。在 PaperBell 中激活账号后不受此限制。`
+        );
+      }
+      throw new Error(r.error || "AI 请求失败");
+    }
+    const out = this._unfenceIfJson(String(r.text || "").trim(), params);
+    if (!out) throw new Error("模型返回空");
+    return out;
+  }
+  // 直连：从宿主取密钥自己发。openai / anthropic 双协议。
+  async _completionDirect(params) {
     var _a, _b, _c, _d, _e, _f;
     const cfg = await this._requestPaperbellLLMCredentials();
     const api = cfg.api || "openai";
@@ -9791,7 +10133,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       ...params.responseFormat ? { response_format: params.responseFormat } : {},
       messages: params.system ? [{ role: "system", content: params.system }, ...params.messages] : params.messages
     };
-    const res = await obsidian12.requestUrl({
+    const res = await obsidian11.requestUrl({
       url: isAnthropic ? `${baseUrl}/messages` : `${baseUrl}/chat/completions`,
       method: "POST",
       contentType: "application/json",
@@ -9810,7 +10152,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       throw new Error((json == null ? void 0 : json.message) || ((_b = json == null ? void 0 : json.error) == null ? void 0 : _b.message) || (json == null ? void 0 : json.error) || `AI 请求失败（HTTP ${res.status}）`);
     }
     const text = isAnthropic ? Array.isArray(json == null ? void 0 : json.content) ? json.content.filter((b) => (b == null ? void 0 : b.type) === "text").map((b) => b.text).join("") : "" : (_f = (_e = (_d = (_c = json == null ? void 0 : json.choices) == null ? void 0 : _c[0]) == null ? void 0 : _d.message) == null ? void 0 : _e.content) != null ? _f : "";
-    const out = String(text || "").trim();
+    const out = this._unfenceIfJson(String(text || "").trim(), params);
     if (!out) throw new Error("模型返回空");
     return out;
   }
@@ -9852,29 +10194,26 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         return;
       }
       el.style.display = "";
-      const done = active.reduce((a, j) => a + Number(j.completed || j.done + j.failed + j.skipped || 0), 0);
+      const done = active.reduce((a, j) => a + j.done, 0);
       const total = active.reduce((a, j) => a + (j.total || 0), 0);
-      const current = active[0];
-      el.setText(`⟳ 建库 ${done}/${total || "?"} · ${current.stageLabel || "处理中"}${active.length > 1 ? ` (${active.length})` : ""}`);
-      el.setAttribute("aria-label", `${current.currentFile || "PaperSearch"}：${current.stageLabel || "正在后台建库"}（点击查看进度）`);
+      el.setText(`⟳ 建库 ${done}/${total || "?"}${active.length > 1 ? ` (${active.length})` : ""}`);
+      el.setAttribute("aria-label", "PaperSearch 正在后台建库（点击查看进度）");
     });
   }
   // 从状态栏胶囊回到「文献库」模块
   async _openLibFromStatus() {
     await this.activateView();
     setTimeout(() => {
-      var _a;
+      var _a, _b;
       const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-      const root = (_a = leaf == null ? void 0 : leaf.view) == null ? void 0 : _a.containerEl;
-      const libBtn = root == null ? void 0 : root.querySelector('.pb-mod-btn[data-mod="lib"]');
-      if (libBtn && !libBtn.classList.contains("active")) libBtn.click();
+      (_b = (_a = leaf == null ? void 0 : leaf.view) == null ? void 0 : _a.switchModule) == null ? void 0 : _b.call(_a, "papers");
     }, 300);
   }
   // 状态栏点击菜单：按当前状态给出可操作项（启动 / 重启 / 停止 / 日志 / 重装）
   _coreMenu(evt) {
     var _a;
     const cm = this.coreManager;
-    const menu = new obsidian12.Menu();
+    const menu = new obsidian11.Menu();
     const healthy = cm.status === "healthy";
     const canLaunch = (_a = cm._canLaunch) == null ? void 0 : _a.call(cm);
     if (healthy) {
@@ -9882,9 +10221,9 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       menu.addItem((it) => it.setTitle("停止本地服务").setIcon("square").onClick(async () => {
         try {
           await cm.kill();
-          new obsidian12.Notice("本地服务已停止");
+          new obsidian11.Notice("本地服务已停止");
         } catch (e) {
-          new obsidian12.Notice("停止失败：" + e.message);
+          new obsidian11.Notice("停止失败：" + e.message);
         }
       }));
     } else if (canLaunch) {
@@ -9900,7 +10239,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
   async _restartCore() {
     const cm = this.coreManager;
     const wasUp = cm.status === "healthy" || !!cm.proc;
-    new obsidian12.Notice(wasUp ? "正在重启本地服务…" : "正在启动本地服务…");
+    new obsidian11.Notice(wasUp ? "正在重启本地服务…" : "正在启动本地服务…");
     try {
       if (wasUp) await cm.kill();
     } catch (_) {
@@ -9917,7 +10256,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     } catch (_) {
     }
     if (!p) {
-      new obsidian12.Notice("暂无本地检索日志（组件尚未启动）");
+      new obsidian11.Notice("暂无本地检索日志（组件尚未启动）");
       return;
     }
     try {
@@ -9930,13 +10269,13 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     }
     (_e = navigator.clipboard) == null ? void 0 : _e.writeText(p).catch(() => {
     });
-    new obsidian12.Notice("日志路径已复制：" + p);
+    new obsidian11.Notice("日志路径已复制：" + p);
   }
   // 从本地导入核心压缩包（手动 / 离线 / 内网 / CDN 还没配好）：选 zip → 停旧核心 → 解压安装 → 重新拉起。
   // 状态栏菜单、设置页、首启向导三处共用。onSuccess 传入则用它收尾，否则默认重启核心。
   async _importCoreZip(onSuccess) {
     if (this._importingCore) {
-      new obsidian12.Notice("本地安装包正在导入，请稍候…");
+      new obsidian11.Notice("本地安装包正在导入，请稍候…");
       return;
     }
     const cm = this.coreManager;
@@ -9944,16 +10283,16 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     if (!f) return;
     const zipPath = pbFilePath(f);
     if (!zipPath) {
-      new obsidian12.Notice("未能获取文件路径（需桌面版 Obsidian）");
+      new obsidian11.Notice("未能获取文件路径（需桌面版 Obsidian）");
       return;
     }
     if (!/\.zip$/i.test(zipPath)) {
-      new obsidian12.Notice("请选择 .zip 压缩包");
+      new obsidian11.Notice("请选择 .zip 压缩包");
       return;
     }
     this._importingCore = true;
     const wasUp = cm.status === "healthy" || !!cm.proc;
-    const notice = new obsidian12.Notice("正在准备导入本地服务…", 0);
+    const notice = new obsidian11.Notice("正在准备导入本地服务…", 0);
     const say = (text) => {
       try {
         notice.setMessage ? notice.setMessage(text) : notice.noticeEl.setText(text);
@@ -9968,7 +10307,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         } catch (_) {
         }
       }
-      const expectedSha = (this.settings.coreDownloadSha256 || "").trim();
+      const expectedSha = (this.state.coreInstalledSha256 || "").trim();
       let beat = null;
       const stopBeat = () => {
         if (beat) {
@@ -9997,7 +10336,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         stopBeat();
       }
       notice.hide();
-      new obsidian12.Notice("本地服务导入完成");
+      new obsidian11.Notice("本地服务导入完成");
       if (onSuccess) {
         onSuccess();
       } else {
@@ -10006,7 +10345,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       }
     } catch (e) {
       notice.hide();
-      new obsidian12.Notice("本地服务导入失败：" + e.message, 8e3);
+      new obsidian11.Notice("本地服务导入失败：" + e.message, 8e3);
     } finally {
       this._importingCore = false;
     }
@@ -10077,9 +10416,9 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       ...role,
       id: role.id || defaultRoleIdByColor.get(role.color) || `role-${index + 1}`
     }));
-    this.settings.apiKey = "";
-    this.settings.apiBaseUrl = "";
-    this.settings.apiModel = "";
+    delete this.settings.apiKey;
+    delete this.settings.apiBaseUrl;
+    delete this.settings.apiModel;
     if (!Array.isArray(flat.annotationRoles)) {
       this.settings.annotationRoles = JSON.parse(JSON.stringify(DEFAULT_SETTINGS.annotationRoles));
     }
@@ -10088,10 +10427,17 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     } else {
       const dmr = DEFAULT_SETTINGS.metadataResolver;
       const mr = this.settings.metadataResolver;
-      if (!mr.resolvers || typeof mr.resolvers !== "object") mr.resolvers = { ...dmr.resolvers };
       if (!mr.s2 || typeof mr.s2 !== "object") mr.s2 = { ...dmr.s2 };
-      if (!mr.reranking || typeof mr.reranking !== "object") mr.reranking = { ...dmr.reranking };
+      delete mr.resolvers;
+      delete mr.reranking;
     }
+    this.state = Object.assign({}, DEFAULT_STATE, raw.state && typeof raw.state === "object" ? raw.state : {});
+    for (const k of Object.keys(DEFAULT_STATE)) {
+      if (raw.state && typeof raw.state === "object" && k in raw.state) continue;
+      if (flat[k] !== void 0) this.state[k] = flat[k];
+      else if (raw[k] !== void 0) this.state[k] = raw[k];
+    }
+    for (const k of Object.keys(DEFAULT_STATE)) delete this.settings[k];
     this.analysisCache = raw.analysisCache && typeof raw.analysisCache === "object" ? raw.analysisCache : { version: 1, entries: {} };
     this._sweepAnalysisCache();
     this.docMetaCache = raw.docMetaCache && typeof raw.docMetaCache === "object" ? raw.docMetaCache : { version: 2, entries: {}, by_doi: {}, by_citekey: {} };
@@ -10112,19 +10458,18 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
       this._claimStaleTimers.clear();
     }
     this.annotationIndex = raw.annotationIndex && typeof raw.annotationIndex === "object" ? raw.annotationIndex : { version: 1, items: {} };
-    this.collectedRefs = raw.collectedRefs && typeof raw.collectedRefs === "object" ? raw.collectedRefs : { version: 1, items: {} };
   }
   async saveSettings() {
     if (this._unloading) return;
     await this.saveData({
       settings: this.settings,
+      state: this.state,
       analysisCache: this.analysisCache,
       docMetaCache: this.docMetaCache,
       paperIndex: this.paperIndex,
       citationIndex: this.citationIndex,
       claimIndex: this.claimIndex,
-      annotationIndex: this.annotationIndex,
-      collectedRefs: this.collectedRefs
+      annotationIndex: this.annotationIndex
     });
   }
   // ── PaperRepository：统一 Paper 身份与文献笔记入口 ─────────────
@@ -10276,10 +10621,14 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     }
     return item;
   }
+  // 文献笔记的扫描根。LEGACY_NOTE_DIR 是改成「一篇一目录」之前的平铺目录：
+  // 设置项已经撤了（不该让新用户配一个历史遗留），但老用户磁盘上的笔记还在那儿，
+  // 认不出来就等于丢了他们的旧笔记，所以按常量继续扫。
   _paperNoteRoots() {
+    const LEGACY_NOTE_DIR = "PaperSearch笔记";
     return [...new Set([
       (this.settings.paperLibraryDir || "PaperSearch/文献").replace(/\/+$/, ""),
-      (this.settings.litNoteDir || "PaperSearch笔记").replace(/\/+$/, "")
+      LEGACY_NOTE_DIR
     ].filter(Boolean))];
   }
   _isPaperNoteFile(file) {
@@ -11007,12 +11356,22 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     const clean = (value) => String(value || "").replace(/%%(?:claim|cite):[\w-]+%%/g, "").trim();
     const first = clean(lines[line] || "");
     if (first && !/^\s*>/.test(first)) out.push(first);
+    let blankRun = 0, crossedQuote = false;
     for (let ln = line + 1; ln < lines.length && ln < line + 12; ln++) {
       const raw = lines[ln] || "";
-      if (/%%claim:[\w-]+%%/.test(raw) || /%%cite:[\w-]+%%/.test(raw) && out.length) break;
-      if (/^#{1,6}\s/.test(raw) && out.length) break;
-      if (raw.trim() === "" && out.length) break;
-      if (/^\s*>/.test(raw)) continue;
+      if (/%%claim:[\w-]+%%/.test(raw)) break;
+      if (/%%cite:[\w-]+%%/.test(raw) && (out.length || crossedQuote)) break;
+      if (/^#{1,6}\s/.test(raw)) break;
+      if (raw.trim() === "") {
+        if (out.length) break;
+        if (++blankRun >= 2) break;
+        continue;
+      }
+      blankRun = 0;
+      if (/^\s*>/.test(raw)) {
+        crossedQuote = true;
+        continue;
+      }
       const value = clean(raw);
       if (value) out.push(value);
     }
@@ -11084,7 +11443,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
     }
     if (changed) {
       this.saveSettings();
-      (_b = this._refreshCitePanel) == null ? void 0 : _b.call(this);
+      (_b = this._refreshCollectTab) == null ? void 0 : _b.call(this);
     }
   }
   _newClaimId() {
@@ -11152,15 +11511,22 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
   }
   // 把结构化 AI 草稿转换成“Claim + Evidence + Citation”事务。
   // 这里只构造内存对象；正文真正插入成功后才调用 _commitEvidenceBackedDraft，避免孤儿索引。
-  _buildEvidenceBackedDraft(draft, documentPath = "") {
+  // 卡片字段 → 可以写进正文的纯文本。先剥标签再解实体，顺序不能反：
+  // lt/gt 先解、amp 后解，否则 &amp;lt; 会被解成 < 而不是字面的 &lt;。
+  // 这一步只做一次——重复调用不幂等（第二次会把用户原文里真实的 &lt; 解成 <）。
+  _stripCardText(value) {
+    return String(value || "").replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  }
+  _buildEvidenceBackedDraft(draft, documentPath = "", opts = {}) {
+    const withClaim = opts.withClaim !== false;
     const rows = Array.isArray(draft == null ? void 0 : draft.rows) ? draft.rows : [];
     const claimsIn = Array.isArray(draft == null ? void 0 : draft.claims) ? draft.claims : [];
-    const library = String((draft == null ? void 0 : draft.library) || this.settings.lastLibrary || "default");
+    const library = String((draft == null ? void 0 : draft.library) || this.state.lastLibrary || "default");
     if (!rows.length || !claimsIn.length) throw new Error("草稿缺少来源映射");
     const citations = [];
     const claims = [];
     const blocks = [];
-    const strip = (value) => String(value || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
+    const strip = (value) => this._stripCardText(value);
     for (const rawClaim of claimsIn) {
       const claimText = this._normalizeClaimText((rawClaim == null ? void 0 : rawClaim.text) || "");
       const sourceNumbers = [...new Set(((rawClaim == null ? void 0 : rawClaim.source_numbers) || []).map((n) => parseInt(n, 10)).filter((n) => Number.isInteger(n) && n >= 1 && n <= rows.length))];
@@ -11175,7 +11541,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         var _a;
         const row = rows[sourceNo - 1];
         const sourceLibrary = String(row._library || row.library || library || "default");
-        const quote = strip(row.origFull || row.origShort || "");
+        const quote = row._quoteReady ? String(row.origFull || "") : strip(row.origFull || row.origShort || "");
         if (!quote) throw new Error(`来源 ${sourceNo} 缺少原文片段`);
         const docMeta = this._readDocMeta(row._docId) || row._meta || {};
         const paperIdentity = this._resolvePaperIdentity ? this._resolvePaperIdentity({ row, library: sourceLibrary, meta: docMeta }) : { paper_id: `paper-${this._hashText(`${sourceLibrary}|${row._docId || row._sourceFile || row.id}`).slice(0, 16)}` };
@@ -11186,7 +11552,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         const evidenceId = `chunk:${sourceLibrary}:${row._docId || row._sourceFile || stem}:${row.id || sourceNo}`;
         const cit = {
           id: citeId,
-          claim_id: claimId,
+          claim_id: withClaim ? claimId : "",
           evidence_id: evidenceId,
           paper_id: paperIdentity.paper_id,
           document_path: documentPath,
@@ -11201,8 +11567,7 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
           source_file: row._sourceFile || "",
           csl: docMeta.csl || null,
           citekey,
-          evidence_role: row.relation_type || row.tag || "",
-          user_claim: claimText,
+          user_claim: withClaim ? claimText : "",
           claim_hash: "",
           transform: "ai-synthesis",
           fidelity: "unchecked",
@@ -11241,8 +11606,8 @@ var PaperSearchPlugin = class extends obsidian12.Plugin {
         verified_at: null,
         created_at: Date.now()
       };
-      claims.push(claim);
-      const anchors = `%%claim:${claimId}%%` + claimCitations.map((c) => `%%cite:${c.id}%%`).join("");
+      if (withClaim) claims.push(claim);
+      const anchors = (withClaim ? `%%claim:${claimId}%%` : "") + claimCitations.map((c) => `%%cite:${c.id}%%`).join("");
       const pandoc = citekeys.length === claimCitations.length ? ` [${citekeys.map((k) => `@${k}`).join("; ")}]` : "";
       blocks.push(`${anchors}
 ${claimText}${pandoc}
@@ -11344,7 +11709,7 @@ ${claimText}${pandoc}
       }, 150);
     }
   }
-  // ── 悬浮「文献收集栏」（Floating-TOC 式：收起=带计数的把手，hover/pinned 展开）────
+  // ── 「片段」标签页的行渲染与菜单 ────────────────────────
   _fidMeta(fid) {
     const map = {
       faithful: { icon: "●", label: "充分支持", cls: "pb-cpal-fid-ok" },
@@ -11355,129 +11720,12 @@ ${claimText}${pandoc}
     };
     return map[fid] || map.unchecked;
   }
-  _ensureCitePanel() {
-    if (this.settings.citePanelEnabled === false) return;
-    if (this._citePanelEl && document.body.contains(this._citePanelEl)) return;
-    const wrap = document.body.createDiv({ cls: "pb-cite-panel" });
-    const tab = wrap.createDiv({ cls: "pb-cite-panel-tab" });
-    tab.createSpan({ cls: "pb-cite-panel-count", text: "0" });
-    const body = wrap.createDiv({ cls: "pb-cite-panel-body" });
-    const head = body.createDiv({ cls: "pb-cite-panel-head" });
-    const titleRow = head.createDiv({ cls: "pb-cc-titlerow" });
-    titleRow.createSpan({ cls: "pb-cite-panel-title pb-cc-title", text: "文献收集" });
-    titleRow.createSpan({ cls: "pb-cite-panel-count" });
-    const gsel = titleRow.createEl("select", { cls: "pb-cite-panel-filter pb-cc-groupsel dropdown", attr: { "aria-label": "分组方式" } });
-    for (const o of [["doc", "按文献"], ["time", "按时间"], ["color", "按颜色"]]) {
-      const e = gsel.createEl("option", { text: o[1] });
-      e.value = o[0];
-    }
-    gsel.value = this._collGroupBy || "time";
-    gsel.onchange = () => {
-      this._collGroupBy = gsel.value;
-      this._refreshCollections();
-    };
-    const pin = titleRow.createSpan({ cls: "pb-cite-panel-pin", attr: { "aria-label": "固定 / 取消固定" } });
-    obsidian12.setIcon(pin, "pin");
-    pin.onclick = () => {
-      this.settings.citePanelPinned = !this.settings.citePanelPinned;
-      this.saveSettings();
-      this._applyCitePanelState();
-    };
-    head.createSpan({ cls: "pb-cc-sub", text: this._collSubLabel() });
-    this._buildCollectChips(head);
-    const tsel = head.createEl("select", { cls: "pb-cite-panel-filter dropdown", attr: { "aria-label": "按时间筛选" } });
-    for (const o of [["all", "全部时间"], ["1", "今天"], ["7", "近 7 天"], ["30", "近 30 天"]]) {
-      const e = tsel.createEl("option", { text: o[1] });
-      e.value = o[0];
-    }
-    tsel.value = this._collTime || "all";
-    tsel.onchange = () => {
-      this._collTime = tsel.value;
-      this._refreshCitePanel();
-    };
-    const sin = body.createEl("input", { cls: "pb-cite-panel-search", attr: { type: "text", placeholder: "搜索文献名…" } });
-    sin.value = this._collDocQ || "";
-    sin.oninput = () => {
-      this._collDocQ = sin.value;
-      this._refreshCitePanel();
-    };
-    body.createDiv({ cls: "pb-cite-panel-list" });
-    this._citePanelEl = wrap;
-    this._applyCitePanelEdge();
-    this._applyCitePanelState();
-    this.register(() => {
-      try {
-        wrap.remove();
-      } catch (_) {
-      }
-    });
-  }
-  _applyCitePanelEdge() {
-    if (!this._citePanelEl) return;
-    const edge = ["right", "left", "top", "bottom"].includes(this.settings.citePanelEdge) ? this.settings.citePanelEdge : "right";
-    this._citePanelEl.dataset.edge = edge;
-  }
-  _applyCitePanelState() {
-    if (!this._citePanelEl) return;
-    this._citePanelEl.toggleClass("is-pinned", !!this.settings.citePanelPinned);
-  }
-  _applyCitePanelSetting() {
-    if (this.settings.citePanelEnabled === false) {
-      if (this._citePanelEl) {
-        try {
-          this._citePanelEl.remove();
-        } catch (_) {
-        }
-        this._citePanelEl = null;
-      }
-      return;
-    }
-    this._ensureCitePanel();
-    this._applyCitePanelEdge();
-    this._applyCitePanelState();
-    this._refreshCitePanel();
-  }
-  // 命令 / ribbon：展开并固定（再点取消固定）
-  _toggleCitePanel() {
-    this._ensureCitePanel();
-    if (!this._citePanelEl) {
-      new obsidian12.Notice("文献收集栏已在设置里关闭");
-      return;
-    }
-    this.settings.citePanelPinned = !this.settings.citePanelPinned;
-    this.saveSettings();
-    this._applyCitePanelState();
-    this._refreshCitePanel();
-  }
-  _refreshCitePanel() {
-    var _a, _b;
-    if (this.settings.citePanelEnabled === false) {
-      if (this._citePanelEl) this._citePanelEl.style.display = "none";
-      return;
-    }
-    if (!this._citePanelEl || !document.body.contains(this._citePanelEl)) return;
-    this._citePanelEl.style.display = "";
-    const total = Object.values(((_a = this.annotationIndex) == null ? void 0 : _a.items) || {}).length;
-    const refsAll = Object.values(((_b = this.collectedRefs) == null ? void 0 : _b.items) || {});
-    const list = this._citePanelEl.querySelector(".pb-cite-panel-list");
-    this._citePanelEl.querySelectorAll(".pb-cite-panel-count").forEach((el) => {
-      el.textContent = total > 99 ? "99+" : String(total);
-    });
-    this._citePanelEl.toggleClass("is-empty", total === 0 && refsAll.length === 0);
-    const subEl = this._citePanelEl.querySelector(".pb-cc-sub");
-    if (subEl) subEl.textContent = this._collSubLabel();
-    const chipsEl = this._citePanelEl.querySelector(".pb-cc-chips");
-    if (chipsEl) this._buildCollectChips(chipsEl.parentElement);
-    if (!list) return;
-    this._populateCollectList(list);
-  }
-  // 构建文献收集列表（悬浮收集栏与「文献收集」标签页共用）。返回标注总数。
+  // 构建文献收集列表（「文献收集」标签页使用）。返回标注总数。
   _populateCollectList(listEl) {
-    var _a, _b;
+    var _a;
     if (!listEl) return 0;
     if (!this._collSel) this._collSel = /* @__PURE__ */ new Set();
     const all = Object.values(((_a = this.annotationIndex) == null ? void 0 : _a.items) || {});
-    const refsAll = Object.values(((_b = this.collectedRefs) == null ? void 0 : _b.items) || {});
     const total = all.length;
     const list = listEl;
     list.empty();
@@ -11487,7 +11735,7 @@ ${claimText}${pandoc}
     if (this._collSel.size) {
       const sb = selHost.createDiv({ cls: "pb-cite-panel-selbar" + (panelEl ? " pb-cite-panel-selbar--float" : "") });
       sb.createSpan({ cls: "pb-cite-panel-selcount", text: `已选 ${this._collSel.size} 条` });
-      const go = sb.createEl("button", { cls: "pb-cite-panel-selgo mod-cta", text: "查相关文献" });
+      const go = sb.createEl("button", { cls: "pb-cite-panel-selgo mod-cta", text: "以此检索" });
       go.onclick = (e) => {
         e.stopPropagation();
         this._sendAnnosToSearch([...this._collSel].map((id) => {
@@ -11513,8 +11761,8 @@ ${claimText}${pandoc}
       items = items.filter((a) => (a.created_at || 0) >= cut);
     }
     if (docQ) items = items.filter((a) => String(a.doc || "").toLowerCase().includes(docQ));
-    if (!items.length && !refsAll.length) {
-      list.createDiv({ cls: "pb-cite-panel-empty", text: total ? "当前筛选下没有标注。" : "还没有收录标注。在 PDF 阅读时用颜色标记，就会收进这里。" });
+    if (!items.length) {
+      list.createDiv({ cls: "pb-cite-panel-empty", text: total ? "当前筛选下没有片段。" : "还没有片段。在 PDF 里划选文字、或在检索结果上点「记」，就会收进这里。" });
       return total;
     }
     if ((this._collGroupBy || "time") === "time") {
@@ -11583,30 +11831,13 @@ ${claimText}${pandoc}
             var _a2;
             e.stopPropagation();
             (_a2 = navigator.clipboard) == null ? void 0 : _a2.writeText(`[@${bib.citekey}]`);
-            new obsidian12.Notice(`已复制 [@${bib.citekey}]`);
+            new obsidian11.Notice(`已复制 [@${bib.citekey}]`);
           };
         } else {
           gh.createSpan({ cls: "pb-cc-reddot", attr: { title: "此文献未匹配到你的文献库（.bib），暂时没有可用的引用键" } });
         }
         gh.createSpan({ cls: "pb-cc-gcount", text: String(arr.length) });
         for (const a of arr) this._renderCiteRow(colEl, a, bib);
-      }
-    }
-    let refs = refsAll;
-    if (docQ) refs = refs.filter((r) => String(r.title || "").toLowerCase().includes(docQ));
-    if (refs.length) {
-      list.createDiv({ cls: "pb-cite-panel-section", text: "相关文献 · PaperSearch 检索收入" });
-      const byGroup = {};
-      for (const r of refs) {
-        const g = r.group || "相关文献";
-        (byGroup[g] = byGroup[g] || []).push(r);
-      }
-      for (const g of Object.keys(byGroup).sort((x, y) => x.localeCompare(y))) {
-        const colEl = list.createDiv({ cls: "pb-cc-col" });
-        const gh = colEl.createDiv({ cls: "pb-cc-group" });
-        gh.createSpan({ cls: "pb-cc-gname", text: g });
-        gh.createSpan({ cls: "pb-cc-gcount", text: String(byGroup[g].length) });
-        for (const r of byGroup[g].sort((x, y) => (y.created_at || 0) - (x.created_at || 0))) this._renderRefRow(colEl, r);
       }
     }
     return total;
@@ -11621,9 +11852,8 @@ ${claimText}${pandoc}
       if (this._collectTabCountEl) this._collectTabCountEl.textContent = n ? String(n) : "";
     }
   }
-  // 同时刷新两处收集界面：悬浮收集栏 + 面板内「文献收集」标签页
+  // 刷新面板内「文献收集」标签页
   _refreshCollections() {
-    this._refreshCitePanel();
     this._refreshCollectTab();
   }
   _renderCiteRow(parent, anno, bib) {
@@ -11649,7 +11879,7 @@ ${claimText}${pandoc}
         var _a;
         e.stopPropagation();
         (_a = navigator.clipboard) == null ? void 0 : _a.writeText(`[@${bib.citekey}]`);
-        new obsidian12.Notice(`已复制 [@${bib.citekey}]`);
+        new obsidian11.Notice(`已复制 [@${bib.citekey}]`);
       };
     } else {
       foot.createSpan({ cls: "pb-cc-reddot", attr: { "aria-label": "未匹配到文献库", title: "这篇还没匹配到你的文献库（.bib），暂时没有可用的引用键" } });
@@ -11670,7 +11900,9 @@ ${claimText}${pandoc}
     card.setAttr("draggable", "true");
     card.addEventListener("dragstart", (e) => {
       try {
+        e.dataTransfer.setData("application/paperbell-cards", JSON.stringify([this._annoToCard(anno, bib)]));
         e.dataTransfer.setData("text/plain", this._annoInsertText(anno, bib));
+        e.dataTransfer.effectAllowed = "copy";
       } catch (_) {
       }
     });
@@ -11738,83 +11970,57 @@ ${claimText}${pandoc}
   _openLitNote(stem) {
     const f = this.app.vault.getMarkdownFiles().find((x) => x.basename === stem);
     if (!f) {
-      new obsidian12.Notice("这篇还没有文献笔记");
+      new obsidian11.Notice("这篇还没有文献笔记");
       return;
     }
     this.app.workspace.getLeaf("tab").openFile(f);
   }
+  // 标注 → 统一卡片形状（与检索卡片的拖拽 payload 同形），供拖拽与「插入到正文」共用。
+  // _annotationId 等下划线字段只在插件内部流转，让统一插入路径把证据记成 annotation。
+  // 片段库的标注 → 拖拽卡片。字段形态必须与另两条来源（检索卡片 / 相关文献面板）
+  // 逐项对齐：它们仨汇进同一个 drop 端，下游按「已转义一次」的约定处理。
+  _annoToCard(anno, bib) {
+    const esc = (v) => String(v != null ? v : "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    return {
+      id: anno.id,
+      origFull: esc(anno.text || ""),
+      page: anno.page,
+      _sourceFile: anno.src || `${anno.doc || "文献"}.pdf`,
+      _docId: anno.docId || anno.document_id || "",
+      _library: anno.lib || anno.library || this.state.lastLibrary || "default",
+      paperTitle: esc(anno.doc || "文献"),
+      citekey: (bib == null ? void 0 : bib.citekey) || "",
+      _annotationId: anno.id,
+      _evidenceId: anno.evidence_id || "",
+      _paperId: anno.paper_id || "",
+      _attachmentId: anno.attachment_id || ""
+    };
+  }
   _citeRowMenu(evt, anno, bib) {
-    const menu = new obsidian12.Menu();
-    menu.addItem((it) => it.setTitle("插入到正文（原文 + 引用）").setIcon("quote").onClick(() => this._insertAtCursor(this._annoInsertText(anno, bib))));
-    menu.addItem((it) => it.setTitle("插入并 AI 改写").setIcon("wand").onClick(async () => {
-      var _a;
-      const view = this.app.workspace.getActiveViewOfType(obsidian12.MarkdownView);
-      const editor = view == null ? void 0 : view.editor;
-      if (!editor) {
-        new obsidian12.Notice("请先打开一篇笔记");
+    const menu = new obsidian11.Menu();
+    menu.addItem((it) => it.setTitle("插入到正文").setIcon("quote").onClick(() => {
+      const target = this._activeCmTarget();
+      if (!target) {
+        new obsidian11.Notice("请先打开一篇笔记");
         return;
       }
-      new obsidian12.Notice("AI 改写中…");
-      try {
-        const rew = await this._aiRewrite(anno.text || "", "");
-        if (!(rew == null ? void 0 : rew.trim())) throw new Error("改写结果为空");
-        const row = {
-          id: anno.id,
-          origFull: anno.text || "",
-          page: anno.page,
-          _sourceFile: anno.src || `${anno.doc || "文献"}.pdf`,
-          _docId: anno.docId || "",
-          _library: anno.lib || anno.library || this.settings.lastLibrary || "default",
-          paperTitle: anno.doc || "文献",
-          citekey: (bib == null ? void 0 : bib.citekey) || ""
-        };
-        const bundle = this._buildEvidenceBackedDraft({
-          rows: [row],
-          claims: [{ text: rew, source_numbers: [1] }],
-          library: row._library
-        }, ((_a = view.file) == null ? void 0 : _a.path) || "");
-        for (const cit of bundle.citations) {
-          cit.paper_id = anno.paper_id || cit.paper_id;
-          cit.attachment_id = anno.attachment_id || "";
-          cit.evidence_id = anno.evidence_id || `annotation:${anno.id}`;
-          cit.source_kind = "annotation";
-          cit.source_annotation_id = anno.id;
-          cit.evidence_role = anno.role_id || "unspecified";
-          cit.transform = "ai-rewrite";
-        }
-        for (const claim of bundle.claims) {
-          const evidence = bundle.citations.filter((cit) => cit.claim_id === claim.id);
-          claim.evidence_ids = evidence.map((cit) => cit.evidence_id);
-          claim.evidence_hash = this._evidenceHash(evidence);
-        }
-        const before = editor.getValue();
-        editor.replaceSelection(bundle.text);
-        try {
-          await this._commitEvidenceBackedDraft(bundle);
-        } catch (e) {
-          editor.setValue(before);
-          throw e;
-        }
-        new obsidian12.Notice("AI 改写已插入，并保留原文来源");
-      } catch (e) {
-        new obsidian12.Notice("AI 改写失败：" + ((e == null ? void 0 : e.message) || e));
-      }
+      this._insertAnchoredCitation(target.view, target.pos, [this._annoToCard(anno, bib)]);
     }));
-    menu.addItem((it) => it.setTitle("查相关文献").setIcon("search").onClick(() => this._sendAnnosToSearch([anno])));
+    menu.addItem((it) => it.setTitle("以此检索").setIcon("search").onClick(() => this._sendAnnosToSearch([anno])));
     menu.addSeparator();
     menu.addItem((it) => it.setTitle("打开文献笔记").setIcon("file-text").onClick(() => this._openLitNote(anno.doc)));
     menu.addItem((it) => it.setTitle("复制标注原文").setIcon("copy").onClick(() => {
       var _a;
       (_a = navigator.clipboard) == null ? void 0 : _a.writeText(anno.text || "");
-      new obsidian12.Notice("已复制原文");
+      new obsidian11.Notice("已复制原文");
     }));
     if (bib == null ? void 0 : bib.citekey) menu.addItem((it) => it.setTitle(`复制引用 [@${bib.citekey}]`).setIcon("clipboard-copy").onClick(() => {
       var _a;
       (_a = navigator.clipboard) == null ? void 0 : _a.writeText(`[@${bib.citekey}]`);
-      new obsidian12.Notice(`已复制 [@${bib.citekey}]`);
+      new obsidian11.Notice(`已复制 [@${bib.citekey}]`);
     }));
     menu.addSeparator();
-    menu.addItem((it) => it.setTitle("从收集栏删除该标注").setIcon("trash").onClick(() => {
+    menu.addItem((it) => it.setTitle("删除标注").setIcon("trash").onClick(() => {
       var _a;
       (_a = this._collSel) == null ? void 0 : _a.delete(anno.id);
       this._deleteAnno(anno.id);
@@ -11835,91 +12041,19 @@ ${claimText}${pandoc}
     const q = String((anno == null ? void 0 : anno.text) || "").replace(/\s+/g, " ").trim();
     return (bib == null ? void 0 : bib.citekey) ? `“${q}” [@${bib.citekey}]` : `“${q}”`;
   }
-  _insertAtCursor(text) {
-    const view = this.app.workspace.getActiveViewOfType(obsidian12.MarkdownView);
-    const editor = view == null ? void 0 : view.editor;
-    if (!editor) {
-      new obsidian12.Notice("请先打开一篇笔记");
-      return false;
-    }
-    editor.replaceSelection(text);
-    return true;
-  }
   // 把勾选/单条标注的原文当 query，发给 PaperSearch 检索相关文献
   async _sendAnnosToSearch(annos) {
     const q = (annos || []).map((a) => String((a == null ? void 0 : a.text) || "").trim()).filter(Boolean).join(" ").slice(0, 500);
     if (!q) {
-      new obsidian12.Notice("没有可检索的标注文字");
+      new obsidian11.Notice("没有可检索的标注文字");
       return;
     }
     await this.activateView();
     const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
     if ((leaf == null ? void 0 : leaf.view) instanceof PaperSearchView) {
       leaf.view.pushQuery(q);
-      new obsidian12.Notice(`已用 ${(annos || []).length} 条标注检索相关文献`);
-    } else new obsidian12.Notice("请先打开 PaperSearch 检索面板");
-  }
-  // ── 相关文献收集（文献收集栏的「相关文献」分组）──
-  _unesc(s) {
-    return String(s || "").replace(/<[^>]*>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
-  }
-  _newRefId() {
-    const n = this.collectedRefs._seq = (this.collectedRefs._seq || 0) + 1;
-    return `ref-${n.toString(36)}${Date.now().toString(36).slice(-4)}`;
-  }
-  _collectRelatedRefs(rows, groupLabel) {
-    var _a;
-    if (!this.collectedRefs.items) this.collectedRefs.items = {};
-    let n = 0;
-    for (const r of rows || []) {
-      const title = this._unesc(r.paperTitle || r.title || r._sourceFile || "未命名文献");
-      const bib = this._matchBib({ source_doc: r._sourceFile || title, title, _sourceFile: r._sourceFile });
-      const id = this._newRefId();
-      this.collectedRefs.items[id] = {
-        id,
-        title,
-        citekey: (bib == null ? void 0 : bib.citekey) || "",
-        snippet: this._unesc(r.origShort || r.origFull || "").replace(/\s+/g, " ").trim().slice(0, 160),
-        doc: this._unesc(r._sourceFile || title),
-        page: (_a = r.page) != null ? _a : null,
-        group: groupLabel || "相关文献",
-        created_at: Date.now()
-      };
-      n++;
-    }
-    if (n) this.saveSettings();
-    this._refreshCollections();
-    return n;
-  }
-  _removeCollectedRef(id) {
-    try {
-      delete this.collectedRefs.items[id];
-    } catch (_) {
-    }
-    this.saveSettings();
-    this._refreshCollections();
-  }
-  _renderRefRow(parent, ref) {
-    const row = parent.createDiv({ cls: "pb-cite-panel-item pb-cite-panel-refitem" });
-    const main = row.createDiv({ cls: "pb-cite-panel-itemmain" });
-    const meta = main.createDiv({ cls: "pb-cite-panel-meta" });
-    meta.createSpan({ cls: "pb-cite-panel-refname", text: ref.title || "未命名文献" });
-    if (ref.citekey) meta.createSpan({ cls: "pb-cite-panel-citekey", text: `@${ref.citekey}` });
-    if (ref.snippet) main.createDiv({ cls: "pb-cite-panel-text", text: ref.snippet });
-    row.onclick = (e) => this._refRowMenu(e, ref);
-  }
-  _refRowMenu(evt, ref) {
-    const menu = new obsidian12.Menu();
-    menu.addItem((it) => it.setTitle("用此文献再检索").setIcon("search").onClick(() => this._sendAnnosToSearch([{ text: ref.snippet || ref.title }])));
-    menu.addItem((it) => it.setTitle("打开文献笔记").setIcon("file-text").onClick(() => this._openLitNote(ref.doc)));
-    if (ref.citekey) menu.addItem((it) => it.setTitle(`复制引用 [@${ref.citekey}]`).setIcon("clipboard-copy").onClick(() => {
-      var _a;
-      (_a = navigator.clipboard) == null ? void 0 : _a.writeText(`[@${ref.citekey}]`);
-      new obsidian12.Notice(`已复制 [@${ref.citekey}]`);
-    }));
-    menu.addSeparator();
-    menu.addItem((it) => it.setTitle("从收集栏移除").setIcon("trash").onClick(() => this._removeCollectedRef(ref.id)));
-    menu.showAtMouseEvent(evt);
+      new obsidian11.Notice(`已用 ${(annos || []).length} 条标注检索相关文献`);
+    } else new obsidian11.Notice("请先打开 PaperSearch 检索面板");
   }
   _readCitation(id) {
     var _a, _b;
@@ -11979,6 +12113,17 @@ ${claimText}${pandoc}
       this._scheduleAnnoSave();
       this._refreshAnnoPanel();
       this._refreshCollections();
+      this._refreshCardStates();
+    }
+  }
+  // 通知检索面板重算卡片上的「已记 / 已引 ×N」。面板没开时是空操作。
+  _refreshCardStates() {
+    try {
+      this.app.workspace.getLeavesOfType(VIEW_TYPE).forEach((leaf) => {
+        var _a, _b;
+        return (_b = (_a = leaf == null ? void 0 : leaf.view) == null ? void 0 : _a.refreshCardStates) == null ? void 0 : _b.call(_a);
+      });
+    } catch (_) {
     }
   }
   _scheduleAnnoSave() {
@@ -12063,9 +12208,9 @@ ${claimText}${pandoc}
       this._refreshAnnoPanel();
     };
     const pin = tools.createSpan({ cls: "pb-anno-panel-pin", attr: { "aria-label": "固定 / 取消固定" } });
-    obsidian12.setIcon(pin, "pin");
+    obsidian11.setIcon(pin, "pin");
     pin.onclick = () => {
-      this.settings.annoPanelPinned = !this.settings.annoPanelPinned;
+      this.state.annoPanelPinned = !this.state.annoPanelPinned;
       this.saveSettings();
       this._applyAnnoPanelState();
     };
@@ -12087,7 +12232,7 @@ ${claimText}${pandoc}
   }
   _applyAnnoPanelState() {
     if (!this._annoPanelEl) return;
-    this._annoPanelEl.toggleClass("is-pinned", !!this.settings.annoPanelPinned);
+    this._annoPanelEl.toggleClass("is-pinned", !!this.state.annoPanelPinned);
   }
   // 把某文档的标注渲染成可点跳条目到 listEl（悬浮面板 + 模态底部停靠分栏共用）。
   // 返回该文档标注总数（未按颜色过滤前），供标题计数。
@@ -12216,7 +12361,7 @@ ${claimText}${pandoc}
     this._clearSpotlight();
     const el = document.querySelector(selector);
     if (!el) {
-      new obsidian12.Notice(message);
+      new obsidian11.Notice(message);
       return;
     }
     try {
@@ -12241,11 +12386,9 @@ ${claimText}${pandoc}
   async _guideCreateLibrary() {
     await this.activateView();
     setTimeout(() => {
-      var _a;
+      var _a, _b;
       const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
-      const root = (_a = leaf == null ? void 0 : leaf.view) == null ? void 0 : _a.containerEl;
-      const libBtn = root == null ? void 0 : root.querySelector('.pb-mod-btn[data-mod="lib"]');
-      if (libBtn && !libBtn.classList.contains("active")) libBtn.click();
+      (_b = (_a = leaf == null ? void 0 : leaf.view) == null ? void 0 : _a.switchModule) == null ? void 0 : _b.call(_a, "papers");
       setTimeout(() => {
         if (document.querySelector(".pb-ls-create-btn")) {
           this._spotlight(
@@ -12254,7 +12397,7 @@ ${claimText}${pandoc}
             { timeout: 1e4 }
           );
         } else {
-          new obsidian12.Notice("在右侧 PaperSearch 面板切到「文献库管理」，点「新建文献库」开始");
+          new obsidian11.Notice("在右侧 PaperSearch 面板切到「文献」标签页，点「新建文献库」开始");
         }
       }, 350);
     }, 450);
@@ -12492,8 +12635,8 @@ ${claimText}${pandoc}
     var _a, _b;
     if ((_a = this._pdfjs) == null ? void 0 : _a.getDocument) return this._pdfjs;
     try {
-      if (typeof obsidian12.loadPdfJs === "function") {
-        const lib = await obsidian12.loadPdfJs();
+      if (typeof obsidian11.loadPdfJs === "function") {
+        const lib = await obsidian11.loadPdfJs();
         if (lib == null ? void 0 : lib.getDocument) {
           this._pdfjs = lib;
           return lib;
@@ -12909,7 +13052,7 @@ ${claimText}${pandoc}
           }
           hideAnnoBar();
           renderAnnos();
-          new obsidian12.Notice(`已标注「${role.label}」`);
+          new obsidian11.Notice(`已标注「${role.label}」`);
           this._fileExcerptToNote({ text: pendingAnno.text, pdfStem: docKey, page: state.page, role: role.label, color: role.color, lib: spec.library, src: spec.sourceFile, docId: spec.documentId }).catch(() => {
           });
         };
@@ -12932,9 +13075,9 @@ ${claimText}${pandoc}
       };
       act("摘录", async (t) => {
         const ok = await this._fileExcerptToNote({ text: t, pdfStem: docKey, page: state.page });
-        new obsidian12.Notice(ok ? "已写入文献笔记摘录区" : "这篇还没有文献笔记，摘录暂未写入");
+        new obsidian11.Notice(ok ? "已写入文献笔记摘录区" : "这篇还没有文献笔记，摘录暂未写入");
       });
-      act("找相似", async (t) => {
+      act("以此检索", async (t) => {
         await this.activateView();
         const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
         if ((leaf == null ? void 0 : leaf.view) instanceof PaperSearchView) leaf.view.pushQuery(t.slice(0, 300));
@@ -13049,7 +13192,7 @@ ${claimText}${pandoc}
   // ── 标注点击菜单：改角色 / 复制原文 / 转摘录 / 转锚定引用 / 删除 ──
   _showAnnoMenu(evt, anno, ctx = {}) {
     var _a, _b;
-    const menu = new obsidian12.Menu();
+    const menu = new obsidian11.Menu();
     for (const role of this._annoRoles()) {
       menu.addItem((it) => it.setTitle(`${anno.color === role.color ? "✓ " : "　"}标为「${role.label}」`).onClick(() => {
         var _a2;
@@ -13063,18 +13206,7 @@ ${claimText}${pandoc}
     menu.addSeparator();
     menu.addItem((it) => it.setTitle("复制原文").setIcon("copy").onClick(async () => {
       await navigator.clipboard.writeText(anno.text || "");
-      new obsidian12.Notice("已复制原文");
-    }));
-    menu.addItem((it) => it.setTitle("转摘录到文献笔记").setIcon("quote").onClick(async () => {
-      const role = this._annoRoleOf(anno.color);
-      const ok = await this._fileExcerptToNote({
-        text: anno.text || "",
-        pdfStem: anno.doc,
-        page: anno.page,
-        role: role == null ? void 0 : role.label,
-        color: anno.color
-      });
-      new obsidian12.Notice(ok ? "已写入文献笔记摘录区" : "这篇还没有文献笔记，未写入");
+      new obsidian11.Notice("已复制原文");
     }));
     menu.addSeparator();
     const citFromAnno = () => {
@@ -13092,7 +13224,6 @@ ${claimText}${pandoc}
         source_quote: anno.text || "",
         source_page: anno.page || null,
         source_doc: anno.doc,
-        evidence_role: anno.role_id || "unspecified",
         csl: docMeta.csl || null,
         citekey: ((_b2 = docMeta.bbt) == null ? void 0 : _b2.citekey) || "",
         user_claim: "",
@@ -13113,18 +13244,20 @@ ${claimText}${pandoc}
     if (form !== "footnote") menu.addItem((it) => it.setTitle("改用脚注").setIcon("superscript").onClick(() => this._insertAcademicCitation(citFromAnno(), "footnote")));
     if (form !== "inline") menu.addItem((it) => it.setTitle("改用行内（著者-年）").setIcon("text-cursor-input").onClick(() => this._insertAcademicCitation(citFromAnno(), "inline")));
     menu.addItem((it) => it.setTitle("复制原文与出处").setIcon("link").onClick(async () => {
-      const anchor = `[[${anno.doc}.pdf${anno.page ? `#page=${anno.page}` : ""}|${anno.doc}${anno.page ? ` p.${anno.page}` : ""}]]`;
+      const pg = anno.page ? ` p.${anno.page}` : "";
+      const hasSrc = anno.lib && (anno.src || anno.docId);
+      const anchor = hasSrc ? `[${anno.doc}${pg}](obsidian://${PROTOCOL}?action=open-pdf&library=${encodeURIComponent(anno.lib)}&docId=${encodeURIComponent(anno.docId || "")}&srcFile=${encodeURIComponent(anno.src || "")}${anno.page ? `&page=${anno.page}` : ""})` : `[[${anno.doc}.pdf${anno.page ? `#page=${anno.page}` : ""}|${anno.doc}${pg}]]`;
       await navigator.clipboard.writeText(`> ${anno.text || ""}
 > 来源：${anchor}
 `);
-      new obsidian12.Notice("原文与出处已复制");
+      new obsidian11.Notice("原文与出处已复制");
     }));
     menu.addSeparator();
     menu.addItem((it) => it.setTitle("删除标注").setIcon("trash").onClick(() => {
       var _a2;
       this._deleteAnno(anno.id);
       (_a2 = ctx.refresh) == null ? void 0 : _a2.call(ctx);
-      new obsidian12.Notice("标注已删除");
+      new obsidian11.Notice("标注已删除");
     }));
     menu.showAtPosition({ x: evt.clientX, y: evt.clientY });
   }
@@ -13145,8 +13278,8 @@ ${claimText}${pandoc}
     if (opts.inline) {
       const wrap = el.createDiv({ cls: "pb-pdfv-wrap" });
       const viewer2 = this._mountPdfViewer(wrap, spec, { inline: true });
-      if ((ctx == null ? void 0 : ctx.addChild) && obsidian12.MarkdownRenderChild) {
-        const child = new obsidian12.MarkdownRenderChild(el);
+      if ((ctx == null ? void 0 : ctx.addChild) && obsidian11.MarkdownRenderChild) {
+        const child = new obsidian11.MarkdownRenderChild(el);
         child.register(() => {
           try {
             viewer2.destroy();
@@ -13179,7 +13312,7 @@ ${claimText}${pandoc}
       const bar = popover.createDiv({ cls: "pb-pdf-hover-bar" });
       bar.createSpan({ text: "PDF 预览", cls: "pb-pdf-hover-title" });
       const pinBtn = bar.createSpan({ cls: "pb-pdf-hover-pin", attr: { title: "固定预览（点击切换）" } });
-      obsidian12.setIcon(pinBtn, "pin");
+      obsidian11.setIcon(pinBtn, "pin");
       const closeBtn = bar.createSpan({
         text: "✕",
         cls: "pb-pdf-hover-close",
@@ -13191,7 +13324,7 @@ ${claimText}${pandoc}
         e.stopPropagation();
         pinned = !pinned;
         popover.classList.toggle("pinned", pinned);
-        obsidian12.setIcon(pinBtn, pinned ? "pin-off" : "pin");
+        obsidian11.setIcon(pinBtn, pinned ? "pin-off" : "pin");
         pinBtn.setAttribute("title", pinned ? "已固定，点击解除" : "固定预览");
       };
       closeBtn.onclick = (e) => {
@@ -13230,13 +13363,13 @@ ${claimText}${pandoc}
         popover.classList.toggle("pinned", pinned);
         const pb = popover.querySelector(".pb-pdf-hover-pin");
         if (pb) {
-          obsidian12.setIcon(pb, pinned ? "pin-off" : "pin");
+          obsidian11.setIcon(pb, pinned ? "pin-off" : "pin");
           pb.setAttribute("title", pinned ? "已固定，点击解除" : "固定预览");
         }
       }
     };
-    if ((ctx == null ? void 0 : ctx.addChild) && obsidian12.MarkdownRenderChild) {
-      const child = new obsidian12.MarkdownRenderChild(el);
+    if ((ctx == null ? void 0 : ctx.addChild) && obsidian11.MarkdownRenderChild) {
+      const child = new obsidian11.MarkdownRenderChild(el);
       child.register(() => {
         pinned = false;
         try {
@@ -13297,7 +13430,7 @@ ${block}`;
   }
   // 标注要写进文献笔记、但该笔记还不存在时：按设置决定 静默创建 / 询问一次 / 不创建。返回 TFile 或 null。
   async _ensureLitNoteForAnno(item) {
-    const mode = this.settings.annoSilentFile;
+    const mode = this.state.annoSilentFile;
     if (mode === "never") return null;
     if (mode !== "always") {
       const ans = await new Promise((resolve) => {
@@ -13312,7 +13445,7 @@ ${block}`;
         }).open();
       });
       if (ans.checked) {
-        this.settings.annoSilentFile = ans.ok ? "always" : "never";
+        this.state.annoSilentFile = ans.ok ? "always" : "never";
         await this.saveSettings();
       }
       if (!ans.ok) return null;
@@ -13333,7 +13466,7 @@ ${block}`;
     const existing = this._findPaperNote(identity, stem);
     if (existing) return existing;
     if (!identity.paper_id) {
-      new obsidian12.Notice("无法确认这篇 PDF 对应的文献，未自动创建文献笔记");
+      new obsidian11.Notice("无法确认这篇 PDF 对应的文献，未自动创建文献笔记");
       return null;
     }
     const root = this.settings.paperLibraryDir || "PaperSearch/文献";
@@ -13356,7 +13489,7 @@ ${block}`;
     if (raceExisting) {
       const raceId = ((_d = (_c = this.app.metadataCache.getFileCache(raceExisting)) == null ? void 0 : _c.frontmatter) == null ? void 0 : _d.paper_id) || "";
       if (raceId === identity.paper_id) return raceExisting;
-      new obsidian12.Notice("同名文献笔记发生身份冲突，未自动覆盖");
+      new obsidian11.Notice("同名文献笔记发生身份冲突，未自动覆盖");
       return null;
     }
     const today = window.moment ? window.moment().format("YYYY-MM-DD") : "";
@@ -13384,7 +13517,7 @@ ${block}`;
     ].filter(Boolean).join("\n");
     const file = await this.app.vault.create(notePath, body);
     this._registerPaperNote(identity, file);
-    new obsidian12.Notice("已创建文献笔记并收录摘录");
+    new obsidian11.Notice("已创建文献笔记并收录摘录");
     return file;
   }
   // 生成一条摘录/批注块：带角色 → 角色色 Callout（彩条）+ (role:: …) 可检索字段；无角色 → 朴素引用 callout
@@ -13446,7 +13579,7 @@ ${block}`;
       pdfStem: pdfFile.basename,
       page: this._currentPdfPage()
     });
-    new obsidian12.Notice(ok ? "已收入摘录" : "这篇还没有文献笔记，摘录未写入");
+    new obsidian11.Notice(ok ? "已收入摘录" : "这篇还没有文献笔记，摘录未写入");
   }
   // ── CSL → 引文格式化（轻量内置，无需 citeproc）──────
   _formatCitation(csl, style = "apa") {
@@ -13502,7 +13635,7 @@ ${block}`;
     return "";
   }
   _pickCitationStyle(cit) {
-    const menu = new obsidian12.Menu();
+    const menu = new obsidian11.Menu();
     const styles = [
       { key: "apa", label: "APA" },
       { key: "mla", label: "MLA" },
@@ -13513,11 +13646,11 @@ ${block}`;
       const preview = this._formatCitation(cit.csl, s.key);
       menu.addItem((it) => it.setTitle(`${s.label}：${(preview || "").replace(/\*/g, "").slice(0, 40)}…`).onClick(async () => {
         if (!preview) {
-          new obsidian12.Notice("该引用缺少 CSL 元数据，无法格式化");
+          new obsidian11.Notice("该引用缺少 CSL 元数据，无法格式化");
           return;
         }
         await navigator.clipboard.writeText(preview);
-        new obsidian12.Notice(`已复制 ${s.label} 引文`);
+        new obsidian11.Notice(`已复制 ${s.label} 引文`);
       }));
     }
     menu.showAtPosition({ x: window.innerWidth / 2, y: 120 });
@@ -13589,7 +13722,7 @@ ${origText}`;
     return String((cit == null ? void 0 : cit.id) || "ref");
   }
   _activeMdEditor() {
-    const view = this.app.workspace.getActiveViewOfType(obsidian12.MarkdownView);
+    const view = this.app.workspace.getActiveViewOfType(obsidian11.MarkdownView);
     return (view == null ? void 0 : view.editor) || null;
   }
   // ── .bib 为真相源：把检索结果/标注匹配到 BBT 条目，命中即可直接 @citekey ──
@@ -13661,13 +13794,19 @@ ${origText}`;
     return citekey;
   }
   // 插入学术引用：mode='pandoc' → [@citekey]（.bib 真相源，pandoc 渲染）；'footnote' → [^id]+定义；'inline' → (著者,年)+参考文献表
+  // 三种引用形态共用的落地。铁律：写进正文的引用必须留痕——
+  // 先把 Citation 落进索引、再在引用标记前落一个 %%cite%% 锚，
+  // 这样它才进得了 citationIndex、被参考文献表扫得到、被 AI 核查追得回。
+  // （%%…%% 是 Obsidian 注释语法，渲染时不显示，不影响读者。）
   async _insertAcademicCitation(cit, mode) {
     var _a, _b, _c;
     const editor = this._activeMdEditor();
     if (!editor) {
-      new obsidian12.Notice("请先打开一篇笔记，把光标放到要插入引用的位置");
+      new obsidian11.Notice("请先打开一篇笔记，把光标放到要插入引用的位置");
       return false;
     }
+    editor.setCursor(editor.getCursor("to"));
+    const anchor = `%%cite:${cit.id}%%`;
     const csl = this._cslForCitation(cit);
     const style = this.settings.bibStyle || "apa";
     const entry = this._formatCitation(csl, style) || csl.title || "文献";
@@ -13675,7 +13814,7 @@ ${origText}`;
       let citekey = ((_a = this._matchBib(cit)) == null ? void 0 : _a.citekey) || ((_b = this._matchBib(csl)) == null ? void 0 : _b.citekey);
       if (!citekey) {
         if (!((_c = this.settings.bbtBibPath) == null ? void 0 : _c.trim())) {
-          new obsidian12.Notice("未配置 .bib，已改用脚注引用（设置 → 文献库与 Zotero 配好 Better BibTeX 后可用 @citekey）");
+          new obsidian11.Notice("未配置 .bib，已改用脚注引用（设置 → 文献库与 Zotero 配好 Better BibTeX 后可用 @citekey）");
           return this._insertAcademicCitation(cit, "footnote");
         }
         const ok = await pbConfirm(this.app, {
@@ -13689,22 +13828,25 @@ ${origText}`;
         try {
           citekey = await this._appendToBib(csl);
         } catch (e) {
-          new obsidian12.Notice("写入 paperbell.bib 失败：" + e.message);
+          new obsidian11.Notice("写入 paperbell.bib 失败：" + e.message);
           return false;
         }
       }
-      editor.replaceSelection(`[@${citekey}]`);
-      new obsidian12.Notice(`已插入 @${citekey}（pandoc；引用表由 .bib 工具链导出时生成）`);
+      this._writeCitation(cit);
+      editor.replaceSelection(`${anchor}[@${citekey}]`);
+      new obsidian11.Notice(`已插入 @${citekey}（pandoc；引用表由 .bib 工具链导出时生成）`);
       return true;
     }
     if (mode === "inline") {
-      editor.replaceSelection(this._citeAuthorYear(csl) + " ");
+      this._writeCitation(cit);
+      editor.replaceSelection(`${anchor}${this._citeAuthorYear(csl)} `);
       this._ensureBibEntry(editor, entry);
-      new obsidian12.Notice("已插入行内引用，并登记到参考文献表");
+      new obsidian11.Notice("已插入行内引用，并登记到参考文献表");
       return true;
     }
     const fnId = this._footnoteId(cit, csl);
-    editor.replaceSelection(`[^${fnId}]`);
+    this._writeCitation(cit);
+    editor.replaceSelection(`${anchor}[^${fnId}]`);
     const doc = editor.getValue();
     const defRe = new RegExp(`^\\[\\^${fnId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\]:`, "m");
     if (!defRe.test(doc)) {
@@ -13714,7 +13856,7 @@ ${origText}`;
       editor.replaceRange(`${lead}[^${fnId}]: ${entry}
 `, { line: last, ch: tail.length });
     }
-    new obsidian12.Notice("已插入脚注引用");
+    new obsidian11.Notice("已插入脚注引用");
     return true;
   }
   // 维护「## 参考文献」区：去重追加一条（插到该节末尾，不是文档末尾——节后可能还有附录等章节）
@@ -13746,15 +13888,20 @@ ${origText}`;
     }
   }
   // 命令：扫描全文引注 → 生成/刷新「## 参考文献」表（CSL 去重排序）
+  //
+  // pandoc 模式下正文里不该出现完整文献表：设置页推荐 @citekey，导出时 citeproc 会按
+  // .bib 统一生成一份。这里再写一份进正文，导出后就是两份。所以 pandoc 模式只补
+  // citeproc 覆盖不到的那部分——%%cite%% 锚里匹配不到 .bib 条目的孤儿引用。
   _generateBibliography() {
     var _a, _b;
     const editor = this._activeMdEditor();
     if (!editor) {
-      new obsidian12.Notice("请先打开一篇笔记");
+      new obsidian11.Notice("请先打开一篇笔记");
       return;
     }
     const text = editor.getValue();
     const style = this.settings.bibStyle || "apa";
+    const pandocMode = (this.settings.citationForm || "pandoc") === "pandoc";
     const seen = /* @__PURE__ */ new Set();
     const entries = [];
     const add = (csl) => {
@@ -13765,6 +13912,40 @@ ${origText}`;
       seen.add(key);
       entries.push(e);
     };
+    if (pandocMode) {
+      let anchored = 0;
+      for (const m of text.matchAll(/%%cite:([\w-]+)%%/g)) {
+        const cit = this._readCitation(m[1]);
+        if (!cit) continue;
+        anchored++;
+        const csl = this._cslForCitation(cit);
+        if (this._matchBib(cit) || this._matchBib(csl)) continue;
+        add(csl);
+      }
+      if (!entries.length) {
+        new obsidian11.Notice(anchored ? "当前引用都能由 pandoc 解析，无需在正文生成文献表" : "没有找到可识别的引用或引用键");
+        return;
+      }
+      entries.sort((a, b) => a.localeCompare(b));
+      const heading = "## 未进入 .bib 的引用";
+      const block2 = `${heading}
+
+${entries.map((e) => `- ${e}`).join("\n")}
+`;
+      const reOrphan = /(^|\n)## 未进入 \.bib 的引用[\s\S]*?(?=\n## |\n# |$)/;
+      const cur2 = editor.getValue();
+      if (reOrphan.test(cur2)) {
+        editor.setValue(cur2.replace(reOrphan, (_m, lead) => lead + block2));
+      } else {
+        const sep2 = cur2.endsWith("\n\n") ? "" : cur2.endsWith("\n") ? "\n" : "\n\n";
+        editor.setValue(cur2 + sep2 + block2);
+      }
+      new obsidian11.Notice(
+        `已在正文列出 ${entries.length} 条未进入 .bib 的引用（${style.toUpperCase()}）；其余条目由 pandoc citeproc 在导出时生成，未写入正文`,
+        8e3
+      );
+      return;
+    }
     for (const m of text.matchAll(/%%cite:([\w-]+)%%/g)) {
       const cit = this._readCitation(m[1]);
       if (cit) add(this._cslForCitation(cit));
@@ -13774,7 +13955,7 @@ ${origText}`;
       if (bib) add(this._bibToCsl(bib));
     }
     if (!entries.length) {
-      new obsidian12.Notice("没有找到可识别的引用或引用键");
+      new obsidian11.Notice("没有找到可识别的引用或引用键");
       return;
     }
     entries.sort((a, b) => a.localeCompare(b));
@@ -13790,7 +13971,7 @@ ${entries.map((e) => `- ${e}`).join("\n")}
       const sep2 = cur.endsWith("\n\n") ? "" : cur.endsWith("\n") ? "\n" : "\n\n";
       editor.setValue(cur + sep2 + block);
     }
-    new obsidian12.Notice(`参考文献表已生成：${entries.length} 条（${style.toUpperCase()}）`);
+    new obsidian11.Notice(`参考文献表已生成：${entries.length} 条（${style.toUpperCase()}）`);
   }
   // ── 论断与原文支持情况核查 ─────────────────────────
   // 找光标所在的引用块：向上扫最近的 %%cite:id%%
@@ -13897,10 +14078,10 @@ ${entries.map((e) => `- ${e}`).join("\n")}
         if (!ok) return;
         const stored = (_b = (_a = this.claimIndex) == null ? void 0 : _a.items) == null ? void 0 : _b[claim.id];
         if (!stored) {
-          new obsidian12.Notice("论断记录已缺失，请重新生成或关联来源");
+          new obsidian11.Notice("论断记录已缺失，请重新生成或关联来源");
           return;
         }
-        this._verifyClaimFidelity(editor, stored, claim._line).catch((e) => new obsidian12.Notice(`AI 核查失败：${e.message}`));
+        this._verifyClaimFidelity(editor, stored, claim._line).catch((e) => new obsidian11.Notice(`AI 核查失败：${e.message}`));
       }
     }).open();
   }
@@ -13913,7 +14094,7 @@ ${entries.map((e) => `- ${e}`).join("\n")}
   async _verifyCitationFidelity(editor, cit) {
     var _a, _b;
     if (!this._paperbellPlugin() && !window.registerPPBplugin) {
-      new obsidian12.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
+      new obsidian11.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
       return;
     }
     if (cit.claim_id && ((_b = (_a = this.claimIndex) == null ? void 0 : _a.items) == null ? void 0 : _b[cit.claim_id])) {
@@ -13921,16 +14102,16 @@ ${entries.map((e) => `- ${e}`).join("\n")}
       return;
     }
     if (cit.transform === "aggregate") {
-      new obsidian12.Notice("这是聚合综述句的来源之一，请对整句做整体复核，不做单条比对");
+      new obsidian11.Notice("这是一句综合的来源之一，请对整句做整体复核，不做单条比对");
       return;
     }
     if (!cit.source_quote || cit.transform === "data") {
-      new obsidian12.Notice("该引用未关联原文片段，只能追溯到文献和页码，无法比对论断与原文");
+      new obsidian11.Notice("该引用未关联原文片段，只能追溯到文献和页码，无法比对论断与原文");
       return;
     }
     const claim = this._upgradeLegacyCitationLineToClaim(editor, cit._line);
     if (!claim) {
-      new obsidian12.Notice("未找到这条引用对应的论断文字；请在引用后写下论断，再运行 AI 核查");
+      new obsidian11.Notice("未找到这条引用对应的论断文字；请在引用后写下论断，再运行 AI 核查");
       return;
     }
     await this._verifyClaimFidelity(editor, claim, cit._line);
@@ -14024,9 +14205,9 @@ ${evidenceText}` }],
     if (latestEvidence.some((citation) => !citation)) invalidateAndThrow("evidence_missing");
     if (latestEvidence.some((citation) => !String(citation.source_quote || "").trim())) invalidateAndThrow("evidence_quote_missing");
     if (this._evidenceHash(latestEvidence) !== requestEvidenceHash) invalidateAndThrow("evidence_changed_during_verification");
-    const parsed = JSON.parse(String(raw || "{}").replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
-    const verdict = ["faithful", "partial", "distorted"].includes(parsed.verdict) ? parsed.verdict : "partial";
-    const note = String(parsed.note || "");
+    const parsed2 = JSON.parse(String(raw || "{}").replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, ""));
+    const verdict = ["faithful", "partial", "distorted"].includes(parsed2.verdict) ? parsed2.verdict : "partial";
+    const note = String(parsed2.note || "");
     const claimHash = requestClaimHash;
     const evidenceHash = requestEvidenceHash;
     const now = Date.now();
@@ -14086,7 +14267,7 @@ AI 核查结果，请结合原文复核。`,
     const text = editor.getValue();
     const ids = [...new Set([...text.matchAll(/%%cite:([\w-]+)%%/g)].map((m) => m[1]))];
     if (!ids.length) {
-      new obsidian12.Notice("正文中没有可核查的来源标记");
+      new obsidian11.Notice("正文中没有可核查的来源标记");
       return;
     }
     const lineOf = {};
@@ -14112,7 +14293,7 @@ AI 核查结果，请结合原文复核。`,
       } else legacyIds.push(id);
     }
     const total = claimGroups.size + legacyIds.length;
-    const ntc = new obsidian12.Notice(`AI 证据核查 0/${total}…`, 0);
+    const ntc = new obsidian11.Notice(`AI 证据核查 0/${total}…`, 0);
     const results = [];
     let done = 0;
     for (const [claimId, groupedCitations] of claimGroups) {
@@ -14149,10 +14330,10 @@ AI 核查结果，请结合原文复核。`,
     const bad = results.filter((x) => x.verdict === "distorted" || x.verdict === "partial");
     const skipped = results.filter((x) => x.verdict === "no-quote" || x.verdict === "aggregate" || x.verdict === "no-claim").length;
     const errors = results.filter((x) => x.verdict === "error").length;
-    const summary = `AI 证据核查完成：${results.length} 组 · 充分支持 ${results.filter((x) => x.verdict === "faithful").length} · 部分支持 ${results.filter((x) => x.verdict === "partial").length} · 不支持 ${results.filter((x) => x.verdict === "distorted").length}` + (skipped ? ` · 跳过 ${skipped}（无原文/聚合/无论断）` : "");
+    const summary = `AI 证据核查完成：${results.length} 组 · 充分支持 ${results.filter((x) => x.verdict === "faithful").length} · 部分支持 ${results.filter((x) => x.verdict === "partial").length} · 不支持 ${results.filter((x) => x.verdict === "distorted").length}` + (skipped ? ` · 跳过 ${skipped}（无原文 / 综合句 / 无论断）` : "");
     const summaryWithErrors = summary + (errors ? ` · 失败 ${errors}` : "");
     if (!bad.length) {
-      new obsidian12.Notice(summaryWithErrors + (errors ? "" : "，未发现部分支持或不支持") + "。请结合原文复核。");
+      new obsidian11.Notice(summaryWithErrors + (errors ? "" : "，未发现部分支持或不支持") + "。请结合原文复核。");
       return;
     }
     const detail = bad.map((x) => `${x.verdict === "distorted" ? "不支持" : "部分支持"} ${x.cit.source_doc} p.${x.cit.source_page || "?"}：${x.note}`).join("\n");
@@ -14167,281 +14348,6 @@ ${detail}`,
       confirmText: "知道了",
       cancelText: "关闭"
     }).open();
-  }
-  // 摘录：把选中文字写进当前 PDF 对应的文献笔记；没有笔记则提示先收入精读
-  // ════════════════════════════════════════════════════════
-  //  示例库：引注贯穿 + 原文不支持论断的可加载 demo
-  //  一键铺设 3 篇文献笔记 + 1 篇综述初稿（含 4 个锚定引用，
-  //  第 4 条故意加入原文不支持的论断），并把 4 条引注写入 citationIndex。
-  // ════════════════════════════════════════════════════════
-  async _loadCitationDemo() {
-    const dir = "PaperSearch/示例引用";
-    const litDir = dir + "/文献";
-    const mainPath = dir + "/综述初稿.md";
-    if (await this.app.vault.adapter.exists(mainPath)) {
-      const ok = await pbConfirm(this.app, {
-        title: "示例已存在",
-        message: "检测到 " + mainPath + " 已存在。重新加载会覆盖示例库的全部文件（文献笔记 + 综述初稿）。是否继续？",
-        confirmText: "覆盖重建",
-        cancelText: "取消"
-      });
-      if (!ok) return;
-    }
-    try {
-      await this.app.vault.createFolder(dir);
-    } catch (_) {
-    }
-    try {
-      await this.app.vault.createFolder(litDir);
-    } catch (_) {
-    }
-    const writeFile = async (path, content) => {
-      const existing = this.app.vault.getAbstractFileByPath(path);
-      if (existing) {
-        await this.app.vault.modify(existing, content);
-      } else {
-        try {
-          await this.app.vault.create(path, content);
-        } catch (_) {
-          const f2 = this.app.vault.getAbstractFileByPath(path);
-          if (f2) await this.app.vault.modify(f2, content);
-          else await this.app.vault.adapter.write(path, content);
-        }
-      }
-    };
-    const sources = [
-      {
-        stem: "Ostrom_2009",
-        family: "Ostrom",
-        given: "Elinor",
-        year: 2009,
-        venue: "Science",
-        title: "A General Framework for Analyzing Sustainability of Social-Ecological Systems",
-        container: "Science",
-        doi: "10.1126/science.1172133",
-        citekey: "ostrom2009general",
-        concepts: ["社会-生态系统", "多中心治理", "可持续性"],
-        summary: 'Ostrom 提出社会-生态系统（SES）的多层级分析框架，强调资源系统、资源单位、治理系统与行动者之间的交互，反对"一刀切"的治理处方。该框架成为水资源公共池塘治理的重要分析工具。',
-        quotes: [
-          "There is no single best way to govern common-pool resources, and panaceas that impose uniform solutions tend to fail across diverse social-ecological settings.",
-          "Sustainability of a resource system depends on the fit between governance arrangements and the specific attributes of the resource and the community that uses it."
-        ]
-      },
-      {
-        stem: "Gleick_2003",
-        family: "Gleick",
-        given: "Peter H.",
-        year: 2003,
-        venue: "Science",
-        title: "Global Freshwater Resources: Soft-Path Solutions for the 21st Century",
-        container: "Science",
-        doi: "10.1126/science.1089967",
-        citekey: "gleick2003global",
-        concepts: ["软路径", "需求管理", "淡水资源"],
-        summary: 'Gleick 提出水资源治理的"软路径"（soft path），主张在传统大型基础设施供给之外，通过需求侧管理、用水效率与分散化方案提升用水可持续性，作为对"硬路径"工程范式的补充而非完全替代。',
-        quotes: [
-          "The soft path complements centralized infrastructure with efficiency improvements, decentralized options, and management of water demand rather than relentless expansion of supply.",
-          "Meeting future water needs will require attention to the productivity of water use, not merely to increasing the total volume of water withdrawn."
-        ]
-      },
-      {
-        stem: "Pahl-Wostl_2007",
-        family: "Pahl-Wostl",
-        given: "Claudia",
-        year: 2007,
-        venue: "Water Resources Management",
-        title: "Transitions Towards Adaptive Management of Water Facing Climate and Global Change",
-        container: "Water Resources Management",
-        doi: "10.1007/s11269-006-9040-4",
-        citekey: "pahlwostl2007transitions",
-        concepts: ["适应性管理", "社会学习", "气候变化"],
-        summary: "Pahl-Wostl 主张在气候与全球变化的不确定性下，水资源治理应从可预测控制范式转向适应性管理，强调社会学习、多方参与和制度灵活性，使治理体系具备从经验中学习与调整的能力。",
-        quotes: [
-          "Adaptive management requires social learning processes in which stakeholders develop a shared understanding and adjust management strategies in response to feedback.",
-          "Rigid institutional structures hamper the capacity of water management regimes to cope with uncertainty arising from climate change."
-        ]
-      }
-    ];
-    for (const s of sources) {
-      const identity = this._resolvePaperIdentity({ doi: s.doi, sourceFile: `${s.stem}.pdf`, stem: s.stem });
-      s.paperIdentity = identity;
-      const fm = [
-        "---",
-        "type: literature-note",
-        `paper_id: "${identity.paper_id}"`,
-        "paper_aliases:",
-        ...identity.aliases.map((alias) => `  - "${alias}"`),
-        'authors: "' + s.given + " " + s.family + '"',
-        "year: " + s.year,
-        'venue: "' + s.venue + '"',
-        'csl_title: "' + s.title.replace(/"/g, '\\"') + '"',
-        'csl_container_title: "' + s.container + '"',
-        'csl_DOI: "' + s.doi + '"',
-        "citekey: " + s.citekey,
-        "concepts: [" + s.concepts.map((c) => '"' + c + '"').join(", ") + "]",
-        "read_status: done",
-        "---"
-      ].join("\n");
-      const body = [
-        "",
-        "# " + s.title,
-        "",
-        "> " + s.given + " " + s.family + "（" + s.year + "）· *" + s.container + "*",
-        "",
-        s.summary,
-        "",
-        "## 关键原文片段",
-        "",
-        "> " + s.quotes[0],
-        "",
-        "> " + s.quotes[1],
-        ""
-      ].join("\n");
-      await writeFile(litDir + "/" + s.stem + ".md", fm + "\n" + body);
-    }
-    const O = sources[0], G = sources[1], P = sources[2];
-    const now = Date.now();
-    const mkCsl = (s) => ({
-      title: s.title,
-      "container-title": s.container,
-      author: [{ family: s.family, given: s.given }],
-      issued: { "date-parts": [[s.year]] },
-      DOI: s.doi
-    });
-    const cites = [
-      {
-        id: "cite-demo-1",
-        src: O,
-        page: 419,
-        quote: O.quotes[0],
-        // 充分支持：转述"无单一最佳治理方式"
-        claim: "Ostrom（2009）由此提醒我们，公共池塘资源不存在单一最优的治理方式，强加统一处方往往在多样化的社会-生态情境中失败。",
-        distorted: false
-      },
-      {
-        id: "cite-demo-2",
-        src: G,
-        page: 1525,
-        quote: G.quotes[0],
-        // 充分支持：转述软路径是"补充"而非取代
-        claim: 'Gleick（2003）提出的"软路径"并非否定集中式基础设施，而是以效率提升、分散化方案与需求管理对其加以补充。',
-        distorted: false
-      },
-      {
-        id: "cite-demo-3",
-        src: P,
-        page: 51,
-        quote: P.quotes[0],
-        // 充分支持：转述适应性管理需要社会学习
-        claim: "Pahl-Wostl（2007）指出，适应性管理依赖利益相关方的社会学习过程，各方据此形成共识并根据反馈调整管理策略。",
-        distorted: false
-      },
-      {
-        id: "cite-demo-4",
-        src: G,
-        page: 1526,
-        quote: G.quotes[1],
-        // 故意加入不支持项：原文说"要关注用水生产率、而非单纯增加取水量"，
-        // 论断反转为"应当不惜代价持续扩大总取水量"，与原文矛盾、无中生有。
-        claim: "Gleick（2003）据此主张，满足未来用水需求的唯一出路是不惜代价、持续大幅扩大总取水量，用水效率无关紧要。",
-        distorted: true
-      }
-    ];
-    for (const c of cites) {
-      const claimId = c.id.replace(/^cite-/, "claim-");
-      c.claimId = claimId;
-      const cit = {
-        id: c.id,
-        claim_id: claimId,
-        paper_id: c.src.paperIdentity.paper_id,
-        evidence_id: `chunk:demo:${c.src.stem}:${c.id}`,
-        document_path: mainPath,
-        source_kind: "chunk",
-        source_chunk_id: c.id,
-        source_quote: c.quote,
-        source_page: c.page,
-        source_doc: c.src.stem,
-        csl: mkCsl(c.src),
-        citekey: c.src.citekey,
-        user_claim: c.claim,
-        transform: "quote",
-        fidelity: "unchecked",
-        verification_state: "unchecked",
-        fidelity_note: "",
-        created_at: now
-      };
-      this._writeCitation(cit);
-      this._writeClaim({
-        id: claimId,
-        document_path: mainPath,
-        claim_text: c.claim,
-        citation_ids: [c.id],
-        claim_hash: "",
-        evidence_hash: "",
-        fidelity: "unchecked",
-        verification_state: "unchecked",
-        fidelity_note: "",
-        verified_at: null,
-        created_at: now
-      });
-    }
-    await this.saveSettings();
-    const anchorLabel = (c) => c.src.family + " " + c.src.year + " p." + c.page;
-    const block = (c, extraNote) => {
-      const anchor = "[[" + c.src.stem + ".pdf#page=" + c.page + "|" + anchorLabel(c) + "]]";
-      let b = "%%claim:" + c.claimId + "%%%%cite:" + c.id + "%%\n";
-      b += "> " + c.quote + "\n";
-      b += "> —— " + anchor + "\n";
-      b += c.claim + (extraNote ? " " + extraNote : "") + "\n";
-      return b;
-    };
-    const mainFm = [
-      "---",
-      "title: 综合水资源管理（IWRM）治理机制综述（示例初稿）",
-      "type: longform-draft",
-      "longform:",
-      "  format: scenes",
-      "  scenes:",
-      "    - 引言",
-      "    - 治理机制",
-      "    - 结论",
-      "---"
-    ].join("\n");
-    const mainBody = [
-      "",
-      "# 综合水资源管理治理机制：一篇示例综述",
-      "",
-      "> 本文是 PaperSearch 的**AI 证据核查示例**。每条内容都包含「来源原文 + 正文论断」。",
-      "> 运行命令面板中的【AI 核查全文论断】即可逐条查看证据支持情况。",
-      "> 其中**第 4 条故意加入了原文不支持的论断**，核查结果会显示为「不支持」。",
-      "",
-      "## 引言",
-      "",
-      '水资源治理长期在"工程供给"与"制度安排"两条线索间摆动。Ostrom 的社会-生态系统框架为理解这种多样性提供了基础。',
-      "",
-      block(cites[0]),
-      "",
-      "## 治理机制",
-      "",
-      "在具体机制层面，需求侧管理与适应性制度是近二十年的两条主线。",
-      "",
-      block(cites[1]),
-      "",
-      block(cites[2]),
-      "",
-      "## 结论",
-      "",
-      "综合来看，水资源治理的可持续性取决于制度安排与资源、社区属性之间的契合，而非单一处方。",
-      "",
-      block(cites[3], "%% 这条故意加入了原文不支持的论断，运行「AI 核查全文论断」会显示为「不支持」 %%"),
-      ""
-    ].join("\n");
-    await writeFile(mainPath, mainFm + "\n" + mainBody);
-    const mainFile = this.app.vault.getAbstractFileByPath(mainPath);
-    if (mainFile) {
-      await this.app.workspace.getLeaf(true).openFile(mainFile);
-    }
-    new obsidian12.Notice("AI 证据核查示例已加载。运行【AI 核查全文论断】，第 4 条会显示为「不支持」", 8e3);
   }
   // ── AI 转述并关联来源：把原文转述成学术行文，作为 user_claim 挂在引用块后──
   async _pbParaphraseQuote(sourceQuote) {
@@ -14465,25 +14371,25 @@ ${sourceQuote || "（缺原文）"}
   async _paraphraseCitation(editor, cit) {
     var _a;
     if (!this._paperbellPlugin() && !window.registerPPBplugin) {
-      new obsidian12.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
+      new obsidian11.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
       return;
     }
     if (!cit || !cit.source_quote) {
-      new obsidian12.Notice("该引用没有原文，无法转述");
+      new obsidian11.Notice("该引用没有原文，无法转述");
       return;
     }
-    const ntc = new obsidian12.Notice("AI 转述中…", 0);
+    const ntc = new obsidian11.Notice("AI 转述中…", 0);
     let paraphrase = "";
     try {
       paraphrase = await this._pbParaphraseQuote(cit.source_quote);
     } catch (e) {
       ntc.hide();
-      new obsidian12.Notice(`转述失败：${e.message}`);
+      new obsidian11.Notice(`转述失败：${e.message}`);
       return;
     }
     ntc.hide();
     if (!paraphrase) {
-      new obsidian12.Notice("转述结果为空");
+      new obsidian11.Notice("转述结果为空");
       return;
     }
     const before = editor.getValue();
@@ -14525,105 +14431,149 @@ ${paraphrase}
       await this._commitEvidenceBackedDraft({ claims: [claim], citations: [cit] });
     } catch (e) {
       editor.setValue(before);
-      new obsidian12.Notice(`来源记录保存失败，已撤回正文：${e.message}`);
+      new obsidian11.Notice(`来源记录保存失败，已撤回正文：${e.message}`);
       return;
     }
-    new obsidian12.Notice("已插入 AI 转述并关联原文与出处");
-    this._verifyCitationFidelity(editor, { ...cit, _line: cit._line }).catch((e) => new obsidian12.Notice(`AI 自动核查失败：${e.message}`));
+    new obsidian11.Notice("已插入 AI 转述并关联原文与出处");
+    this._verifyCitationFidelity(editor, { ...cit, _line: cit._line }).catch((e) => new obsidian11.Notice(`AI 自动核查失败：${e.message}`));
   }
-  // 入口(B)：检索/拖拽卡片直接插入「转述引用」（锚定 + 转述句作 user_claim，可校验）
-  async _insertParaphrasedCitation(view, pos, cards) {
-    var _a;
-    if (!this._paperbellPlugin() && !window.registerPPBplugin) {
-      new obsidian12.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
+  // 统一落地块里「论断行」的行号：锚行本身若已带正文就是它，否则取锚行之后
+  // 第一行非空、且不是证据行 / 下一个锚行的行。找不到返回 -1。
+  _claimTextLine(editor, anchorLine) {
+    if (!Number.isInteger(anchorLine) || anchorLine < 0) return -1;
+    const total = editor.lineCount();
+    if (anchorLine >= total) return -1;
+    const stripAnchors = (value) => String(value || "").replace(/%%(?:claim|cite):[\w-]+%%/g, "").trim();
+    if (stripAnchors(editor.getLine(anchorLine))) return anchorLine;
+    for (let ln = anchorLine + 1; ln < total && ln < anchorLine + 12; ln++) {
+      const raw = editor.getLine(ln) || "";
+      if (/%%(?:claim|cite):[\w-]+%%/.test(raw)) return -1;
+      if (/^\s*>\s*证据：/.test(raw)) return -1;
+      if (raw.trim()) return ln;
+    }
+    return -1;
+  }
+  // 右键菜单入口：对已锚定的证据块做 AI 转述。
+  // 统一落地块（%%claim%%%%cite%% + 论断行 + 证据行）→ 就地替换论断行并重算 claim_hash；
+  // 旧的裸 %%cite%% 块（没有 claim）→ 沿用 _paraphraseCitation，它会补上 claim 锚。
+  async _paraphraseAnchoredClaim(editor, cit) {
+    var _a, _b;
+    const stored = (cit == null ? void 0 : cit.claim_id) ? (_b = (_a = this.claimIndex) == null ? void 0 : _a.items) == null ? void 0 : _b[cit.claim_id] : null;
+    if (!stored) {
+      await this._paraphraseCitation(editor, cit);
       return;
     }
-    const ntc = new obsidian12.Notice(`AI 转述中 0/${cards.length}…`, 0);
-    const rows = [];
-    const claims = [];
-    let done = 0;
+    if (!this._paperbellPlugin() && !window.registerPPBplugin) {
+      new obsidian11.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
+      return;
+    }
+    const quote = String(cit.source_quote || "").trim();
+    if (!quote) {
+      new obsidian11.Notice("该引用没有原文，无法转述");
+      return;
+    }
+    if (this._claimTextLine(editor, cit._line) < 0) {
+      new obsidian11.Notice("找不到可替换的论断行");
+      return;
+    }
+    const ntc = new obsidian11.Notice("AI 转述中…", 0);
+    let paraphrase = "";
     try {
-      for (const d of cards) {
-        const quote = String(d.origFull || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-        if (!quote) {
-          done++;
-          ntc.setMessage(`AI 转述中 ${done}/${cards.length}…`);
-          continue;
-        }
-        let paraphrase = "";
-        try {
-          paraphrase = await this._pbParaphraseQuote(quote);
-        } catch (_) {
-          paraphrase = "";
-        }
-        done++;
-        ntc.setMessage(`AI 转述中 ${done}/${cards.length}…`);
-        if (!paraphrase) continue;
-        rows.push({ ...d, origFull: quote });
-        claims.push({ text: paraphrase, source_numbers: [rows.length] });
-      }
+      paraphrase = await this._pbParaphraseQuote(quote);
     } catch (e) {
       ntc.hide();
-      new obsidian12.Notice(`转述失败：${e.message}`);
+      new obsidian11.Notice(`AI 转述失败：${e.message}`);
       return;
     }
     ntc.hide();
-    if (!claims.length) {
-      new obsidian12.Notice("这些卡片都没有可转述的原文片段");
+    if (!paraphrase) {
+      new obsidian11.Notice("转述结果为空");
       return;
     }
-    const documentPath = ((_a = this.app.workspace.getActiveFile()) == null ? void 0 : _a.path) || "";
-    const bundle = this._buildEvidenceBackedDraft({
-      rows,
-      claims,
-      library: this.settings.lastLibrary || "default"
-    }, documentPath);
-    const text = "\n" + bundle.text;
-    const from = Math.min(pos, view.state.doc.length);
-    try {
-      view.dispatch({
-        changes: { from, insert: text },
-        selection: { anchor: from + text.length }
-      });
-      view.focus();
-    } catch (_) {
-      new obsidian12.Notice("插入位置已失效，请重试");
+    const line = this._claimTextLine(editor, cit._line);
+    if (line < 0) {
+      new obsidian11.Notice("正文已变化，转述未写入");
       return;
     }
+    const before = editor.getValue();
+    const claim = { ...stored };
+    const related = [...new Set(claim.citation_ids || [])].map((id) => id === cit.id ? cit : this._readCitation(id)).filter(Boolean).map((c) => c === cit ? c : { ...c });
+    if (!related.some((c) => c.id === cit.id)) related.push(cit);
     try {
-      await this._commitEvidenceBackedDraft(bundle);
-    } catch (e) {
-      try {
-        view.dispatch({ changes: { from, to: from + text.length, insert: "" } });
-      } catch (_) {
+      const rawLine = editor.getLine(line) || "";
+      const inlineAnchors = (rawLine.match(/%%(?:claim|cite):[\w-]+%%/g) || []).join("");
+      const pandocTail = (rawLine.match(/\s*\[@[^\]]+\]\s*$/) || [""])[0];
+      editor.replaceRange(
+        inlineAnchors + paraphrase + pandocTail,
+        { line, ch: 0 },
+        { line, ch: rawLine.length }
+      );
+      for (const c of related) {
+        c.claim_id = claim.id;
+        c.user_claim = paraphrase;
+        c.fidelity = "unchecked";
+        c.verification_state = "unchecked";
+        c.fidelity_note = "";
+        c.verified_at = null;
       }
-      new obsidian12.Notice(`来源记录保存失败，已撤回正文：${e.message}`);
+      cit.transform = "ai-paraphrase";
+      claim.claim_text = paraphrase;
+      claim.claim_hash = "";
+      claim.current_claim_hash = this._claimHash(paraphrase);
+      claim.fidelity = "unchecked";
+      claim.verification_state = "unchecked";
+      claim.fidelity_note = "";
+      claim.verified_at = null;
+      delete claim.stale_reason;
+      delete claim.stale_at;
+      await this._commitEvidenceBackedDraft({ claims: [claim], citations: related });
+    } catch (e) {
+      editor.setValue(before);
+      new obsidian11.Notice(`来源记录保存失败，已撤回正文：${e.message}`);
       return;
     }
-    new obsidian12.Notice(`已插入 ${claims.length} 条 AI 转述并关联原文与出处`);
+    new obsidian11.Notice("已用 AI 转述替换论断；可运行 AI 核查");
   }
-  // 把一条引注对象作为锚定块插入当前活动 Markdown 笔记
-  _paletteInsert(cit) {
-    const view = this.app.workspace.getActiveViewOfType(obsidian12.MarkdownView);
-    if (!view) {
-      new obsidian12.Notice("请先打开一篇笔记");
+  // 光标所在锚定块 + 紧邻的上下一个锚定块的引注（供「综合为一句」）
+  _neighborCitations(editor, cit) {
+    if (!Number.isInteger(cit == null ? void 0 : cit._line)) return [];
+    const anchorLines = [];
+    const total = editor.lineCount();
+    for (let ln = 0; ln < total; ln++) {
+      if (/%%cite:[\w-]+%%/.test(editor.getLine(ln) || "")) anchorLines.push(ln);
+    }
+    const idx = anchorLines.indexOf(cit._line);
+    if (idx < 0) return [];
+    const picked = [anchorLines[idx - 1], anchorLines[idx], anchorLines[idx + 1]].filter((ln) => Number.isInteger(ln));
+    if (picked.length < 2) return [];
+    const seen = /* @__PURE__ */ new Set();
+    const out = [];
+    for (const ln of picked) {
+      for (const m of (editor.getLine(ln) || "").matchAll(/%%cite:([\w-]+)%%/g)) {
+        if (seen.has(m[1])) continue;
+        seen.add(m[1]);
+        const c = this._readCitation(m[1]);
+        if (c && String(c.source_quote || "").trim()) out.push(c);
+      }
+    }
+    return out;
+  }
+  // 打开引注对应的原文：与正文里 obsidian://<PROTOCOL>?action=open-pdf 链接走同一条路径
+  _openCitationSource(cit) {
+    const library = (cit == null ? void 0 : cit.source_library) || this.state.lastLibrary || "default";
+    const documentId = (cit == null ? void 0 : cit.source_document_id) || "";
+    const sourceFile = (cit == null ? void 0 : cit.source_file) || ((cit == null ? void 0 : cit.source_doc) ? `${cit.source_doc}.pdf` : "");
+    const page = parseInt(cit == null ? void 0 : cit.source_page, 10) || 0;
+    if (!documentId && !sourceFile) {
+      new obsidian11.Notice("这条引用没有可定位的原文");
       return;
     }
-    const editor = view.editor;
-    if (!editor) {
-      new obsidian12.Notice("请先打开一篇笔记");
-      return;
+    try {
+      if (page > 0) this.openPdfModalAt({ library, documentId, sourceFile, page });
+      else this.openPdfInObsidian(library, documentId, sourceFile).catch((e) => new obsidian11.Notice(`打开原文失败：${e.message}`));
+    } catch (e) {
+      new obsidian11.Notice(`打开原文失败：${e.message}`);
     }
-    const stem = String(cit.source_doc || "").replace(/\.pdf$/i, "").replace(/[/\\:*?"<>|]/g, "_");
-    const page = parseInt(cit.source_page) || "";
-    const quote = String(cit.source_quote || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-    const anchor = stem ? `[[${stem}.pdf${page ? `#page=${page}` : ""}|${stem}${page ? ` p.${page}` : ""}]]` : "（无出处）";
-    const block = `%%cite:${cit.id}%%
-> ${quote}
-> —— ${anchor}
-`;
-    editor.replaceSelection(block);
-    new obsidian12.Notice("已插入原文并关联出处；可在引用后写下论断，再运行 AI 核查");
   }
   // ── 事后扫描：把正文里已有的、未锚定的引用（pandoc @citekey / [[stem.pdf#page=N]]）
   //    升级为可追溯的 %%cite:id%% 锚。兼容模式下 source_quote 为空，只能篇/页级追溯。
@@ -14672,7 +14622,7 @@ ${paraphrase}
       });
     }
     if (!hits.length) {
-      new obsidian12.Notice("未发现可升级的已有引用（@citekey 或 [[…pdf#page=N]]）");
+      new obsidian11.Notice("未发现可升级的已有引用（@citekey 或 [[…pdf#page=N]]）");
       return;
     }
     const lookupByCitekey = (citekey) => {
@@ -14758,11 +14708,11 @@ ${paraphrase}
       cancelText: "暂不处理"
     });
     if (!doAnchor) {
-      new obsidian12.Notice("已取消：正文和引用记录均未改动");
+      new obsidian11.Notice("已取消：正文和引用记录均未改动");
       return;
     }
     if (editor.getValue() !== text) {
-      new obsidian12.Notice("文档在确认期间已被修改，本次扫描已整体取消，正文和引用记录均未改动");
+      new obsidian11.Notice("文档在确认期间已被修改，本次扫描已整体取消，正文和引用记录均未改动");
       return;
     }
     const before = editor.getValue();
@@ -14788,12 +14738,12 @@ ${paraphrase}
       this.citationIndex.items = previousItems;
       throw error;
     }
-    new obsidian12.Notice(
+    new obsidian11.Notice(
       `已有引用检查完成：已为 ${hits.length} 处引用添加出处标记（匹配 ${matched} / 未匹配 ${K}）`
     );
   }
   // ════════════════════════════════════════════════════════
-  //  多片段聚合成综述句（多引文）
+  //  多片段综合为一句（多引文）
   //  把若干来源片段用 AI 合成一句带编号引用标记的中文综述句，
   //  同时为每个来源落地独立可校验的 %%cite%% 锚定块。
   // ════════════════════════════════════════════════════════
@@ -14824,18 +14774,18 @@ ${body}
     const map = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
     return String(n).split("").map((c) => map[c] || c).join("");
   }
-  // 入口 A：从检索/拖拽卡片聚合
+  // 入口 A：从检索 / 拖拽卡片综合
   // 对每个 card 新建 Citation（transform:'data'）写入索引，AI 合成综述句，
   // 正文插入：综述句 + 各来源锚定块；每条 user_claim 设为"（综述：）"+sentence
   async _aggregateCitations(view, pos, cards) {
     var _a;
     if (!this._paperbellPlugin() && !window.registerPPBplugin) {
-      new obsidian12.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
+      new obsidian11.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
       return;
     }
     const list = (cards || []).filter((d) => String((d == null ? void 0 : d.origFull) || "").replace(/<[^>]+>/g, "").trim());
     if (list.length < 2) {
-      new obsidian12.Notice("至少需要 2 个带原文的片段才能聚合");
+      new obsidian11.Notice("至少需要 2 条带原文的片段才能综合为一句");
       return;
     }
     const sources = list.map((d) => {
@@ -14845,25 +14795,25 @@ ${body}
       const quote = String(d.origFull || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
       return { d, stem, cy, page, quote };
     });
-    const ntc = new obsidian12.Notice("AI 合成综述句中…", 0);
+    const ntc = new obsidian11.Notice("AI 合成综述句中…", 0);
     let sentence = "";
     try {
       const r = await this._llmAggregateReview(sources.map((s) => s.quote));
       sentence = r.sentence;
     } catch (e) {
       ntc.hide();
-      new obsidian12.Notice(`合成失败：${e.message}`);
+      new obsidian11.Notice(`合成失败：${e.message}`);
       return;
     }
     ntc.hide();
     if (!sentence) {
-      new obsidian12.Notice("AI 未返回综述句");
+      new obsidian11.Notice("AI 未返回综述句");
       return;
     }
     const bundle = this._buildEvidenceBackedDraft({
       rows: sources.map((s) => ({ ...s.d, origFull: s.quote })),
       claims: [{ text: sentence, source_numbers: sources.map((_, i) => i + 1) }],
-      library: this.settings.lastLibrary || "default"
+      library: this.state.lastLibrary || "default"
     }, ((_a = this.app.workspace.getActiveFile()) == null ? void 0 : _a.path) || "");
     const text = "\n" + bundle.text;
     const from = Math.min(pos, view.state.doc.length);
@@ -14874,7 +14824,7 @@ ${body}
       });
       view.focus();
     } catch (_) {
-      new obsidian12.Notice("插入位置已失效，请重试");
+      new obsidian11.Notice("插入位置已失效，请重试");
       return;
     }
     try {
@@ -14884,37 +14834,37 @@ ${body}
         view.dispatch({ changes: { from, to: from + text.length, insert: "" } });
       } catch (_) {
       }
-      new obsidian12.Notice(`来源记录保存失败，已撤回正文：${e.message}`);
+      new obsidian11.Notice(`来源记录保存失败，已撤回正文：${e.message}`);
       return;
     }
-    new obsidian12.Notice(`已生成综述句，并关联 ${sources.length} 条原文来源`);
+    new obsidian11.Notice(`已生成综述句，并关联 ${sources.length} 条原文来源`);
   }
   // 入口 B：从已有 Citation 对象聚合（复用其 id，不新建）
   // 合成句（带上标 [1][2]…）插入光标，句后列出 [n] 对应出处；并更新各 cit.user_claim
   async _aggregateFromCitations(editor, cits) {
     var _a;
     if (!this._paperbellPlugin() && !window.registerPPBplugin) {
-      new obsidian12.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
+      new obsidian11.Notice("请先安装并启用 PaperBell 插件，并在其中完成 AI 配置");
       return;
     }
     const list = (cits || []).filter((c) => c && String(c.source_quote || "").trim());
     if (list.length < 2) {
-      new obsidian12.Notice("至少需要 2 条带原文的引用才能聚合");
+      new obsidian11.Notice("至少需要 2 条带原文的引用才能综合为一句");
       return;
     }
-    const ntc = new obsidian12.Notice("AI 合成综述句中…", 0);
+    const ntc = new obsidian11.Notice("AI 合成综述句中…", 0);
     let sentence = "";
     try {
       const r = await this._llmAggregateReview(list.map((c) => c.source_quote));
       sentence = r.sentence;
     } catch (e) {
       ntc.hide();
-      new obsidian12.Notice(`合成失败：${e.message}`);
+      new obsidian11.Notice(`合成失败：${e.message}`);
       return;
     }
     ntc.hide();
     if (!sentence) {
-      new obsidian12.Notice("AI 未返回综述句");
+      new obsidian11.Notice("AI 未返回综述句");
       return;
     }
     const supped = sentence.replace(/\[(\d+)\]/g, (whole, n) => {
@@ -14927,34 +14877,26 @@ ${body}
       page: c.source_page,
       _docId: c.source_document_id || "",
       _sourceFile: c.source_file || c.source_doc || "",
-      _library: c.source_library || this.settings.lastLibrary || "default",
+      _library: c.source_library || this.state.lastLibrary || "default",
       paperTitle: c.source_doc || `来源${i + 1}`,
       citekey: c.citekey || ""
     }));
     const bundle = this._buildEvidenceBackedDraft({
       rows,
       claims: [{ text: supped, source_numbers: rows.map((_, i) => i + 1) }],
-      library: this.settings.lastLibrary || "default"
+      library: this.state.lastLibrary || "default"
     }, ((_a = this.app.workspace.getActiveFile()) == null ? void 0 : _a.path) || "");
     const before = editor.getValue();
+    editor.setCursor(editor.getCursor("to"));
     editor.replaceSelection(bundle.text);
     try {
       await this._commitEvidenceBackedDraft(bundle);
     } catch (e) {
       editor.setValue(before);
-      new obsidian12.Notice(`来源记录保存失败，已撤回正文：${e.message}`);
+      new obsidian11.Notice(`来源记录保存失败，已撤回正文：${e.message}`);
       return;
     }
-    new obsidian12.Notice("已插入综述句，并保留整句与全部原文来源的关联");
-  }
-  async _smartCollect(pdfFile, selText) {
-    const ok = await this._fileExcerptToNote({
-      text: selText,
-      pdfStem: pdfFile.basename,
-      page: this._currentPdfPage(),
-      nativePdfPath: pdfFile.path
-    });
-    new obsidian12.Notice(ok ? "已存入文献笔记 ✓" : "未写入（已取消建立文献笔记）");
+    new obsidian11.Notice("已插入综述句，并保留整句与全部原文来源的关联");
   }
   // ── PDF 划词浮动工具条 ───────────────────────────────
   // 监听全局 selectionchange：当选区落在 PDF view 的文本层里，弹浮条
@@ -15017,7 +14959,7 @@ ${body}
       };
     };
     const annoWrap = bar.createSpan({ cls: "pb-pdf-seltb-anno" });
-    annoWrap.createSpan({ cls: "pb-pdf-seltb-anno-lbl", text: "标注" });
+    annoWrap.createSpan({ cls: "pb-pdf-seltb-anno-lbl", text: "记" });
     for (const role of this._annoRoles()) {
       const dot = annoWrap.createSpan({ cls: "pb-pdf-seltb-swatch", attr: { title: role.label } });
       dot.style.background = role.color;
@@ -15032,8 +14974,7 @@ ${body}
         this._hidePdfToolbar();
       };
     }
-    mk("摘录", "存入这篇的文献笔记（没有笔记会按设置自动建）", () => this._smartCollect(pdfFile, text));
-    mk("找相似", "用这段做向量检索（阅读反哺检索）", async () => {
+    mk("以此检索", "用这段做向量检索（阅读反哺检索）", async () => {
       await this.activateView();
       const leaf = this.app.workspace.getLeavesOfType(VIEW_TYPE)[0];
       if ((leaf == null ? void 0 : leaf.view) instanceof PaperSearchView) leaf.view.pushQuery(text.slice(0, 300));
@@ -15080,7 +15021,7 @@ ${body}
       (_e = sel == null ? void 0 : sel.removeAllRanges) == null ? void 0 : _e.call(sel);
     } catch (_) {
     }
-    new obsidian12.Notice(`已标注「${(role == null ? void 0 : role.label) || "标注"}」`);
+    new obsidian11.Notice(`已标注「${(role == null ? void 0 : role.label) || "标注"}」`);
     this._fileExcerptToNote({
       text,
       pdfStem: stem,
@@ -15112,11 +15053,11 @@ ${body}
     var _a;
     const s = spec || {};
     if (!s.library) {
-      new obsidian12.Notice("缺少文献库名");
+      new obsidian11.Notice("缺少文献库名");
       return;
     }
     if (!s.documentId && !s.sourceFile && !s.srcPath) {
-      new obsidian12.Notice("缺少 PDF 标识，无法定位原文");
+      new obsidian11.Notice("缺少 PDF 标识，无法定位原文");
       return;
     }
     (_a = this._activePdfModalClose) == null ? void 0 : _a.call(this);
@@ -15169,7 +15110,7 @@ ${body}
         await this.openPdfInObsidian(s.library, s.documentId, s.sourceFile);
         close();
       } catch (err) {
-        new obsidian12.Notice(`打开失败：${err.message}`);
+        new obsidian11.Notice(`打开失败：${err.message}`);
       }
     };
   }
@@ -15309,38 +15250,139 @@ ${body}
     yes.style.cssText = "background:var(--interactive-accent); color:var(--on-accent); border:none; padding:3px 12px; border-radius:4px; cursor:pointer;";
     const no = actions.createEl("button", { text: "忽略" });
     no.style.cssText = "background:transparent; color:var(--text-muted); border:1px solid var(--background-modifier-border); padding:3px 12px; border-radius:4px; cursor:pointer;";
-    const ntc = new obsidian12.Notice(frag, 12e3);
+    const ntc = new obsidian11.Notice(frag, 12e3);
     yes.onclick = () => {
       ntc.hide();
       this._triggerAppendIngest(libraryName, files);
     };
     no.onclick = () => ntc.hide();
   }
-  // 对 N 个绝对路径触发 append 建库（拼 multipart 字节体，复用现有 streamForm）
+  // 对 N 个绝对路径触发 append 建库。
+  //
+  // 分批：这里是把文件整个读进内存再拼 multipart 的。Zotero storage 一扫就是
+  // 几百上千篇，一次性读完轻松上 GB，Obsidian 直接被撑爆。按累计字节切批，
+  // 每批跑完再读下一批，峰值内存就只跟单批大小有关。
   async _triggerAppendIngest(libraryName, absPaths) {
-    const fd = new FormData();
-    fd.append("action", "append");
-    fd.append("existing_library", libraryName);
-    fd.append("ingest_mode", "raw");
-    fd.append("ingest_preprocess_concurrency", "1");
+    const MAX_BATCH_BYTES = 200 * 1024 * 1024;
+    const MAX_BATCH_FILES = 50;
+    const batches = [];
+    let cur = [], curBytes = 0;
     for (const p of absPaths) {
+      let size = 0;
       try {
-        const buf = nodeFs3.readFileSync(p);
-        const blob = new Blob([buf], { type: "application/pdf" });
-        const fname = nodePath5.basename(p);
-        fd.append("files", blob, fname);
-      } catch (e) {
-        console.warn("PaperSearch: 读取失败", p, e);
+        size = nodeFs3.statSync(p).size;
+      } catch (_) {
+        continue;
       }
+      if (cur.length && (curBytes + size > MAX_BATCH_BYTES || cur.length >= MAX_BATCH_FILES)) {
+        batches.push(cur);
+        cur = [];
+        curBytes = 0;
+      }
+      cur.push(p);
+      curBytes += size;
     }
-    const job = this.buildManager.start(fd, {
-      label: `向「${libraryName}」追加`,
-      libName: libraryName,
-      mode: "add"
-    });
-    await job.promise;
+    if (cur.length) batches.push(cur);
+    if (!batches.length) return;
+    const ingested = [];
+    for (let i = 0; i < batches.length; i++) {
+      const fd = new FormData();
+      fd.append("action", "append");
+      fd.append("existing_library", libraryName);
+      fd.append("ingest_mode", "raw");
+      fd.append("ingest_preprocess_concurrency", "1");
+      const inThisBatch = [];
+      for (const p of batches[i]) {
+        try {
+          const buf = nodeFs3.readFileSync(p);
+          fd.append("files", new Blob([buf], { type: "application/pdf" }), nodePath5.basename(p));
+          inThisBatch.push(p);
+        } catch (e) {
+          console.warn("PaperSearch: 读取失败", p, e);
+        }
+      }
+      if (!inThisBatch.length) continue;
+      const label = batches.length > 1 ? `向「${libraryName}」追加（第 ${i + 1}/${batches.length} 批）` : `向「${libraryName}」追加`;
+      const job = this.buildManager.start(fd, { label, libName: libraryName, mode: "add" });
+      await job.promise;
+      ingested.push(...inThisBatch);
+      await this._markIngested(libraryName, inThisBatch);
+    }
+    return ingested;
   }
-  // 启动时按 settings.libSources 拉起 watcher
+  // 递归找出目录下的存量 PDF。
+  //
+  // watcher 是纯事件驱动的：库源配好之前就已经躺在那里的文件，fs 不会为它们
+  // 发任何事件，所以只起 watcher 等于存量文献永远进不了库。Zotero 的默认布局
+  // 恰恰是 storage/<8位ID>/*.pdf，一篇文献一个子目录——顶层一个 PDF 都没有，
+  // 于是「填了路径、勾了自动监听、重启后库里空空如也」。
+  //
+  // 用异步 readdir：Zotero storage 动辄上千个子目录，同步遍历会卡住主线程。
+  // isFile() 而不是 !isDirectory()：顺带跳过符号链接，免得撞上链接成环。
+  async _scanExistingPdfs(dirPath, opts = {}) {
+    var _a, _b;
+    const maxDepth = (_a = opts.maxDepth) != null ? _a : 4;
+    const maxFiles = (_b = opts.maxFiles) != null ? _b : 5e3;
+    const out = [];
+    let truncated = false;
+    const walk = async (dir, depth) => {
+      if (depth > maxDepth || out.length >= maxFiles) return;
+      let entries;
+      try {
+        entries = await nodeFs3.promises.readdir(dir, { withFileTypes: true });
+      } catch (_) {
+        return;
+      }
+      for (const e of entries) {
+        if (out.length >= maxFiles) {
+          truncated = true;
+          return;
+        }
+        if (e.name.startsWith(".")) continue;
+        const full = nodePath5.join(dir, e.name);
+        if (e.isDirectory()) await walk(full, depth + 1);
+        else if (e.isFile() && /\.pdf$/i.test(e.name)) out.push(full);
+      }
+    };
+    await walk(dirPath, 0);
+    if (truncated) {
+      console.warn(`PaperSearch: ${dirPath} 下 PDF 超过 ${maxFiles} 个，只取前 ${maxFiles} 个`);
+    }
+    return out;
+  }
+  // 记下已经交给后端建库的文件，避免下次启动又把同一批当成「新文献」提示一遍。
+  // _bootSourceWatchers 在设置页每改一次都会跑，不去重的话每次都会弹一个
+  // 「检测到 741 篇新 PDF」。
+  _ingestedSet(libraryName) {
+    const all = this.state.ingestedPaths || (this.state.ingestedPaths = {});
+    if (!Array.isArray(all[libraryName])) all[libraryName] = [];
+    return new Set(all[libraryName]);
+  }
+  async _markIngested(libraryName, paths) {
+    const all = this.state.ingestedPaths || (this.state.ingestedPaths = {});
+    const set = new Set(Array.isArray(all[libraryName]) ? all[libraryName] : []);
+    for (const p of paths) set.add(p);
+    all[libraryName] = [...set];
+    await this.saveSettings();
+  }
+  // 库源配好或改动后，扫一遍存量文件；只把还没入过库的报给用户。
+  async _scanSourceForExisting(libraryName, dirPath, source) {
+    let found;
+    try {
+      found = await this._scanExistingPdfs(dirPath);
+    } catch (e) {
+      console.warn("PaperSearch: 扫描库源失败", dirPath, e);
+      return;
+    }
+    const done = this._ingestedSet(libraryName);
+    const fresh = found.filter((p) => !done.has(p));
+    if (fresh.length) this._notifyPendingIngest(libraryName, fresh, source);
+  }
+  // 启动时按 settings.libSources 拉起 watcher，并扫一遍存量文件。
+  //
+  // watcher 只报「起来之后发生的变化」，配库源之前就存在的 PDF 一个都不会报。
+  // 所以这里必须补一次全量扫描，否则 Zotero storage 这类「文件早就在那儿」的
+  // 用法建库直接是空的（issue #241）。扫描不 await：几百个子目录别把 onload 拖住。
   _bootSourceWatchers() {
     var _a;
     this._stopAllWatchers();
@@ -15348,9 +15390,12 @@ ${body}
       if (src.autoWatch && src.libraryName && src.path) {
         this._startSourceWatcher(src.libraryName, src.path, src.source || "folder");
       }
+      if (src.libraryName && src.path) {
+        void this._scanSourceForExisting(src.libraryName, src.path, src.source || "folder");
+      }
     }
   }
-  // ── 将选中文本推送到 PaperSearch 面板 ───────────────
+  // ── 把选中文本送进 PaperSearch 检索面板 ───────────────
   _pushSelectionToPanel(text) {
     var _a;
     const editor = (_a = this.app.workspace.activeEditor) == null ? void 0 : _a.editor;
@@ -15364,103 +15409,96 @@ ${body}
       if ((leaf == null ? void 0 : leaf.view) instanceof PaperSearchView) leaf.view.pushQuery(text);
     });
   }
-  // ── 引注模式选择器（拖拽 drop 后触发，使用 Obsidian 原生 Menu）──
-  // cards：始终为数组（单条时 length === 1）
-  _showCitationPicker(x, y, cards, cmEditorView, pos) {
-    const n = cards.length;
-    const label = n > 1 ? `（${n} 条）` : "";
-    const menu = new obsidian12.Menu();
-    menu.addItem((item) => item.setTitle(`插入 AI 转述草稿${label}（未关联来源）`).setIcon("sparkles").onClick(() => this._insertCitation(cmEditorView, pos, cards, "ai")));
-    menu.addItem((item) => item.setTitle(`原文引用${label}`).setIcon("quote-glyph").onClick(() => this._insertCitation(cmEditorView, pos, cards, "raw")));
-    menu.addSeparator();
-    menu.addItem((item) => item.setTitle(`插入原文${label}并关联出处`).setIcon("link").onClick(() => this._insertAnchoredCitation(cmEditorView, pos, cards)));
-    menu.addItem((item) => item.setTitle(`AI 转述${label}并关联原文`).setIcon("wand").onClick(() => this._insertParaphrasedCitation(cmEditorView, pos, cards)));
-    if (cards.length > 1) {
-      menu.addItem((item) => item.setTitle("聚合成综述句（多引文）").setIcon("combine").onClick(() => this._aggregateCitations(cmEditorView, pos, cards).catch((e) => new obsidian12.Notice(`聚合失败：${e.message}`))));
+  // ── 唯一的正文写入路径 ─────────────────────────────
+  // 拖拽落地、片段行「插入到正文」都走这里，产出统一的证据支撑块：
+  //   %%claim:id%%%%cite:id%%
+  //   > 原文
+  //   > 证据：[证据 1 · stem p.7](obsidian://…&action=open-pdf&…)
+  // 出处用协议链接，不依赖 PDF 是否已拷进 vault；块天然进 claimIndex + citationIndex，可被 AI 核查。
+  // 拖进来时用户还没写论断，所以 claim 文本先用原文引用块本身，用户在块后自己补论断。
+  // 内部全程 try/catch —— 调用方（CM6 drop）不 await，这里不能抛。
+  async _insertAnchoredCitation(view, pos, cards) {
+    var _a;
+    const list = Array.isArray(cards) ? cards : [cards];
+    const rows = [];
+    const claims = [];
+    for (const d of list) {
+      const quote = this._stripCardText(d == null ? void 0 : d.origFull);
+      if (!quote) continue;
+      rows.push({ ...d, origFull: quote, _quoteReady: true });
+      claims.push({ text: `> ${quote}`, source_numbers: [rows.length] });
     }
-    menu.showAtPosition({ x, y });
-  }
-  // ── 锚定引用：插入带 source 锚的引用块 + 记入引注索引（可被校验）──
-  _insertAnchoredCitation(view, pos, cards) {
-    var _a, _b;
-    const blocks = [];
-    const citations = [];
-    for (const d of cards) {
-      const stem = (d._sourceFile || d.title || "").replace(/\.pdf$/i, "").replace(/[/\\:*?"<>|]/g, "_");
-      const cy = d.paperTitle || d.title || stem;
-      const page = parseInt(d.page) || "";
-      const quote = String(d.origFull || "").replace(/<[^>]+>/g, "").replace(/\s+/g, " ").trim();
-      const id = this._newCitationId();
-      const docMeta = this._readDocMeta(d._docId) || {};
-      citations.push({
-        id,
-        document_path: ((_a = this.app.workspace.getActiveFile()) == null ? void 0 : _a.path) || "",
-        anchor_state: "anchored",
-        paper_id: this._resolvePaperIdentity({ row: d, library: d._library || this.settings.lastLibrary || "", meta: docMeta }).paper_id,
-        evidence_id: `chunk:${d._library || this.settings.lastLibrary || "default"}:${d._docId || stem}:${d.id || id}`,
-        source_kind: "chunk",
-        source_chunk_id: d.id,
-        source_quote: quote,
-        source_page: page || null,
-        source_doc: stem,
-        source_library: d._library || this.settings.lastLibrary || "",
-        source_document_id: d._docId || "",
-        source_file: d._sourceFile || "",
-        csl: docMeta.csl || null,
-        citekey: ((_b = docMeta.bbt) == null ? void 0 : _b.citekey) || "",
-        user_claim: "",
-        // 用户写在块里的论断（事后可填）
-        transform: "quote",
-        fidelity: "unchecked",
-        fidelity_note: "",
-        created_at: Date.now()
-      });
-      const anchor = `[[${stem}.pdf${page ? `#page=${page}` : ""}|${cy}${page ? ` p.${page}` : ""}]]`;
-      blocks.push(`%%cite:${id}%%
-> ${quote}
-> —— ${anchor}
-`);
-    }
-    const text = "\n" + blocks.join("\n") + "\n";
-    try {
-      view.dispatch({
-        changes: { from: pos, insert: text },
-        selection: { anchor: pos + text.length }
-      });
-    } catch (_) {
-      new obsidian12.Notice("插入位置已失效，请重试");
+    if (!rows.length) {
+      new obsidian11.Notice("这些卡片都没有可引用的原文片段");
       return;
     }
-    for (const cit of citations) this._writeCitation(cit);
-    view.focus();
-    new obsidian12.Notice(`已插入 ${cards.length} 条原文引用并关联出处；可在引用后写下论断，再运行 AI 核查`);
-  }
-  // ── 将引注文本写入编辑器 ──────────────────────────────
-  // cards：始终为数组，逐条生成、顺序拼接，保持各条独立
-  _insertCitation(view, pos, cards, mode) {
-    var _a;
-    const text = cards.map((d) => {
-      var _a2, _b, _c;
-      return (_c = (_b = (_a2 = CITE_TEMPLATES)[mode]) == null ? void 0 : _b.call(_a2, d)) != null ? _c : "";
-    }).join("");
-    if (!text) return;
-    view.dispatch({
-      changes: { from: pos, insert: text },
-      selection: { anchor: pos + text.length }
+    const documentPath = ((_a = this.app.workspace.getActiveFile()) == null ? void 0 : _a.path) || "";
+    let bundle;
+    try {
+      bundle = this._buildEvidenceBackedDraft({
+        rows,
+        claims,
+        library: this.state.lastLibrary || "default"
+      }, documentPath, { withClaim: false });
+    } catch (e) {
+      new obsidian11.Notice(`插入失败：${e.message}`);
+      return;
+    }
+    bundle.citations.forEach((cit, i) => {
+      const row = rows[i] || {};
+      cit.transform = "quote";
+      if (!row._annotationId) return;
+      cit.source_kind = "annotation";
+      cit.source_annotation_id = row._annotationId;
+      cit.source_chunk_id = "";
+      cit.evidence_id = row._evidenceId || `annotation:${row._annotationId}`;
+      if (row._paperId) cit.paper_id = row._paperId;
+      if (row._attachmentId) cit.attachment_id = row._attachmentId;
     });
-    view.focus();
-    const n = cards.length;
-    const modeLabel = (_a = { ai: "AI 转述草稿（未关联来源）", raw: "原文引用", mixed: "引用" }[mode]) != null ? _a : "内容";
-    new obsidian12.Notice(n > 1 ? `${modeLabel}已插入（${n} 条，逐条排列）` : `${modeLabel}已插入`);
+    const text = "\n" + bundle.text;
+    const from = Math.min(pos, view.state.doc.length);
+    try {
+      view.dispatch({
+        changes: { from, insert: text },
+        selection: { anchor: from + text.length }
+      });
+      view.focus();
+    } catch (_) {
+      new obsidian11.Notice("插入位置已失效，请重试");
+      return;
+    }
+    try {
+      await this._commitEvidenceBackedDraft(bundle);
+    } catch (e) {
+      try {
+        view.dispatch({ changes: { from, to: from + text.length, insert: "" } });
+      } catch (_) {
+      }
+      new obsidian11.Notice(`来源记录保存失败，已撤回正文：${e.message}`);
+      return;
+    }
+    new obsidian11.Notice("已插入原文与出处；在下方写下你的论断后可运行 AI 核查");
   }
-  async activateView() {
+  // 取当前笔记的 CM6 EditorView + 光标 offset，供面板侧走同一条插入路径
+  _activeCmTarget() {
+    const mdView = this.app.workspace.getActiveViewOfType(obsidian11.MarkdownView);
+    const editor = mdView == null ? void 0 : mdView.editor;
+    const cm = editor == null ? void 0 : editor.cm;
+    if (!editor || !cm || !cm.state || typeof cm.dispatch !== "function") return null;
+    return { view: cm, pos: editor.posToOffset(editor.getCursor()) };
+  }
+  // tab：可选，'search' | 'papers' | 'fragments'。存入 _pendingTab 供视图侧读取并切页。
+  async activateView(tab) {
+    var _a, _b;
     const { workspace } = this.app;
+    if (tab) this._pendingTab = tab;
     let leaf = workspace.getLeavesOfType(VIEW_TYPE)[0];
     if (!leaf) {
       leaf = workspace.getRightLeaf(false);
       await leaf.setViewState({ type: VIEW_TYPE, active: true });
     }
     workspace.revealLeaf(leaf);
+    if (tab) (_b = (_a = leaf == null ? void 0 : leaf.view) == null ? void 0 : _a.applyPendingTab) == null ? void 0 : _b.call(_a);
   }
 };
 var main_default = PaperSearchPlugin;
