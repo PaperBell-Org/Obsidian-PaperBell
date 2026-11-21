@@ -7,9 +7,10 @@ if you want to view the source visit the plugins github repository
 
 var obsidian = require('obsidian');
 var child_process = require('child_process');
+var crypto$1 = require('crypto');
 var fs = require('fs');
-var path = require('path');
 var os = require('os');
+var path = require('path');
 
 function _interopNamespace(e) {
     if (e && e.__esModule) return e;
@@ -30,8 +31,8 @@ function _interopNamespace(e) {
 }
 
 var fs__namespace = /*#__PURE__*/_interopNamespace(fs);
-var path__namespace = /*#__PURE__*/_interopNamespace(path);
 var os__namespace = /*#__PURE__*/_interopNamespace(os);
+var path__namespace = /*#__PURE__*/_interopNamespace(path);
 
 /******************************************************************************
 Copyright (c) Microsoft Corporation.
@@ -3342,24 +3343,37 @@ function projectRootPath(projectDrafts) {
     return lowestCommonAncestorFolder(projectDrafts.map((d) => draftIndexFolder(d)));
 }
 /**
- * Ordered candidate paths for a named resource, searched from `startDir` upward
- * to `rootDir` (inclusive). At each level both `<dir>/<baseName>` and
- * `<dir>/source/<baseName>` are produced. When `rootDir` is not an ancestor of
- * (or equal to) `startDir`, only `startDir` is searched — so callers that don't
+ * The folders searched for a project resource, nearest first: from `startDir`
+ * upward to `rootDir` (inclusive). When `rootDir` is not an ancestor of (or
+ * equal to) `startDir`, only `startDir` is searched — so callers that don't
  * know a project root degrade to the original single-folder behavior.
  */
-function projectResourceCandidatePaths(startDir, rootDir, baseName) {
+function projectResourceFolders(startDir, rootDir) {
     const startSegs = startDir.split("/").filter((s) => s.length > 0);
     const rootSegs = (rootDir !== null && rootDir !== void 0 ? rootDir : "").split("/").filter((s) => s.length > 0);
     const rootIsAncestor = rootSegs.length <= startSegs.length &&
         rootSegs.every((s, i) => s === startSegs[i]);
     const minLen = rootIsAncestor ? rootSegs.length : startSegs.length;
-    const candidates = [];
+    const folders = [];
     for (let len = startSegs.length; len >= minLen; len--) {
-        const dir = startSegs.slice(0, len).join("/");
-        const prefix = dir.length > 0 ? `${dir}/` : "";
-        candidates.push(`${prefix}${baseName}`);
-        candidates.push(`${prefix}source/${baseName}`);
+        folders.push(startSegs.slice(0, len).join("/"));
+    }
+    return folders;
+}
+/** A resource's two candidate paths within one folder, preferred first. */
+function folderResourcePaths(dir, baseName) {
+    const prefix = dir.length > 0 ? `${dir}/` : "";
+    return [`${prefix}${baseName}`, `${prefix}source/${baseName}`];
+}
+/**
+ * Ordered candidate paths for a named resource: for each folder of
+ * {@link projectResourceFolders}, `<dir>/<baseName>` then
+ * `<dir>/source/<baseName>`.
+ */
+function projectResourceCandidatePaths(startDir, rootDir, baseName) {
+    const candidates = [];
+    for (const dir of projectResourceFolders(startDir, rootDir)) {
+        candidates.push(...folderResourcePaths(dir, baseName));
     }
     return candidates;
 }
@@ -3370,6 +3384,17 @@ function projectFolderPath(draft, vault) {
 function sceneFolderPath(draft, vault) {
     const root = vault.getAbstractFileByPath(draftIndexPath(draft)).parent.path;
     return obsidian.normalizePath(`${root}/${draft.sceneFolder}`);
+}
+/**
+ * Where the layered `metadata.json` walk starts for a draft. A project asset
+ * (all assets share one index at the project root) starts from its scene
+ * folder, so a nearer override such as `supplementary/metadata.json` applies;
+ * every other draft starts from its index note's folder.
+ */
+function metadataStartDir(draft, vault) {
+    return draft.format === "scenes" && draft.indexPath
+        ? sceneFolderPath(draft, vault)
+        : draftIndexFolder(draft);
 }
 function scenePathForFolder(sceneName, folderPath) {
     return obsidian.normalizePath(`${folderPath}/${sceneName}.md`);
@@ -21818,7 +21843,10 @@ const DEFAULT_WORKFLOWS = {
                     filename: "{acronym}_{date}",
                 },
             },
-            { id: "harvest-manuscript-lines", optionValues: { enabled: true } },
+            {
+                id: "harvest-manuscript-lines",
+                optionValues: { enabled: true, template: "" },
+            },
         ],
     },
     "PaperBell Supplementary": {
@@ -21864,7 +21892,10 @@ const DEFAULT_WORKFLOWS = {
                     filename: "{acronym}_SI_{date}",
                 },
             },
-            { id: "harvest-manuscript-lines", optionValues: { enabled: true } },
+            {
+                id: "harvest-manuscript-lines",
+                optionValues: { enabled: true, template: "" },
+            },
         ],
     },
     "PaperBell Response Letter": {
@@ -22530,72 +22561,26 @@ function yamlString(s) {
     return `"${String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
-const AddZenodoFrontmatterStep = makeBuiltinStep({
-    id: "add-zenodo-frontmatter",
-    description: {
-        name: "Add Zenodo Frontmatter",
-        description: "Reads a Zenodo-style metadata JSON from your project folder and prepends a Pandoc-compatible YAML frontmatter to the manuscript.",
-        availableKinds: [CompileStepKind.Manuscript],
-        options: [
-            {
-                id: "metadata-file",
-                name: "Metadata file",
-                description: "Filename of the Zenodo deposition metadata JSON. Searched for in the draft's folder (or its 'source/' subfolder) and any parent folder up to the project root, so multiple drafts can share one file. Trailing '.json' is optional.",
-                type: CompileStepOptionType.Text,
-                default: "metadata.json",
-            },
-            {
-                id: "error-on-missing-file",
-                name: "Error on missing file",
-                description: "If checked, throw an error when the metadata file is not found. Otherwise pass the manuscript through unchanged.",
-                type: CompileStepOptionType.Boolean,
-                default: true,
-            },
-        ],
-    },
-    compile(input, context) {
-        var _a, _b, _c;
-        return __awaiter(this, void 0, void 0, function* () {
-            if (context.kind !== CompileStepKind.Manuscript) {
-                throw new Error("Cannot add frontmatter to non-manuscript.");
-            }
-            const metaFileName = String((_a = context.optionValues["metadata-file"]) !== null && _a !== void 0 ? _a : "metadata.json").trim();
-            const errorOnMissingFile = Boolean((_b = context.optionValues["error-on-missing-file"]) !== null && _b !== void 0 ? _b : true);
-            const baseName = metaFileName.endsWith(".json")
-                ? metaFileName
-                : `${metaFileName}.json`;
-            const candidatePaths = projectResourceCandidatePaths(context.projectPath, (_c = context.projectRoot) !== null && _c !== void 0 ? _c : context.projectPath, baseName);
-            let file = null;
-            let foundPath = "";
-            for (const path of candidatePaths) {
-                const f = context.app.vault.getAbstractFileByPath(path);
-                if (f instanceof obsidian.TFile) {
-                    file = f;
-                    foundPath = path;
-                    break;
-                }
-            }
-            if (!file) {
-                if (errorOnMissingFile) {
-                    throw new Error(`[Add Zenodo Frontmatter] Metadata file not found at ${candidatePaths.join(" or ")}`);
-                }
-                return input;
-            }
-            const raw = yield context.app.vault.cachedRead(file);
-            let metadata;
-            try {
-                metadata = JSON.parse(raw);
-            }
-            catch (e) {
-                throw new Error(`[Add Zenodo Frontmatter] Invalid JSON in ${foundPath}: ${e.message}`);
-            }
-            const yaml = buildPandocYaml(metadata);
-            return {
-                contents: `---\n${yaml}---\n\n${input.contents}`,
-            };
-        });
-    },
-});
+/** True for a non-null, non-array object literal. */
+function isPlainObject$2(v) {
+    return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+/**
+ * Deep-merge two parsed JSON values. Plain objects are merged key-by-key
+ * (recursing on shared keys); everything else (scalars, arrays) from `b`
+ * overrides `a`. `undefined` in `b` leaves `a` untouched. Used to combine
+ * several data files (e.g. metadata.json + results.json) into one namespace.
+ */
+function deepMerge(a, b) {
+    if (isPlainObject$2(a) && isPlainObject$2(b)) {
+        const out = Object.assign({}, a);
+        for (const key of Object.keys(b)) {
+            out[key] = key in a ? deepMerge(a[key], b[key]) : b[key];
+        }
+        return out;
+    }
+    return b === undefined ? a : b;
+}
 
 /**
  * Tokenize a dot/bracket path expression into its segments.
@@ -22730,31 +22715,212 @@ function parseJsonFileList(raw) {
         .filter(Boolean)
         .map((name) => (name.endsWith(".json") ? name : `${name}.json`));
 }
-/** True for a non-null, non-array object literal. */
-function isPlainObject$2(v) {
-    return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-/**
- * Deep-merge two parsed JSON values. Plain objects are merged key-by-key
- * (recursing on shared keys); everything else (scalars, arrays) from `b`
- * overrides `a`. `undefined` in `b` leaves `a` untouched. Used to combine
- * several data files (e.g. metadata.json + results.json) into one namespace.
- */
-function deepMerge(a, b) {
-    if (isPlainObject$2(a) && isPlainObject$2(b)) {
-        const out = Object.assign({}, a);
-        for (const key of Object.keys(b)) {
-            out[key] = key in a ? deepMerge(a[key], b[key]) : b[key];
-        }
-        return out;
-    }
-    return b === undefined ? a : b;
-}
 /** Build a global regex matching `<start> path <end>` placeholders. */
 function buildPlaceholderRegex(startDelim, endDelim) {
     const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return new RegExp(`${esc(startDelim)}\\s*([a-zA-Z0-9_.$\\[\\]-]+)\\s*${esc(endDelim)}`, "g");
 }
+
+/**
+ * The metadata files to read, far → near: per folder between `rootDir` and
+ * `startDir`, the first of `<dir>/<baseName>` / `<dir>/source/<baseName>` that
+ * exists.
+ */
+function metadataLayerPaths(startDir, rootDir, baseName, exists) {
+    return projectResourceFolders(startDir, rootDir)
+        .map((dir) => folderResourcePaths(dir, baseName).find(exists))
+        .filter((p) => p !== undefined)
+        .reverse();
+}
+/** A top-level `key:` line in a YAML snippet. */
+const TOP_LEVEL_KEY = /^([A-Za-z_][\w-]*)\s*:/;
+/**
+ * Combine `_longform.extra_yaml` snippets (far → near). Each layer's top-level
+ * entries are kept; when two layers set the same key, the nearer one wins, so
+ * the root's `numbersections: true` and an override's don't become a
+ * duplicate YAML key.
+ */
+function mergeExtraYaml(chunks) {
+    const order = [];
+    const entries = new Map();
+    let anon = 0;
+    for (const chunk of chunks) {
+        let current = null;
+        for (const line of chunk.split("\n")) {
+            const m = TOP_LEVEL_KEY.exec(line);
+            if (m) {
+                const key = m[1];
+                if (!entries.has(key))
+                    order.push(key);
+                current = [line];
+                entries.set(key, current);
+            }
+            else if (current) {
+                // Indented continuation, or a blank line inside a block scalar.
+                current.push(line);
+            }
+            else if (line.trim().length > 0) {
+                // Leading comment or stray text: keep it, in place.
+                const key = `\u0000${anon++}`;
+                order.push(key);
+                entries.set(key, [line]);
+            }
+        }
+    }
+    const trimEnd = (lines) => {
+        const out = [...lines];
+        while (out.length > 0 && out[out.length - 1].trim() === "")
+            out.pop();
+        return out;
+    };
+    const out = order
+        .map((k) => { var _a; return trimEnd((_a = entries.get(k)) !== null && _a !== void 0 ? _a : []).join("\n"); })
+        .join("\n");
+    return out.length > 0 ? `${out}\n` : "";
+}
+/** Merge layers given far → near. */
+function mergeMetadataLayers(layers) {
+    let merged = {};
+    const origin = {};
+    const extraYaml = [];
+    const recordOrigin = (obj, prefix, path) => {
+        for (const key of Object.keys(obj)) {
+            const at = prefix ? `${prefix}.${key}` : key;
+            origin[at] = path;
+            const value = obj[key];
+            if (isPlainObject$2(value)) {
+                recordOrigin(value, at, path);
+            }
+            else {
+                // A scalar, array or null replaces the whole subtree (see deepMerge),
+                // so the farther layers' deeper keys no longer exist.
+                for (const k of Object.keys(origin)) {
+                    if (k.startsWith(`${at}.`))
+                        delete origin[k];
+                }
+            }
+        }
+    };
+    for (const { path, data } of layers) {
+        recordOrigin(data, "", path);
+        const longform = data["_longform"];
+        if (isPlainObject$2(longform) && typeof longform["extra_yaml"] === "string") {
+            extraYaml.push(longform["extra_yaml"]);
+        }
+        merged = deepMerge(merged, data);
+    }
+    if (extraYaml.length > 0 && isPlainObject$2(merged["_longform"])) {
+        merged["_longform"] = Object.assign(Object.assign({}, merged["_longform"]), { extra_yaml: mergeExtraYaml(extraYaml) });
+    }
+    return { merged, origin };
+}
+/**
+ * The file that defines the value at a placeholder path such as
+ * `journal_title`, `creators[0].name` or `_longform.acronym`, or `fallback`
+ * when no layer sets it.
+ */
+function originForPath(origin, varPath, fallback) {
+    // The deepest recorded prefix of the path owns it: `summary.n` before
+    // `summary`; `creators[0].name` falls back to `creators`, the array's key.
+    const segments = tokenizePath(varPath);
+    for (let i = segments.length; i > 0; i--) {
+        const owner = origin[segments.slice(0, i).join(".")];
+        if (owner !== undefined)
+            return owner;
+    }
+    return fallback;
+}
+/** A metadata file that exists but is not valid JSON. */
+class MetadataParseError extends Error {
+    constructor(path, cause) {
+        super(`Invalid JSON in ${path}: ${cause.message}`);
+        this.path = path;
+    }
+}
+/**
+ * Read and parse the layers between `rootDir` and `startDir` (far → near).
+ * Throws {@link MetadataParseError} on a file that is not a JSON object.
+ */
+function readMetadataLayers(vault, startDir, rootDir, baseName = "metadata.json") {
+    return __awaiter(this, void 0, void 0, function* () {
+        const paths = metadataLayerPaths(startDir, rootDir, baseName, (p) => vault.getAbstractFileByPath(p) instanceof obsidian.TFile);
+        const layers = [];
+        for (const path of paths) {
+            const file = vault.getAbstractFileByPath(path);
+            let data;
+            try {
+                data = JSON.parse(yield vault.cachedRead(file));
+            }
+            catch (e) {
+                throw new MetadataParseError(path, e);
+            }
+            if (!isPlainObject$2(data)) {
+                throw new MetadataParseError(path, new Error("not a JSON object"));
+            }
+            layers.push({ path, data });
+        }
+        return layers;
+    });
+}
+
+const AddZenodoFrontmatterStep = makeBuiltinStep({
+    id: "add-zenodo-frontmatter",
+    description: {
+        name: "Add Zenodo Frontmatter",
+        description: "Reads a Zenodo-style metadata JSON from your project folder and prepends a Pandoc-compatible YAML frontmatter to the manuscript.",
+        availableKinds: [CompileStepKind.Manuscript],
+        options: [
+            {
+                id: "metadata-file",
+                name: "Metadata file",
+                description: "Filename of the Zenodo deposition metadata JSON. Read from the draft's folder (or its 'source/' subfolder) and every parent folder up to the project root; nearer files override farther ones key by key, so a draft's file only needs the keys it changes. Trailing '.json' is optional.",
+                type: CompileStepOptionType.Text,
+                default: "metadata.json",
+            },
+            {
+                id: "error-on-missing-file",
+                name: "Error on missing file",
+                description: "If checked, throw an error when the metadata file is not found. Otherwise pass the manuscript through unchanged.",
+                type: CompileStepOptionType.Boolean,
+                default: true,
+            },
+        ],
+    },
+    compile(input, context) {
+        var _a, _b, _c;
+        return __awaiter(this, void 0, void 0, function* () {
+            if (context.kind !== CompileStepKind.Manuscript) {
+                throw new Error("Cannot add frontmatter to non-manuscript.");
+            }
+            const metaFileName = String((_a = context.optionValues["metadata-file"]) !== null && _a !== void 0 ? _a : "metadata.json").trim();
+            const errorOnMissingFile = Boolean((_b = context.optionValues["error-on-missing-file"]) !== null && _b !== void 0 ? _b : true);
+            const baseName = metaFileName.endsWith(".json")
+                ? metaFileName
+                : `${metaFileName}.json`;
+            const startDir = metadataStartDir(context.draft, context.app.vault);
+            const rootDir = (_c = context.projectRoot) !== null && _c !== void 0 ? _c : context.projectPath;
+            let layers;
+            try {
+                layers = yield readMetadataLayers(context.app.vault, startDir, rootDir, baseName);
+            }
+            catch (e) {
+                throw new Error(`[Add Zenodo Frontmatter] ${e.message}`);
+            }
+            if (layers.length === 0) {
+                if (errorOnMissingFile) {
+                    throw new Error(`[Add Zenodo Frontmatter] Metadata file not found at ${projectResourceCandidatePaths(startDir, rootDir, baseName).join(" or ")}`);
+                }
+                return input;
+            }
+            // Nearer files override farther ones key by key (#47).
+            const metadata = mergeMetadataLayers(layers).merged;
+            const yaml = buildPandocYaml(metadata);
+            return {
+                contents: `---\n${yaml}---\n\n${input.contents}`,
+            };
+        });
+    },
+});
 
 const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
     id: "replace-json-placeholders",
@@ -22766,7 +22932,7 @@ const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
             {
                 id: "json-file",
                 name: "JSON file(s)",
-                description: "Filename(s) of the JSON data file(s). Separate several with commas — they are merged into one namespace, with later files winning on key conflicts (e.g. 'metadata.json, results.json'). Each is searched for in the draft's folder (or its 'source/' subfolder) and any parent folder up to the project root. Trailing '.json' is optional.",
+                description: "Filename(s) of the JSON data file(s). Separate several with commas — they are merged into one namespace, with later files winning on key conflicts (e.g. 'metadata.json, results.json'). Each is read from the draft's folder (or its 'source/' subfolder) and every parent folder up to the project root, nearer copies overriding farther ones key by key. Trailing '.json' is optional.",
                 type: CompileStepOptionType.Text,
                 default: "metadata.json, results.json",
             },
@@ -22812,31 +22978,22 @@ const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
             let data = {};
             const foundNames = [];
             const searchedFor = [];
+            const startDir = metadataStartDir(context.draft, context.app.vault);
+            const rootDir = (_d = context.projectRoot) !== null && _d !== void 0 ? _d : context.projectPath;
             for (const baseName of fileList) {
-                const candidatePaths = projectResourceCandidatePaths(context.projectPath, (_d = context.projectRoot) !== null && _d !== void 0 ? _d : context.projectPath, baseName);
-                searchedFor.push(`${baseName} (${candidatePaths.join(" or ")})`);
-                let file = null;
-                let foundPath = "";
-                for (const path of candidatePaths) {
-                    const f = context.app.vault.getAbstractFileByPath(path);
-                    if (f instanceof obsidian.TFile) {
-                        file = f;
-                        foundPath = path;
-                        break;
-                    }
-                }
-                if (!file)
-                    continue;
-                const raw = yield context.app.vault.cachedRead(file);
-                let parsed;
+                searchedFor.push(`${baseName} (${projectResourceCandidatePaths(startDir, rootDir, baseName).join(" or ")})`);
+                let layers;
                 try {
-                    parsed = JSON.parse(raw);
+                    layers = yield readMetadataLayers(context.app.vault, startDir, rootDir, baseName);
                 }
                 catch (e) {
-                    throw new Error(`[Replace JSON Placeholders] Invalid JSON in ${foundPath}: ${e.message}`);
+                    throw new Error(`[Replace JSON Placeholders] ${e.message}`);
                 }
-                data = deepMerge(data, parsed);
-                foundNames.push(foundPath);
+                if (layers.length === 0)
+                    continue;
+                // Each file is layered root → draft like metadata.json (#47).
+                data = deepMerge(data, mergeMetadataLayers(layers).merged);
+                foundNames.push(...layers.map((l) => l.path));
             }
             if (foundNames.length === 0) {
                 throw new Error(`[Replace JSON Placeholders] None of the configured JSON files were found. Searched for: ${searchedFor.join("; ")}`);
@@ -22857,6 +23014,183 @@ const ReplaceJsonPlaceholdersStep = makeBuiltinStep({
         });
     },
 });
+
+/**
+ * Adapting a preset's fonts to the machine that runs the export.
+ *
+ * Market presets are written once, usually on a Mac, so they name macOS fonts
+ * (`CJKmainfont: Songti SC`). xelatex aborts on a font that isn't installed, and
+ * Word silently substitutes — differently on each OS — for one named in a
+ * reference.docx. Rather than ship a copy of every preset per platform, the
+ * export translates font names through equivalence groups: each group lists the
+ * fonts that play the same role on each OS, and any member found in a preset is
+ * swapped for the current OS's first member.
+ *
+ * Pure logic, no `process`/`obsidian` access — the OS is passed in so every
+ * platform is testable from any other.
+ */
+function osIdFromPlatform(platform) {
+    if (platform === "darwin")
+        return "mac";
+    if (platform === "win32")
+        return "win";
+    return "linux";
+}
+const OS_LABELS = {
+    mac: "macOS",
+    win: "Windows",
+    linux: "Linux",
+};
+/**
+ * Order matters: a name is looked up in the first group listing it, so the
+ * generic Linux fallback (Noto Serif CJK SC) resolves to the serif group.
+ *
+ * The Latin groups only ever change anything on Linux or for a mac-only name
+ * (Helvetica, Times): Times New Roman, Arial and Courier New ship with both
+ * macOS and Windows. On Linux they become the metric-compatible Liberation
+ * fonts, which every major distribution ships — the Microsoft originals are an
+ * optional extra (ttf-mscorefonts) xelatex cannot count on.
+ */
+const FONT_GROUPS = [
+    {
+        id: "serif-cjk",
+        mac: ["Songti SC", "STSong"],
+        win: ["SimSun", "NSimSun", "宋体", "新宋体"],
+        linux: ["Noto Serif CJK SC", "Source Han Serif SC", "思源宋体"],
+    },
+    {
+        id: "sans-cjk",
+        mac: ["Heiti SC", "PingFang SC", "STHeiti", "苹方-简", "黑体-简"],
+        win: ["SimHei", "Microsoft YaHei", "黑体", "微软雅黑"],
+        linux: ["Noto Sans CJK SC", "Source Han Sans SC", "思源黑体"],
+    },
+    {
+        id: "fangsong-cjk",
+        mac: ["STFangsong", "华文仿宋"],
+        win: ["FangSong", "FangSong_GB2312", "仿宋", "仿宋_GB2312"],
+        linux: ["Noto Serif CJK SC"],
+    },
+    {
+        id: "kai-cjk",
+        mac: ["Kaiti SC", "STKaiti", "楷体-简", "华文楷体"],
+        win: ["KaiTi", "KaiTi_GB2312", "楷体", "楷体_GB2312"],
+        linux: ["Noto Serif CJK SC"],
+    },
+    {
+        id: "serif-latin",
+        mac: ["Times New Roman", "Times"],
+        win: ["Times New Roman"],
+        linux: ["Liberation Serif", "TeX Gyre Termes"],
+    },
+    {
+        id: "sans-latin",
+        mac: ["Arial", "Helvetica", "Helvetica Neue"],
+        win: ["Arial"],
+        linux: ["Liberation Sans", "TeX Gyre Heros"],
+    },
+    {
+        id: "mono-latin",
+        mac: ["Courier New", "Courier", "Menlo", "Consolas"],
+        win: ["Courier New", "Consolas"],
+        linux: ["Liberation Mono", "TeX Gyre Cursor"],
+    },
+];
+const OS_IDS = ["mac", "win", "linux"];
+/** Case-, space-, hyphen- and underscore-insensitive key for a font name. */
+function fontKey(name) {
+    return name.toLowerCase().replace(/[\s_-]+/g, "");
+}
+function groupOf(name) {
+    const key = fontKey(name);
+    for (const g of FONT_GROUPS) {
+        for (const os of OS_IDS) {
+            if (g[os].some((f) => fontKey(f) === key))
+                return g;
+        }
+    }
+    return null;
+}
+/**
+ * The font to use on `os` in place of `name`, or `null` when nothing should
+ * change — the font is in no group, or is already native to `os`.
+ */
+function translateFont(name, os) {
+    const trimmed = name.trim();
+    if (!trimmed)
+        return null;
+    const g = groupOf(trimmed);
+    if (!g)
+        return null;
+    const key = fontKey(trimmed);
+    if (g[os].some((f) => fontKey(f) === key))
+        return null;
+    return g[os][0];
+}
+/**
+ * Template variables that name a single font, across the templates in use:
+ * pandoc's own LaTeX template, plus the `cjkfont`/`cjksffont` of the response
+ * letter template. `*fallback` keys hold lists and are deliberately left alone.
+ */
+const FONT_KEYS = [
+    "mainfont",
+    "sansfont",
+    "monofont",
+    "mathfont",
+    "CJKmainfont",
+    "CJKsansfont",
+    "CJKmonofont",
+    "cjkfont",
+    "cjksffont",
+];
+/**
+ * The `-V key=value` overrides that adapt a preset's fonts to `os`.
+ *
+ * `presetFonts` is the font keys read from the preset's `metadata:` and
+ * `variables:` maps. Keys in `userKeys` — fonts the exported note names in its
+ * own frontmatter — are skipped: `-V` outranks metadata in pandoc, so passing
+ * one would silently override the writer's explicit choice.
+ */
+function fontOverrides(presetFonts, os, userKeys = new Set()) {
+    const changes = [];
+    for (const key of FONT_KEYS) {
+        if (userKeys.has(key))
+            continue;
+        const from = presetFonts[key];
+        if (typeof from !== "string")
+            continue;
+        const to = translateFont(from, os);
+        if (to)
+            changes.push({ key, from, to });
+    }
+    return changes;
+}
+/**
+ * The CJK font a preset-free PDF export hands xelatex, chosen so it ships with
+ * the platform: naming a font that isn't installed makes xelatex fail outright.
+ * Callers only pass it when the document contains CJK and the note doesn't name
+ * its own `CJKmainfont`. Linux gets the sans face, as before this table existed:
+ * it is the one Noto CJK package distributions install by default.
+ */
+function defaultCjkFontFor(os) {
+    if (os === "mac")
+        return "Songti SC";
+    if (os === "win")
+        return "SimSun";
+    return "Noto Sans CJK SC";
+}
+/** "Songti SC→SimSun, Heiti SC→SimHei" — each distinct swap once. */
+function describeFontChanges(changes) {
+    const seen = new Set();
+    const parts = [];
+    for (const c of changes) {
+        const s = `${c.from}→${c.to}`;
+        if (!seen.has(s)) {
+            seen.add(s);
+            parts.push(s);
+        }
+    }
+    return parts.join(", ");
+}
 
 /**
  * Default vault-relative folder the Pandoc assets are downloaded into. Used as
@@ -22906,6 +23240,7 @@ function currentPlatformEnv(extraBinFolders) {
     var _a;
     return {
         isWindows: process.platform === "win32",
+        os: osIdFromPlatform(process.platform),
         home: os__namespace.homedir(),
         envPath: (_a = process.env.PATH) !== null && _a !== void 0 ? _a : "",
         extraDirs: splitDirList(extraBinFolders),
@@ -23294,12 +23629,116 @@ function exportTargetForDefaults(parsed, readPresetFile) {
         : to && !PDF_CAPABLE_WRITERS.has(to)
             ? (_a = WRITER_EXTENSIONS[to]) !== null && _a !== void 0 ? _a : `.${to}`
             : outputExt || ".pdf";
-    return { ext, pdfEngine, needsCrossref };
+    const fonts = {};
+    for (const section of ["metadata", "variables"]) {
+        const map = doc[section];
+        if (typeof map !== "object" || map === null || Array.isArray(map))
+            continue;
+        for (const key of FONT_KEYS) {
+            const value = scalar(map[key]);
+            if (value)
+                fonts[key] = value;
+        }
+    }
+    const referenceDoc = scalar(doc["reference-doc"]) || null;
+    const dataDir = scalar(doc["data-dir"]) || null;
+    return { ext, pdfEngine, needsCrossref, fonts, referenceDoc, dataDir };
+}
+const NO_ADAPTATION = {
+    variables: [],
+    referenceDocToPatch: null,
+    changes: [],
+};
+/**
+ * Decide how a preset export adapts its fonts to `os`.
+ *
+ * - A docx takes its fonts from the reference doc's styles, so that is the
+ *   thing to patch; template variables would do nothing there.
+ * - Otherwise each preset font is translated to this OS's equivalent and passed
+ *   as `-V`, which pandoc ranks above the preset's own `metadata:` fonts.
+ * - A font the exported note names in its frontmatter is the writer's choice
+ *   and wins over both. pandoc ranks a defaults file's `metadata:` (`-M`) above
+ *   the document's own YAML, so without help the *preset's* font would win;
+ *   re-passing the note's value as `-V` restores the writer's precedence.
+ *
+ * Nothing is adapted for the built-in export (it picks its own CJK font) or
+ * when the user turned adaptation off.
+ */
+function planFontAdaptation(input) {
+    var _a, _b;
+    const { target, os, frontmatter } = input;
+    if (input.builtin || !input.enabled)
+        return NO_ADAPTATION;
+    if (target.ext === ".docx") {
+        return Object.assign(Object.assign({}, NO_ADAPTATION), { referenceDocToPatch: (_a = target.referenceDoc) !== null && _a !== void 0 ? _a : null });
+    }
+    const presetFonts = (_b = target.fonts) !== null && _b !== void 0 ? _b : {};
+    const noteFonts = new Map();
+    for (const key of FONT_KEYS) {
+        const value = frontmatter[key];
+        if (typeof value === "string" && value.trim())
+            noteFonts.set(key, value.trim());
+    }
+    const variables = [];
+    for (const [key, value] of noteFonts) {
+        // Only where the preset would otherwise override it.
+        if (presetFonts[key] !== undefined)
+            variables.push({ key, value });
+    }
+    const changes = fontOverrides(presetFonts, os, new Set(noteFonts.keys()));
+    for (const c of changes)
+        variables.push({ key: c.key, value: c.to });
+    return { variables, referenceDocToPatch: null, changes };
+}
+/**
+ * Where pandoc may find a preset's `reference-doc:`, most likely first.
+ *
+ * `${USERDATA}` is the preset's `data-dir` (every shipped preset sets it to
+ * `${.}/..`, the assets folder), `${.}` the preset's own folder. pandoc resolves
+ * a relative path against its working directory — the assets folder, which is
+ * where the export runs it — and then the data directory.
+ */
+function referenceDocCandidates(rawReferenceDoc, dirs) {
+    const expand = (raw, userData) => scalar(raw)
+        .split("${USERDATA}")
+        .join(userData)
+        .split("${.}")
+        .join(dirs.presetDir);
+    const rawDataDir = dirs.rawDataDir ? expand(dirs.rawDataDir, dirs.cwd) : "";
+    const dataDir = !rawDataDir
+        ? dirs.cwd
+        : path__namespace.isAbsolute(rawDataDir)
+            ? path__namespace.normalize(rawDataDir)
+            : path__namespace.join(dirs.cwd, rawDataDir);
+    const ref = expand(rawReferenceDoc, dataDir);
+    if (path__namespace.isAbsolute(ref))
+        return [path__namespace.normalize(ref)];
+    return [path__namespace.join(dirs.cwd, ref), path__namespace.join(dataDir, ref)].filter((p, i, all) => all.indexOf(p) === i);
 }
 /** Output formats the built-in, preset-free export can produce. */
 const BUILTIN_FORMATS = ["pdf", "docx", "html"];
 function isBuiltinFormat(value) {
     return BUILTIN_FORMATS.indexOf(value) !== -1;
+}
+const PRESET_SOURCE_LABEL = {
+    option: "this step’s Template / preset option",
+    frontmatter: "the `template:` key in the exported note’s frontmatter",
+    fallback: "the built-in default (no template was specified)",
+};
+/**
+ * The preset (`defaults/<name>.yaml`) a step uses: its own Template / preset
+ * option, else the note's `template:` key, else the built-in `undefined`.
+ * Run Pandoc Export and Harvest Manuscript Line Numbers share this so the
+ * capture pass can match the export (#42).
+ */
+function resolvePresetName(optionTemplate, fmTemplate) {
+    const opt = String(optionTemplate !== null && optionTemplate !== void 0 ? optionTemplate : "").trim();
+    if (opt)
+        return { template: opt, source: "option" };
+    const fm = String(fmTemplate !== null && fmTemplate !== void 0 ? fmTemplate : "").trim();
+    if (fm)
+        return { template: fm, source: "frontmatter" };
+    return { template: "undefined", source: "fallback" };
 }
 /**
  * Which preset-free format to export in, if any — `null` means "use a preset".
@@ -23362,19 +23801,6 @@ function builtinExportTarget(format) {
 const CJK_RANGE = /[぀-ヿ㐀-䶿一-鿿豈-﫿가-힯]/;
 function hasCjk(text) {
     return CJK_RANGE.test(text);
-}
-/**
- * A CJK font to hand xelatex, chosen so it ships with the platform: naming a
- * font that isn't installed makes xelatex fail outright and write nothing, so
- * this must never be a guess. Callers only pass it when the document actually
- * contains CJK and the note doesn't name its own `CJKmainfont`.
- */
-function defaultCjkFont(platform) {
-    if (platform === "darwin")
-        return "Songti SC";
-    if (platform === "win32")
-        return "SimSun";
-    return "Noto Sans CJK SC";
 }
 /**
  * Split a user-entered bibliography list into individual paths. Accepts commas
@@ -23469,10 +23895,16 @@ function officialCslUrls(csl) {
 }
 /** Build the pandoc argument vector, mirroring PaperBell spec §11. */
 function buildPandocArgs(p) {
-    var _a, _b;
+    var _a, _b, _c;
     const args = [p.inputFile];
     if (p.defaultsFile) {
         args.push("--defaults=" + p.defaultsFile);
+        for (const v of (_a = p.variableOverrides) !== null && _a !== void 0 ? _a : []) {
+            args.push("-V", `${v.key}=${v.value}`);
+        }
+        if (p.referenceDoc) {
+            args.push("--reference-doc=" + p.referenceDoc);
+        }
     }
     else if (p.builtin) {
         // Everything a preset would have declared, spelled out. Nothing here reads
@@ -23500,7 +23932,7 @@ function buildPandocArgs(p) {
         p.projectAbs,
         path__namespace.join(p.projectAbs, "figs"),
         path__namespace.join(p.projectAbs, "..", "figs"),
-    ].concat((_a = p.extraResourcePaths) !== null && _a !== void 0 ? _a : []);
+    ].concat((_b = p.extraResourcePaths) !== null && _b !== void 0 ? _b : []);
     const seen = new Set();
     for (const dir of resourcePaths) {
         if (dir && !seen.has(dir)) {
@@ -23508,7 +23940,7 @@ function buildPandocArgs(p) {
             args.push("--resource-path=" + dir);
         }
     }
-    for (const bib of (_b = p.bibliographies) !== null && _b !== void 0 ? _b : []) {
+    for (const bib of (_c = p.bibliographies) !== null && _c !== void 0 ? _c : []) {
         args.push("--bibliography=" + bib);
     }
     args.push("-o", p.outputPath);
@@ -23638,6 +24070,12 @@ function validateIndex(parsed) {
     }
     if (!Array.isArray(idx.assets) || !Array.isArray(idx.bundles)) {
         throw new Error("Marketplace index must have `assets` and `bundles` arrays.");
+    }
+    // `_`-prefixed ids name the install manifest's own records (`_kept`,
+    // `_toolchain`); a market entry with one would overwrite them.
+    const reserved = [...idx.assets, ...idx.bundles].find((e) => typeof (e === null || e === void 0 ? void 0 : e.id) === "string" && e.id.startsWith("_"));
+    if (reserved) {
+        throw new Error(`Marketplace id "${reserved.id}" is reserved: ids starting with "_" are used by the install manifest.`);
     }
     return idx;
 }
@@ -23786,6 +24224,169 @@ function compareVersions(a, b) {
     }
     return 0;
 }
+function installBaseline(manifest) {
+    var _a, _b;
+    const tracked = new Set();
+    const hashes = {};
+    const installedAt = {};
+    const records = Object.values(manifest).sort((a, b) => a.installedAt.localeCompare(b.installedAt));
+    for (const rec of records) {
+        for (const f of (_a = rec.files) !== null && _a !== void 0 ? _a : []) {
+            tracked.add(f);
+            installedAt[f] = rec.installedAt;
+        }
+        Object.assign(hashes, (_b = rec.hashes) !== null && _b !== void 0 ? _b : {});
+    }
+    return { tracked, hashes, installedAt };
+}
+/**
+ * Reserved manifest record for files an uninstall kept because the user had
+ * changed them. Without it the kept file would look like one the market never
+ * installed, and the next install would overwrite it.
+ */
+const KEPT_RECORD_ID = "_kept";
+/**
+ * Reserved manifest record for the toolchain zip the setup modal downloads.
+ * Recording it keeps the hashes of files it overwrote current — otherwise every
+ * later market update would mistake them for user edits — and tracks any
+ * `<path>.new` it wrote so a later install can clean that up.
+ */
+const TOOLCHAIN_RECORD_ID = "_toolchain";
+function union(a, b) {
+    return [...new Set([...(a !== null && a !== void 0 ? a : []), ...b])];
+}
+/**
+ * Hand `paths` back from the kept record: an install that writes them now owns
+ * them. Drops the kept record once it is empty.
+ */
+function releaseKeptFiles(manifest, paths) {
+    var _a;
+    const kept = manifest[KEPT_RECORD_ID];
+    if (!kept)
+        return manifest;
+    const taken = new Set(paths);
+    const files = kept.files.filter((f) => !taken.has(f));
+    const next = Object.assign({}, manifest);
+    if (files.length === 0) {
+        delete next[KEPT_RECORD_ID];
+        return next;
+    }
+    const hashes = {};
+    for (const f of files) {
+        const h = (_a = kept.hashes) === null || _a === void 0 ? void 0 : _a[f];
+        if (h !== undefined)
+            hashes[f] = h;
+    }
+    next[KEPT_RECORD_ID] = Object.assign(Object.assign({}, kept), { files, hashes });
+    return next;
+}
+/**
+ * The manifest once `id` is uninstalled. Files the uninstall kept (see
+ * {@link planFileRemove}) move to the kept record with the hash that install
+ * wrote, so a reinstall still sees the user's change and writes `<path>.new`.
+ */
+function manifestAfterUninstall(manifest, id, kept) {
+    var _a, _b;
+    const rec = manifest[id];
+    const next = Object.assign({}, manifest);
+    delete next[id];
+    if (!rec || kept.length === 0)
+        return next;
+    const prev = next[KEPT_RECORD_ID];
+    const hashes = Object.assign({}, ((_a = prev === null || prev === void 0 ? void 0 : prev.hashes) !== null && _a !== void 0 ? _a : {}));
+    for (const f of kept) {
+        const h = (_b = rec.hashes) === null || _b === void 0 ? void 0 : _b[f];
+        if (h !== undefined)
+            hashes[f] = h;
+    }
+    // The older stamp: for a hash-less record, "modified after install" is
+    // judged against it, and the earlier install is the one the file came from.
+    const installedAt = prev && prev.installedAt < rec.installedAt ? prev.installedAt : rec.installedAt;
+    next[KEPT_RECORD_ID] = {
+        id: KEPT_RECORD_ID,
+        version: "0",
+        kind: "kept",
+        files: union(prev === null || prev === void 0 ? void 0 : prev.files, kept),
+        installedAt,
+        hashes,
+    };
+    return next;
+}
+/**
+ * The manifest once the setup modal's toolchain zip wrote `written`. The record
+ * describes this download alone: carrying an earlier zip's entries forward
+ * under the new stamp would make their stale hashes outrank a market install
+ * that updated those files since.
+ */
+function manifestAfterToolchainDownload(manifest, written, installedAt) {
+    const next = releaseKeptFiles(manifest, written.files);
+    next[TOOLCHAIN_RECORD_ID] = {
+        id: TOOLCHAIN_RECORD_ID,
+        version: "0",
+        kind: "toolchain",
+        files: [...written.files],
+        installedAt,
+        hashes: Object.assign({}, written.hashes),
+    };
+    return next;
+}
+/** Suffix for a new version written next to a file the user changed. */
+const PRESERVED_SUFFIX = ".new";
+/** Leeway for "modified after install": the record is stamped after the writes. */
+const MTIME_SLACK_MS = 60000;
+/**
+ * For a file recorded before hashes were kept: was it modified after the
+ * install that wrote it? Judged by mtime, the only evidence left.
+ */
+function modifiedSinceInstall(mtimeMs, installedAt) {
+    if (mtimeMs === null || !installedAt)
+        return false;
+    const at = Date.parse(installedAt);
+    return Number.isFinite(at) && mtimeMs > at + MTIME_SLACK_MS;
+}
+/**
+ * How to install one file over what is on disk:
+ * - `write`: nothing there, or it is untouched since our last install (or was
+ *   never installed by the market, e.g. the first-run toolchain zip);
+ * - `skip-same`: the disk already holds exactly the incoming bytes;
+ * - `write-new`: the user changed a file we installed — keep theirs and put
+ *   the incoming version at `<path>.new`.
+ * "Changed" is a hash mismatch against the recorded install; for a record
+ * from before hashes were kept, it is an mtime after that install.
+ */
+function planFileWrite(p) {
+    if (p.disk.hash === null)
+        return "write";
+    if (p.disk.hash === p.incomingHash)
+        return "skip-same";
+    if (p.recordedHash !== undefined) {
+        return p.disk.hash === p.recordedHash ? "write" : "write-new";
+    }
+    return p.tracked && p.disk.modifiedSinceInstall ? "write-new" : "write";
+}
+/**
+ * Whether uninstall may delete a file: only when it still holds what we
+ * installed — by hash, or for an older record without hashes, by mtime.
+ */
+function planFileRemove(disk, recordedHash) {
+    if (disk.hash === null)
+        return "missing";
+    const changed = recordedHash !== undefined
+        ? disk.hash !== recordedHash
+        : disk.modifiedSinceInstall;
+    return changed ? "keep" : "remove";
+}
+/**
+ * Whether installing `ids` (assets or bundles) puts `assetId` on disk —
+ * directly or as part of a bundle.
+ */
+function installsAsset(index, ids, assetId) {
+    return ids.some((id) => {
+        var _a, _b;
+        return id === assetId ||
+            ((_b = (_a = index.bundles.find((b) => b.id === id)) === null || _a === void 0 ? void 0 : _a.assets) !== null && _b !== void 0 ? _b : []).includes(assetId);
+    });
+}
 /** The `defaults/*.yaml` an asset installs — its recipe presets. */
 function presetFiles(asset) {
     var _a;
@@ -23857,6 +24458,1157 @@ function installStateFor(manifest, id, marketVersion, presentIds) {
     return "not-installed";
 }
 
+// DEFLATE is a complex format; to read this code, you should probably check the RFC first:
+
+// aliases for shorter compressed code (most minifers don't do this)
+var u8 = Uint8Array, u16 = Uint16Array, i32 = Int32Array;
+// fixed length extra bits
+var fleb = new u8([0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, /* unused */ 0, 0, /* impossible */ 0]);
+// fixed distance extra bits
+var fdeb = new u8([0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, /* unused */ 0, 0]);
+// code length index map
+var clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
+// get base, reverse index map from extra bits
+var freb = function (eb, start) {
+    var b = new u16(31);
+    for (var i = 0; i < 31; ++i) {
+        b[i] = start += 1 << eb[i - 1];
+    }
+    // numbers here are at max 18 bits
+    var r = new i32(b[30]);
+    for (var i = 1; i < 30; ++i) {
+        for (var j = b[i]; j < b[i + 1]; ++j) {
+            r[j] = ((j - b[i]) << 5) | i;
+        }
+    }
+    return { b: b, r: r };
+};
+var _a = freb(fleb, 2), fl = _a.b, revfl = _a.r;
+// we can ignore the fact that the other numbers are wrong; they never happen anyway
+fl[28] = 258, revfl[258] = 28;
+var _b = freb(fdeb, 0), fd = _b.b, revfd = _b.r;
+// map of value to reverse (assuming 16 bits)
+var rev = new u16(32768);
+for (var i = 0; i < 32768; ++i) {
+    // reverse table algorithm from SO
+    var x = ((i & 0xAAAA) >> 1) | ((i & 0x5555) << 1);
+    x = ((x & 0xCCCC) >> 2) | ((x & 0x3333) << 2);
+    x = ((x & 0xF0F0) >> 4) | ((x & 0x0F0F) << 4);
+    rev[i] = (((x & 0xFF00) >> 8) | ((x & 0x00FF) << 8)) >> 1;
+}
+// create huffman tree from u8 "map": index -> code length for code index
+// mb (max bits) must be at most 15
+// TODO: optimize/split up?
+var hMap = (function (cd, mb, r) {
+    var s = cd.length;
+    // index
+    var i = 0;
+    // u16 "map": index -> # of codes with bit length = index
+    var l = new u16(mb);
+    // length of cd must be 288 (total # of codes)
+    for (; i < s; ++i) {
+        if (cd[i])
+            ++l[cd[i] - 1];
+    }
+    // u16 "map": index -> minimum code for bit length = index
+    var le = new u16(mb);
+    for (i = 1; i < mb; ++i) {
+        le[i] = (le[i - 1] + l[i - 1]) << 1;
+    }
+    var co;
+    if (r) {
+        // u16 "map": index -> number of actual bits, symbol for code
+        co = new u16(1 << mb);
+        // bits to remove for reverser
+        var rvb = 15 - mb;
+        for (i = 0; i < s; ++i) {
+            // ignore 0 lengths
+            if (cd[i]) {
+                // num encoding both symbol and bits read
+                var sv = (i << 4) | cd[i];
+                // free bits
+                var r_1 = mb - cd[i];
+                // start value
+                var v = le[cd[i] - 1]++ << r_1;
+                // m is end value
+                for (var m = v | ((1 << r_1) - 1); v <= m; ++v) {
+                    // every 16 bit value starting with the code yields the same result
+                    co[rev[v] >> rvb] = sv;
+                }
+            }
+        }
+    }
+    else {
+        co = new u16(s);
+        for (i = 0; i < s; ++i) {
+            if (cd[i]) {
+                co[i] = rev[le[cd[i] - 1]++] >> (15 - cd[i]);
+            }
+        }
+    }
+    return co;
+});
+// fixed length tree
+var flt = new u8(288);
+for (var i = 0; i < 144; ++i)
+    flt[i] = 8;
+for (var i = 144; i < 256; ++i)
+    flt[i] = 9;
+for (var i = 256; i < 280; ++i)
+    flt[i] = 7;
+for (var i = 280; i < 288; ++i)
+    flt[i] = 8;
+// fixed distance tree
+var fdt = new u8(32);
+for (var i = 0; i < 32; ++i)
+    fdt[i] = 5;
+// fixed length map
+var flm = /*#__PURE__*/ hMap(flt, 9, 0), flrm = /*#__PURE__*/ hMap(flt, 9, 1);
+// fixed distance map
+var fdm = /*#__PURE__*/ hMap(fdt, 5, 0), fdrm = /*#__PURE__*/ hMap(fdt, 5, 1);
+// find max of array
+var max$1 = function (a) {
+    var m = a[0];
+    for (var i = 1; i < a.length; ++i) {
+        if (a[i] > m)
+            m = a[i];
+    }
+    return m;
+};
+// read d, starting at bit p and mask with m
+var bits = function (d, p, m) {
+    var o = (p / 8) | 0;
+    return ((d[o] | (d[o + 1] << 8)) >> (p & 7)) & m;
+};
+// read d, starting at bit p continuing for at least 16 bits
+var bits16 = function (d, p) {
+    var o = (p / 8) | 0;
+    return ((d[o] | (d[o + 1] << 8) | (d[o + 2] << 16)) >> (p & 7));
+};
+// get end of byte
+var shft = function (p) { return ((p + 7) / 8) | 0; };
+// typed array slice - allows garbage collector to free original reference,
+// while being more compatible than .slice
+var slc = function (v, s, e) {
+    if (s == null || s < 0)
+        s = 0;
+    if (e == null || e > v.length)
+        e = v.length;
+    // can't use .constructor in case user-supplied
+    return new u8(v.subarray(s, e));
+};
+// error codes
+var ec = [
+    'unexpected EOF',
+    'invalid block type',
+    'invalid length/literal',
+    'invalid distance',
+    'stream finished',
+    'no stream handler',
+    , // determined by compression function
+    'no callback',
+    'invalid UTF-8 data',
+    'extra field too long',
+    'date not in range 1980-2099',
+    'filename too long',
+    'stream finishing',
+    'invalid zip data'
+    // determined by unknown compression method
+];
+var err = function (ind, msg, nt) {
+    var e = new Error(msg || ec[ind]);
+    e.code = ind;
+    if (Error.captureStackTrace)
+        Error.captureStackTrace(e, err);
+    if (!nt)
+        throw e;
+    return e;
+};
+// expands raw DEFLATE data
+var inflt = function (dat, st, buf, dict) {
+    // source length       dict length
+    var sl = dat.length, dl = dict ? dict.length : 0;
+    if (!sl || st.f && !st.l)
+        return buf || new u8(0);
+    var noBuf = !buf;
+    // have to estimate size
+    var resize = noBuf || st.i != 2;
+    // no state
+    var noSt = st.i;
+    // Assumes roughly 33% compression ratio average
+    if (noBuf)
+        buf = new u8(sl * 3);
+    // ensure buffer can fit at least l elements
+    var cbuf = function (l) {
+        var bl = buf.length;
+        // need to increase size to fit
+        if (l > bl) {
+            // Double or set to necessary, whichever is greater
+            var nbuf = new u8(Math.max(bl * 2, l));
+            nbuf.set(buf);
+            buf = nbuf;
+        }
+    };
+    //  last chunk         bitpos           bytes
+    var final = st.f || 0, pos = st.p || 0, bt = st.b || 0, lm = st.l, dm = st.d, lbt = st.m, dbt = st.n;
+    // total bits
+    var tbts = sl * 8;
+    do {
+        if (!lm) {
+            // BFINAL - this is only 1 when last chunk is next
+            final = bits(dat, pos, 1);
+            // type: 0 = no compression, 1 = fixed huffman, 2 = dynamic huffman
+            var type = bits(dat, pos + 1, 3);
+            pos += 3;
+            if (!type) {
+                // go to end of byte boundary
+                var s = shft(pos) + 4, l = dat[s - 4] | (dat[s - 3] << 8), t = s + l;
+                if (t > sl) {
+                    if (noSt)
+                        err(0);
+                    break;
+                }
+                // ensure size
+                if (resize)
+                    cbuf(bt + l);
+                // Copy over uncompressed data
+                buf.set(dat.subarray(s, t), bt);
+                // Get new bitpos, update byte count
+                st.b = bt += l, st.p = pos = t * 8, st.f = final;
+                continue;
+            }
+            else if (type == 1)
+                lm = flrm, dm = fdrm, lbt = 9, dbt = 5;
+            else if (type == 2) {
+                //  literal                            lengths
+                var hLit = bits(dat, pos, 31) + 257, hcLen = bits(dat, pos + 10, 15) + 4;
+                var tl = hLit + bits(dat, pos + 5, 31) + 1;
+                pos += 14;
+                // length+distance tree
+                var ldt = new u8(tl);
+                // code length tree
+                var clt = new u8(19);
+                for (var i = 0; i < hcLen; ++i) {
+                    // use index map to get real code
+                    clt[clim[i]] = bits(dat, pos + i * 3, 7);
+                }
+                pos += hcLen * 3;
+                // code lengths bits
+                var clb = max$1(clt), clbmsk = (1 << clb) - 1;
+                // code lengths map
+                var clm = hMap(clt, clb, 1);
+                for (var i = 0; i < tl;) {
+                    var r = clm[bits(dat, pos, clbmsk)];
+                    // bits read
+                    pos += r & 15;
+                    // symbol
+                    var s = r >> 4;
+                    // code length to copy
+                    if (s < 16) {
+                        ldt[i++] = s;
+                    }
+                    else {
+                        //  copy   count
+                        var c = 0, n = 0;
+                        if (s == 16)
+                            n = 3 + bits(dat, pos, 3), pos += 2, c = ldt[i - 1];
+                        else if (s == 17)
+                            n = 3 + bits(dat, pos, 7), pos += 3;
+                        else if (s == 18)
+                            n = 11 + bits(dat, pos, 127), pos += 7;
+                        while (n--)
+                            ldt[i++] = c;
+                    }
+                }
+                //    length tree                 distance tree
+                var lt = ldt.subarray(0, hLit), dt = ldt.subarray(hLit);
+                // max length bits
+                lbt = max$1(lt);
+                // max dist bits
+                dbt = max$1(dt);
+                lm = hMap(lt, lbt, 1);
+                dm = hMap(dt, dbt, 1);
+            }
+            else
+                err(1);
+            if (pos > tbts) {
+                if (noSt)
+                    err(0);
+                break;
+            }
+        }
+        // Make sure the buffer can hold this + the largest possible addition
+        // Maximum chunk size (practically, theoretically infinite) is 2^17
+        if (resize)
+            cbuf(bt + 131072);
+        var lms = (1 << lbt) - 1, dms = (1 << dbt) - 1;
+        var lpos = pos;
+        for (;; lpos = pos) {
+            // bits read, code
+            var c = lm[bits16(dat, pos) & lms], sym = c >> 4;
+            pos += c & 15;
+            if (pos > tbts) {
+                if (noSt)
+                    err(0);
+                break;
+            }
+            if (!c)
+                err(2);
+            if (sym < 256)
+                buf[bt++] = sym;
+            else if (sym == 256) {
+                lpos = pos, lm = null;
+                break;
+            }
+            else {
+                var add = sym - 254;
+                // no extra bits needed if less
+                if (sym > 264) {
+                    // index
+                    var i = sym - 257, b = fleb[i];
+                    add = bits(dat, pos, (1 << b) - 1) + fl[i];
+                    pos += b;
+                }
+                // dist
+                var d = dm[bits16(dat, pos) & dms], dsym = d >> 4;
+                if (!d)
+                    err(3);
+                pos += d & 15;
+                var dt = fd[dsym];
+                if (dsym > 3) {
+                    var b = fdeb[dsym];
+                    dt += bits16(dat, pos) & (1 << b) - 1, pos += b;
+                }
+                if (pos > tbts) {
+                    if (noSt)
+                        err(0);
+                    break;
+                }
+                if (resize)
+                    cbuf(bt + 131072);
+                var end = bt + add;
+                if (bt < dt) {
+                    var shift = dl - dt, dend = Math.min(dt, end);
+                    if (shift + bt < 0)
+                        err(3);
+                    for (; bt < dend; ++bt)
+                        buf[bt] = dict[shift + bt];
+                }
+                for (; bt < end; ++bt)
+                    buf[bt] = buf[bt - dt];
+            }
+        }
+        st.l = lm, st.p = lpos, st.b = bt, st.f = final;
+        if (lm)
+            final = 1, st.m = lbt, st.d = dm, st.n = dbt;
+    } while (!final);
+    // don't reallocate for streams or user buffers
+    return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
+};
+// starting at p, write the minimum number of bits that can hold v to d
+var wbits = function (d, p, v) {
+    v <<= p & 7;
+    var o = (p / 8) | 0;
+    d[o] |= v;
+    d[o + 1] |= v >> 8;
+};
+// starting at p, write the minimum number of bits (>8) that can hold v to d
+var wbits16 = function (d, p, v) {
+    v <<= p & 7;
+    var o = (p / 8) | 0;
+    d[o] |= v;
+    d[o + 1] |= v >> 8;
+    d[o + 2] |= v >> 16;
+};
+// creates code lengths from a frequency table
+var hTree = function (d, mb) {
+    // Need extra info to make a tree
+    var t = [];
+    for (var i = 0; i < d.length; ++i) {
+        if (d[i])
+            t.push({ s: i, f: d[i] });
+    }
+    var s = t.length;
+    var t2 = t.slice();
+    if (!s)
+        return { t: et, l: 0 };
+    if (s == 1) {
+        var v = new u8(t[0].s + 1);
+        v[t[0].s] = 1;
+        return { t: v, l: 1 };
+    }
+    t.sort(function (a, b) { return a.f - b.f; });
+    // after i2 reaches last ind, will be stopped
+    // freq must be greater than largest possible number of symbols
+    t.push({ s: -1, f: 25001 });
+    var l = t[0], r = t[1], i0 = 0, i1 = 1, i2 = 2;
+    t[0] = { s: -1, f: l.f + r.f, l: l, r: r };
+    // efficient algorithm from UZIP.js
+    // i0 is lookbehind, i2 is lookahead - after processing two low-freq
+    // symbols that combined have high freq, will start processing i2 (high-freq,
+    // non-composite) symbols instead
+    // see https://reddit.com/r/photopea/comments/ikekht/uzipjs_questions/
+    while (i1 != s - 1) {
+        l = t[t[i0].f < t[i2].f ? i0++ : i2++];
+        r = t[i0 != i1 && t[i0].f < t[i2].f ? i0++ : i2++];
+        t[i1++] = { s: -1, f: l.f + r.f, l: l, r: r };
+    }
+    var maxSym = t2[0].s;
+    for (var i = 1; i < s; ++i) {
+        if (t2[i].s > maxSym)
+            maxSym = t2[i].s;
+    }
+    // code lengths
+    var tr = new u16(maxSym + 1);
+    // max bits in tree
+    var mbt = ln(t[i1 - 1], tr, 0);
+    if (mbt > mb) {
+        // more algorithms from UZIP.js
+        // TODO: find out how this code works (debt)
+        //  ind    debt
+        var i = 0, dt = 0;
+        //    left            cost
+        var lft = mbt - mb, cst = 1 << lft;
+        t2.sort(function (a, b) { return tr[b.s] - tr[a.s] || a.f - b.f; });
+        for (; i < s; ++i) {
+            var i2_1 = t2[i].s;
+            if (tr[i2_1] > mb) {
+                dt += cst - (1 << (mbt - tr[i2_1]));
+                tr[i2_1] = mb;
+            }
+            else
+                break;
+        }
+        dt >>= lft;
+        while (dt > 0) {
+            var i2_2 = t2[i].s;
+            if (tr[i2_2] < mb)
+                dt -= 1 << (mb - tr[i2_2]++ - 1);
+            else
+                ++i;
+        }
+        for (; i >= 0 && dt; --i) {
+            var i2_3 = t2[i].s;
+            if (tr[i2_3] == mb) {
+                --tr[i2_3];
+                ++dt;
+            }
+        }
+        mbt = mb;
+    }
+    return { t: new u8(tr), l: mbt };
+};
+// get the max length and assign length codes
+var ln = function (n, l, d) {
+    return n.s == -1
+        ? Math.max(ln(n.l, l, d + 1), ln(n.r, l, d + 1))
+        : (l[n.s] = d);
+};
+// length codes generation
+var lc = function (c) {
+    var s = c.length;
+    // Note that the semicolon was intentional
+    while (s && !c[--s])
+        ;
+    var cl = new u16(++s);
+    //  ind      num         streak
+    var cli = 0, cln = c[0], cls = 1;
+    var w = function (v) { cl[cli++] = v; };
+    for (var i = 1; i <= s; ++i) {
+        if (c[i] == cln && i != s)
+            ++cls;
+        else {
+            if (!cln && cls > 2) {
+                for (; cls > 138; cls -= 138)
+                    w(32754);
+                if (cls > 2) {
+                    w(cls > 10 ? ((cls - 11) << 5) | 28690 : ((cls - 3) << 5) | 12305);
+                    cls = 0;
+                }
+            }
+            else if (cls > 3) {
+                w(cln), --cls;
+                for (; cls > 6; cls -= 6)
+                    w(8304);
+                if (cls > 2)
+                    w(((cls - 3) << 5) | 8208), cls = 0;
+            }
+            while (cls--)
+                w(cln);
+            cls = 1;
+            cln = c[i];
+        }
+    }
+    return { c: cl.subarray(0, cli), n: s };
+};
+// calculate the length of output from tree, code lengths
+var clen = function (cf, cl) {
+    var l = 0;
+    for (var i = 0; i < cl.length; ++i)
+        l += cf[i] * cl[i];
+    return l;
+};
+// writes a fixed block
+// returns the new bit pos
+var wfblk = function (out, pos, dat) {
+    // no need to write 00 as type: TypedArray defaults to 0
+    var s = dat.length;
+    var o = shft(pos + 2);
+    out[o] = s & 255;
+    out[o + 1] = s >> 8;
+    out[o + 2] = out[o] ^ 255;
+    out[o + 3] = out[o + 1] ^ 255;
+    for (var i = 0; i < s; ++i)
+        out[o + i + 4] = dat[i];
+    return (o + 4 + s) * 8;
+};
+// writes a block
+var wblk = function (dat, out, final, syms, lf, df, eb, li, bs, bl, p) {
+    wbits(out, p++, final);
+    ++lf[256];
+    var _a = hTree(lf, 15), dlt = _a.t, mlb = _a.l;
+    var _b = hTree(df, 15), ddt = _b.t, mdb = _b.l;
+    var _c = lc(dlt), lclt = _c.c, nlc = _c.n;
+    var _d = lc(ddt), lcdt = _d.c, ndc = _d.n;
+    var lcfreq = new u16(19);
+    for (var i = 0; i < lclt.length; ++i)
+        ++lcfreq[lclt[i] & 31];
+    for (var i = 0; i < lcdt.length; ++i)
+        ++lcfreq[lcdt[i] & 31];
+    var _e = hTree(lcfreq, 7), lct = _e.t, mlcb = _e.l;
+    var nlcc = 19;
+    for (; nlcc > 4 && !lct[clim[nlcc - 1]]; --nlcc)
+        ;
+    var flen = (bl + 5) << 3;
+    var ftlen = clen(lf, flt) + clen(df, fdt) + eb;
+    var dtlen = clen(lf, dlt) + clen(df, ddt) + eb + 14 + 3 * nlcc + clen(lcfreq, lct) + 2 * lcfreq[16] + 3 * lcfreq[17] + 7 * lcfreq[18];
+    if (bs >= 0 && flen <= ftlen && flen <= dtlen)
+        return wfblk(out, p, dat.subarray(bs, bs + bl));
+    var lm, ll, dm, dl;
+    wbits(out, p, 1 + (dtlen < ftlen)), p += 2;
+    if (dtlen < ftlen) {
+        lm = hMap(dlt, mlb, 0), ll = dlt, dm = hMap(ddt, mdb, 0), dl = ddt;
+        var llm = hMap(lct, mlcb, 0);
+        wbits(out, p, nlc - 257);
+        wbits(out, p + 5, ndc - 1);
+        wbits(out, p + 10, nlcc - 4);
+        p += 14;
+        for (var i = 0; i < nlcc; ++i)
+            wbits(out, p + 3 * i, lct[clim[i]]);
+        p += 3 * nlcc;
+        var lcts = [lclt, lcdt];
+        for (var it = 0; it < 2; ++it) {
+            var clct = lcts[it];
+            for (var i = 0; i < clct.length; ++i) {
+                var len = clct[i] & 31;
+                wbits(out, p, llm[len]), p += lct[len];
+                if (len > 15)
+                    wbits(out, p, (clct[i] >> 5) & 127), p += clct[i] >> 12;
+            }
+        }
+    }
+    else {
+        lm = flm, ll = flt, dm = fdm, dl = fdt;
+    }
+    for (var i = 0; i < li; ++i) {
+        var sym = syms[i];
+        if (sym > 255) {
+            var len = (sym >> 18) & 31;
+            wbits16(out, p, lm[len + 257]), p += ll[len + 257];
+            if (len > 7)
+                wbits(out, p, (sym >> 23) & 31), p += fleb[len];
+            var dst = sym & 31;
+            wbits16(out, p, dm[dst]), p += dl[dst];
+            if (dst > 3)
+                wbits16(out, p, (sym >> 5) & 8191), p += fdeb[dst];
+        }
+        else {
+            wbits16(out, p, lm[sym]), p += ll[sym];
+        }
+    }
+    wbits16(out, p, lm[256]);
+    return p + ll[256];
+};
+// deflate options (nice << 13) | chain
+var deo = /*#__PURE__*/ new i32([65540, 131080, 131088, 131104, 262176, 1048704, 1048832, 2114560, 2117632]);
+// empty
+var et = /*#__PURE__*/ new u8(0);
+// compresses data into a raw DEFLATE buffer
+var dflt = function (dat, lvl, plvl, pre, post, st) {
+    var s = st.z || dat.length;
+    var o = new u8(pre + s + 5 * (1 + Math.ceil(s / 7000)) + post);
+    // writing to this writes to the output buffer
+    var w = o.subarray(pre, o.length - post);
+    var lst = st.l;
+    var pos = (st.r || 0) & 7;
+    if (lvl) {
+        if (pos)
+            w[0] = st.r >> 3;
+        var opt = deo[lvl - 1];
+        var n = opt >> 13, c = opt & 8191;
+        var msk_1 = (1 << plvl) - 1;
+        //    prev 2-byte val map    curr 2-byte val map
+        var prev = st.p || new u16(32768), head = st.h || new u16(msk_1 + 1);
+        var bs1_1 = Math.ceil(plvl / 3), bs2_1 = 2 * bs1_1;
+        var hsh = function (i) { return (dat[i] ^ (dat[i + 1] << bs1_1) ^ (dat[i + 2] << bs2_1)) & msk_1; };
+        // 24576 is an arbitrary number of maximum symbols per block
+        // 424 buffer for last block
+        var syms = new i32(25000);
+        // length/literal freq   distance freq
+        var lf = new u16(288), df = new u16(32);
+        //  l/lcnt  exbits  index          l/lind  waitdx          blkpos
+        var lc_1 = 0, eb = 0, i = st.i || 0, li = 0, wi = st.w || 0, bs = 0;
+        for (; i + 2 < s; ++i) {
+            // hash value
+            var hv = hsh(i);
+            // index mod 32768    previous index mod
+            var imod = i & 32767, pimod = head[hv];
+            prev[imod] = pimod;
+            head[hv] = imod;
+            // We always should modify head and prev, but only add symbols if
+            // this data is not yet processed ("wait" for wait index)
+            if (wi <= i) {
+                // bytes remaining
+                var rem = s - i;
+                if ((lc_1 > 7000 || li > 24576) && (rem > 423 || !lst)) {
+                    pos = wblk(dat, w, 0, syms, lf, df, eb, li, bs, i - bs, pos);
+                    li = lc_1 = eb = 0, bs = i;
+                    for (var j = 0; j < 286; ++j)
+                        lf[j] = 0;
+                    for (var j = 0; j < 30; ++j)
+                        df[j] = 0;
+                }
+                //  len    dist   chain
+                var l = 2, d = 0, ch_1 = c, dif = imod - pimod & 32767;
+                if (rem > 2 && hv == hsh(i - dif)) {
+                    var maxn = Math.min(n, rem) - 1;
+                    var maxd = Math.min(32767, i);
+                    // max possible length
+                    // not capped at dif because decompressors implement "rolling" index population
+                    var ml = Math.min(258, rem);
+                    while (dif <= maxd && --ch_1 && imod != pimod) {
+                        if (dat[i + l] == dat[i + l - dif]) {
+                            var nl = 0;
+                            for (; nl < ml && dat[i + nl] == dat[i + nl - dif]; ++nl)
+                                ;
+                            if (nl > l) {
+                                l = nl, d = dif;
+                                // break out early when we reach "nice" (we are satisfied enough)
+                                if (nl > maxn)
+                                    break;
+                                // now, find the rarest 2-byte sequence within this
+                                // length of literals and search for that instead.
+                                // Much faster than just using the start
+                                var mmd = Math.min(dif, nl - 2);
+                                var md = 0;
+                                for (var j = 0; j < mmd; ++j) {
+                                    var ti = i - dif + j & 32767;
+                                    var pti = prev[ti];
+                                    var cd = ti - pti & 32767;
+                                    if (cd > md)
+                                        md = cd, pimod = ti;
+                                }
+                            }
+                        }
+                        // check the previous match
+                        imod = pimod, pimod = prev[imod];
+                        dif += imod - pimod & 32767;
+                    }
+                }
+                // d will be nonzero only when a match was found
+                if (d) {
+                    // store both dist and len data in one int32
+                    // Make sure this is recognized as a len/dist with 28th bit (2^28)
+                    syms[li++] = 268435456 | (revfl[l] << 18) | revfd[d];
+                    var lin = revfl[l] & 31, din = revfd[d] & 31;
+                    eb += fleb[lin] + fdeb[din];
+                    ++lf[257 + lin];
+                    ++df[din];
+                    wi = i + l;
+                    ++lc_1;
+                }
+                else {
+                    syms[li++] = dat[i];
+                    ++lf[dat[i]];
+                }
+            }
+        }
+        for (i = Math.max(i, wi); i < s; ++i) {
+            syms[li++] = dat[i];
+            ++lf[dat[i]];
+        }
+        pos = wblk(dat, w, lst, syms, lf, df, eb, li, bs, i - bs, pos);
+        if (!lst) {
+            st.r = (pos & 7) | w[(pos / 8) | 0] << 3;
+            // shft(pos) now 1 less if pos & 7 != 0
+            pos -= 7;
+            st.h = head, st.p = prev, st.i = i, st.w = wi;
+        }
+    }
+    else {
+        for (var i = st.w || 0; i < s + lst; i += 65535) {
+            // end
+            var e = i + 65535;
+            if (e >= s) {
+                // write final block
+                w[(pos / 8) | 0] = lst;
+                e = s;
+            }
+            pos = wfblk(w, pos + 1, dat.subarray(i, e));
+        }
+        st.i = s;
+    }
+    return slc(o, 0, pre + shft(pos) + post);
+};
+// CRC32 table
+var crct = /*#__PURE__*/ (function () {
+    var t = new Int32Array(256);
+    for (var i = 0; i < 256; ++i) {
+        var c = i, k = 9;
+        while (--k)
+            c = ((c & 1) && -306674912) ^ (c >>> 1);
+        t[i] = c;
+    }
+    return t;
+})();
+// CRC32
+var crc = function () {
+    var c = -1;
+    return {
+        p: function (d) {
+            // closures have awful performance
+            var cr = c;
+            for (var i = 0; i < d.length; ++i)
+                cr = crct[(cr & 255) ^ d[i]] ^ (cr >>> 8);
+            c = cr;
+        },
+        d: function () { return ~c; }
+    };
+};
+// deflate with opts
+var dopt = function (dat, opt, pre, post, st) {
+    if (!st) {
+        st = { l: 1 };
+        if (opt.dictionary) {
+            var dict = opt.dictionary.subarray(-32768);
+            var newDat = new u8(dict.length + dat.length);
+            newDat.set(dict);
+            newDat.set(dat, dict.length);
+            dat = newDat;
+            st.w = dict.length;
+        }
+    }
+    return dflt(dat, opt.level == null ? 6 : opt.level, opt.mem == null ? (st.l ? Math.ceil(Math.max(8, Math.min(13, Math.log(dat.length))) * 1.5) : 20) : (12 + opt.mem), pre, post, st);
+};
+// Walmart object spread
+var mrg = function (a, b) {
+    var o = {};
+    for (var k in a)
+        o[k] = a[k];
+    for (var k in b)
+        o[k] = b[k];
+    return o;
+};
+// read 2 bytes
+var b2 = function (d, b) { return d[b] | (d[b + 1] << 8); };
+// read 4 bytes
+var b4 = function (d, b) { return (d[b] | (d[b + 1] << 8) | (d[b + 2] << 16) | (d[b + 3] << 24)) >>> 0; };
+// read 8 bytes
+var b8 = function (d, b) { return b4(d, b) + (b4(d, b + 4) * 4294967296); };
+// write bytes
+var wbytes = function (d, b, v) {
+    for (; v; ++b)
+        d[b] = v, v >>>= 8;
+};
+/**
+ * Compresses data with DEFLATE without any wrapper
+ * @param data The data to compress
+ * @param opts The compression options
+ * @returns The deflated version of the data
+ */
+function deflateSync(data, opts) {
+    return dopt(data, opts || {}, 0, 0);
+}
+function inflateSync(data, opts) {
+    return inflt(data, { i: 2 }, opts && opts.out, opts && opts.dictionary);
+}
+// flatten a directory structure
+var fltn = function (d, p, t, o) {
+    for (var k in d) {
+        var val = d[k], n = p + k, op = o;
+        if (Array.isArray(val))
+            op = mrg(o, val[1]), val = val[0];
+        if (ArrayBuffer.isView(val))
+            t[n] = [val, op];
+        else {
+            t[n += '/'] = [new u8(0), op];
+            fltn(val, n, t, o);
+        }
+    }
+};
+// text encoder
+var te = typeof TextEncoder != 'undefined' && /*#__PURE__*/ new TextEncoder();
+// text decoder
+var td = typeof TextDecoder != 'undefined' && /*#__PURE__*/ new TextDecoder();
+// text decoder stream
+var tds = 0;
+try {
+    td.decode(et, { stream: true });
+    tds = 1;
+}
+catch (e) { }
+// decode UTF8
+var dutf8 = function (d) {
+    for (var r = '', i = 0;;) {
+        var c = d[i++];
+        var eb = (c > 127) + (c > 223) + (c > 239);
+        if (i + eb > d.length)
+            return { s: r, r: slc(d, i - 1) };
+        if (!eb)
+            r += String.fromCharCode(c);
+        else if (eb == 3) {
+            c = ((c & 15) << 18 | (d[i++] & 63) << 12 | (d[i++] & 63) << 6 | (d[i++] & 63)) - 65536,
+                r += String.fromCharCode(55296 | (c >> 10), 56320 | (c & 1023));
+        }
+        else if (eb & 1)
+            r += String.fromCharCode((c & 31) << 6 | (d[i++] & 63));
+        else
+            r += String.fromCharCode((c & 15) << 12 | (d[i++] & 63) << 6 | (d[i++] & 63));
+    }
+};
+/**
+ * Converts a string into a Uint8Array for use with compression/decompression methods
+ * @param str The string to encode
+ * @param latin1 Whether or not to interpret the data as Latin-1. This should
+ *               not need to be true unless decoding a binary string.
+ * @returns The string encoded in UTF-8/Latin-1 binary
+ */
+function strToU8(str, latin1) {
+    if (latin1) {
+        var ar_1 = new u8(str.length);
+        for (var i = 0; i < str.length; ++i)
+            ar_1[i] = str.charCodeAt(i);
+        return ar_1;
+    }
+    if (te)
+        return te.encode(str);
+    var l = str.length;
+    var ar = new u8(str.length + (str.length >> 1));
+    var ai = 0;
+    var w = function (v) { ar[ai++] = v; };
+    for (var i = 0; i < l; ++i) {
+        if (ai + 5 > ar.length) {
+            var n = new u8(ai + 8 + ((l - i) << 1));
+            n.set(ar);
+            ar = n;
+        }
+        var c = str.charCodeAt(i);
+        if (c < 128 || latin1)
+            w(c);
+        else if (c < 2048)
+            w(192 | (c >> 6)), w(128 | (c & 63));
+        else if (c > 55295 && c < 57344)
+            c = 65536 + (c & 1023 << 10) | (str.charCodeAt(++i) & 1023),
+                w(240 | (c >> 18)), w(128 | ((c >> 12) & 63)), w(128 | ((c >> 6) & 63)), w(128 | (c & 63));
+        else
+            w(224 | (c >> 12)), w(128 | ((c >> 6) & 63)), w(128 | (c & 63));
+    }
+    return slc(ar, 0, ai);
+}
+/**
+ * Converts a Uint8Array to a string
+ * @param dat The data to decode to string
+ * @param latin1 Whether or not to interpret the data as Latin-1. This should
+ *               not need to be true unless encoding to binary string.
+ * @returns The original UTF-8/Latin-1 string
+ */
+function strFromU8(dat, latin1) {
+    if (latin1) {
+        var r = '';
+        for (var i = 0; i < dat.length; i += 16384)
+            r += String.fromCharCode.apply(null, dat.subarray(i, i + 16384));
+        return r;
+    }
+    else if (td) {
+        return td.decode(dat);
+    }
+    else {
+        var _a = dutf8(dat), s = _a.s, r = _a.r;
+        if (r.length)
+            err(8);
+        return s;
+    }
+}
+// skip local zip header
+var slzh = function (d, b) { return b + 30 + b2(d, b + 26) + b2(d, b + 28); };
+// read zip header
+var zh$1 = function (d, b, z) {
+    var fnl = b2(d, b + 28), efl = b2(d, b + 30), fn = strFromU8(d.subarray(b + 46, b + 46 + fnl), !(b2(d, b + 8) & 2048)), es = b + 46 + fnl;
+    var _a = z64hs(d, es, efl, z, b4(d, b + 20), b4(d, b + 24), b4(d, b + 42)), sc = _a[0], su = _a[1], off = _a[2];
+    return [b2(d, b + 10), sc, su, fn, es + efl + b2(d, b + 32), off];
+};
+// read zip64 header sizes
+var z64hs = function (d, b, l, z, sc, su, off) {
+    var nsc = sc == 4294967295, nsu = su == 4294967295, noff = off == 4294967295, e = b + l;
+    var nf = nsc + nsu + noff;
+    if (z && nf) {
+        for (; b + 4 < e; b += 4 + b2(d, b + 2)) {
+            if (b2(d, b) == 1) {
+                return [
+                    nsc ? b8(d, b + 4 + 8 * nsu) : sc,
+                    nsu ? b8(d, b + 4) : su,
+                    noff ? b8(d, b + 4 + 8 * (nsu + nsc)) : off,
+                    1
+                ];
+            }
+        }
+        // z == 2 for unknown whether or not zip64
+        if (z < 2)
+            err(13);
+    }
+    return [sc, su, off, 0];
+};
+// extra field length
+var exfl = function (ex) {
+    var le = 0;
+    if (ex) {
+        for (var k in ex) {
+            var l = ex[k].length;
+            if (l > 65535)
+                err(9);
+            le += l + 4;
+        }
+    }
+    return le;
+};
+// write zip header
+var wzh = function (d, b, f, fn, u, c, ce, co) {
+    var fl = fn.length, ex = f.extra, col = co && co.length;
+    var exl = exfl(ex);
+    wbytes(d, b, ce != null ? 0x2014B50 : 0x4034B50), b += 4;
+    if (ce != null)
+        d[b++] = 20, d[b++] = f.os;
+    d[b] = 20, b += 2; // spec compliance? what's that?
+    d[b++] = (f.flag << 1) | (c < 0 && 8), d[b++] = u && 8;
+    d[b++] = f.compression & 255, d[b++] = f.compression >> 8;
+    var dt = new Date(f.mtime == null ? Date.now() : f.mtime), y = dt.getFullYear() - 1980;
+    if (y < 0 || y > 119)
+        err(10);
+    wbytes(d, b, (y << 25) | ((dt.getMonth() + 1) << 21) | (dt.getDate() << 16) | (dt.getHours() << 11) | (dt.getMinutes() << 5) | (dt.getSeconds() >> 1)), b += 4;
+    if (c != -1) {
+        wbytes(d, b, f.crc);
+        wbytes(d, b + 4, c < 0 ? -c - 2 : c);
+        wbytes(d, b + 8, f.size);
+    }
+    wbytes(d, b + 12, fl);
+    wbytes(d, b + 14, exl), b += 16;
+    if (ce != null) {
+        wbytes(d, b, col);
+        wbytes(d, b + 6, f.attrs);
+        wbytes(d, b + 10, ce), b += 14;
+    }
+    d.set(fn, b);
+    b += fl;
+    if (exl) {
+        for (var k in ex) {
+            var exf = ex[k], l = exf.length;
+            wbytes(d, b, +k);
+            wbytes(d, b + 2, l);
+            d.set(exf, b + 4), b += 4 + l;
+        }
+    }
+    if (col)
+        d.set(co, b), b += col;
+    return b;
+};
+// write zip footer (end of central directory)
+var wzf = function (o, b, c, d, e) {
+    wbytes(o, b, 0x6054B50); // skip disk
+    wbytes(o, b + 8, c);
+    wbytes(o, b + 10, c);
+    wbytes(o, b + 12, d);
+    wbytes(o, b + 16, e);
+};
+/**
+ * Synchronously creates a ZIP file. Prefer using `zip` for better performance
+ * with more than one file.
+ * @param data The directory structure for the ZIP archive
+ * @param opts The main options, merged with per-file options
+ * @returns The generated ZIP archive
+ */
+function zipSync(data, opts) {
+    if (!opts)
+        opts = {};
+    var r = {};
+    var files = [];
+    fltn(data, '', r, opts);
+    var o = 0;
+    var tot = 0;
+    for (var fn in r) {
+        var _a = r[fn], file = _a[0], p = _a[1];
+        var compression = p.level == 0 ? 0 : 8;
+        var f = strToU8(fn), s = f.length;
+        var com = p.comment, m = com && strToU8(com), ms = m && m.length;
+        var exl = exfl(p.extra);
+        if (s > 65535)
+            err(11);
+        var d = compression ? deflateSync(file, p) : file, l = d.length;
+        var c = crc();
+        c.p(file);
+        files.push(mrg(p, {
+            size: file.length,
+            crc: c.d(),
+            c: d,
+            f: f,
+            m: m,
+            u: s != fn.length || (m && (com.length != ms)),
+            o: o,
+            compression: compression
+        }));
+        o += 30 + s + exl + l;
+        tot += 76 + 2 * (s + exl) + (ms || 0) + l;
+    }
+    var out = new u8(tot + 22), oe = o, cdl = tot - o;
+    for (var i = 0; i < files.length; ++i) {
+        var f = files[i];
+        wzh(out, f.o, f, f.f, f.u, f.c.length);
+        var badd = 30 + f.f.length + exfl(f.extra);
+        out.set(f.c, f.o + badd);
+        wzh(out, o, f, f.f, f.u, f.c.length, f.o, f.m), o += 16 + badd + (f.m ? f.m.length : 0);
+    }
+    wzf(out, o, files.length, cdl, oe);
+    return out;
+}
+/**
+ * Synchronously decompresses a ZIP archive. Prefer using `unzip` for better
+ * performance with more than one file.
+ * @param data The raw compressed ZIP file
+ * @param opts The ZIP extraction options
+ * @returns The decompressed files
+ */
+function unzipSync(data, opts) {
+    var files = {};
+    var e = data.length - 22;
+    for (; b4(data, e) != 0x6054B50; --e) {
+        if (!e || data.length - e > 65558)
+            err(13);
+    }
+    var c = b2(data, e + 8);
+    if (!c)
+        return {};
+    var o = b4(data, e + 16);
+    var z = b4(data, e - 20) == 0x7064B50;
+    if (z) {
+        var ze = b4(data, e - 12);
+        z = b4(data, ze) == 0x6064B50;
+        if (z) {
+            c = b4(data, ze + 32);
+            o = b4(data, ze + 48);
+        }
+    }
+    var fltr = opts && opts.filter;
+    for (var i = 0; i < c; ++i) {
+        var _a = zh$1(data, o, z), c_2 = _a[0], sc = _a[1], su = _a[2], fn = _a[3], no = _a[4], off = _a[5], b = slzh(data, off);
+        o = no;
+        if (!fltr || fltr({
+            name: fn,
+            size: sc,
+            originalSize: su,
+            compression: c_2
+        })) {
+            if (!c_2)
+                files[fn] = slc(data, b, b + sc);
+            else if (c_2 == 8)
+                files[fn] = inflateSync(data.subarray(b, b + sc), { out: new u8(su) });
+            else
+                err(14, 'unknown compression type ' + c_2);
+        }
+    }
+    return files;
+}
+
+/**
+ * Rewrite the font names a reference.docx's styles name, so Word on this OS
+ * finds them installed instead of substituting its own guess.
+ *
+ * pandoc copies a reference doc's styles (styles.xml), numbering and theme into
+ * the output, so those are the parts that matter:
+ *  - `<w:rFonts w:ascii|w:hAnsi|w:eastAsia|w:cs="…">` in styles.xml and
+ *    numbering.xml — the explicit per-style fonts.
+ *  - `<a:latin|a:ea typeface>` and `<a:font script="Hans" typeface>` in the
+ *    theme — what `w:*Theme="minorEastAsia"` style references resolve to.
+ *
+ * fontTable.xml is left alone: it only records metrics hints for the fonts the
+ * document was saved with, and Word rebuilds it on save.
+ *
+ * Returns `null` when no font needed translating, so the caller keeps using the
+ * original file untouched.
+ */
+function patchReferenceDocx(bytes, os) {
+    const files = unzipSync(bytes);
+    const changes = [];
+    let touched = false;
+    for (const name of Object.keys(files)) {
+        let rewrite = null;
+        if (name === "word/styles.xml" || name === "word/numbering.xml") {
+            rewrite = (xml) => patchRunFonts(xml, os, changes);
+        }
+        else if (/^word\/theme\/theme\d*\.xml$/.test(name)) {
+            rewrite = (xml) => patchThemeFonts(xml, os, changes);
+        }
+        if (!rewrite)
+            continue;
+        const before = strFromU8(files[name]);
+        const after = rewrite(before);
+        if (after !== before) {
+            files[name] = strToU8(after);
+            touched = true;
+        }
+    }
+    if (!touched)
+        return null;
+    return { bytes: zipSync(files), changes };
+}
+const RUN_FONT_ATTR = /\bw:(ascii|hAnsi|eastAsia|cs)="([^"]*)"/g;
+function patchRunFonts(xml, os, changes) {
+    return xml.replace(/<w:rFonts\b[^>]*>/g, (tag) => tag.replace(RUN_FONT_ATTR, (attr, which, value) => {
+        const to = translateFont(decodeXml(value), os);
+        if (!to)
+            return attr;
+        changes.push({ key: `w:${which}`, from: decodeXml(value), to });
+        return `w:${which}="${encodeXml(to)}"`;
+    }));
+}
+function patchThemeFonts(xml, os, changes) {
+    return xml.replace(/<a:(latin|ea|font)\b[^>]*>/g, (tag, kind) => {
+        // Of the per-script fonts only Simplified Chinese is ours to adapt.
+        if (kind === "font" && !/\bscript="Hans"/.test(tag))
+            return tag;
+        return tag.replace(/\btypeface="([^"]*)"/, (attr, value) => {
+            const to = translateFont(decodeXml(value), os);
+            if (!to)
+                return attr;
+            changes.push({ key: `theme:${kind}`, from: decodeXml(value), to });
+            return `typeface="${encodeXml(to)}"`;
+        });
+    });
+}
+function decodeXml(s) {
+    return s
+        .replace(/&quot;/g, '"')
+        .replace(/&apos;/g, "'")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+}
+function encodeXml(s) {
+    return s
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+}
+
 function line(ok, label, detail) {
     return `[${ok ? "✓" : "✗"}] ${label}` + (detail ? `\n       ${detail}` : "");
 }
@@ -23871,8 +25623,9 @@ function readTextFile(abs) {
 }
 /**
  * The marketplace install manifest at the assets root, or `{}` when nothing
- * wrote one: only the marketplace panel does, so assets pulled by the setup
- * modal's "Download assets" or rsynced from the canonical vault have none.
+ * wrote one: the marketplace panel and the setup modal's "Download assets"
+ * do, but assets rsynced from the canonical vault (or downloaded by an older
+ * version) have none.
  * Preflight must work either way — reading the preset's own filters is what
  * covers those, and this is the extra word of the recipe author when it exists.
  *
@@ -24076,14 +25829,9 @@ const RunPandocExportStep = makeBuiltinStep({
             const formatOverridden = !builtinFormat && !!optionTemplate && !!formatOption;
             // Unused in built-in mode: no preset is read, and `{template}` must not
             // expand to a name that had no effect on the output.
-            const template = builtinFormat
-                ? ""
-                : optionTemplate || fmTemplate || "undefined";
-            const templateSource = optionTemplate
-                ? "this step’s Template / preset option"
-                : fmTemplate
-                    ? "the `template:` key in the exported note’s frontmatter"
-                    : "the built-in default (no template was specified)";
+            const preset = resolvePresetName(optionTemplate, fmTemplate);
+            const template = builtinFormat ? "" : preset.template;
+            const templateSource = PRESET_SOURCE_LABEL[preset.source];
             const csl = String(fm.csl || "nature");
             // Presets use ${.}/.. and relative paths that resolve inside the assets
             // folder; a built-in export reads nothing from there and it may not exist.
@@ -24295,6 +26043,49 @@ const RunPandocExportStep = makeBuiltinStep({
                 const filename = buildExportFilename(filenamePattern, { title: String(fm.title || draftName), acronym, date, csl, template, draft: draftName }, draftName, target.ext);
                 outputPath = path__namespace.join(outDirAbs, filename);
             }
+            // Presets are written once, usually on a Mac, and name that OS's fonts.
+            // Swap each for its equivalent here (Songti SC → SimSun on Windows) so
+            // xelatex finds it installed and Word doesn't guess a substitute.
+            const hostOs = platform.os;
+            const fontPlan = planFontAdaptation({
+                target,
+                builtin: !!builtinFormat,
+                enabled: settings.pandocAdaptFontsToOS,
+                os: hostOs,
+                frontmatter: fm,
+            });
+            const fontChanges = [...fontPlan.changes];
+            let adaptedReferenceDoc = null;
+            if (fontPlan.referenceDocToPatch) {
+                const candidates = referenceDocCandidates(fontPlan.referenceDocToPatch, {
+                    cwd: assetsAbs,
+                    presetDir: defaultsDir,
+                    rawDataDir: target.dataDir,
+                });
+                const refAbs = candidates.find((p) => fs__namespace.existsSync(p));
+                if (refAbs) {
+                    const adapted = adaptReferenceDoc(refAbs, hostOs);
+                    if (adapted) {
+                        adaptedReferenceDoc = adapted.path;
+                        fontChanges.push(...adapted.changes);
+                    }
+                }
+                else {
+                    console.warn(`[Pandoc Export] reference-doc "${fontPlan.referenceDocToPatch}" not found ` +
+                        `(looked in ${candidates.join(", ")}); its fonts were not adapted.`);
+                }
+            }
+            if (fontChanges.length > 0) {
+                const summary = describeFontChanges(fontChanges);
+                console.log(`[Pandoc Export] Adapted fonts for ${OS_LABELS[hostOs]}: ${summary}`);
+                // Once per session per preset: the swap is the same every export, and a
+                // notice on each one would just be noise.
+                const noticeKey = `${presetRel}|${hostOs}|${summary}`;
+                if (!announcedFontAdaptations.has(noticeKey)) {
+                    announcedFontAdaptations.add(noticeKey);
+                    new obsidian.Notice(`PaperOut: adapted fonts for ${OS_LABELS[hostOs]} — ${summary}`, 6000);
+                }
+            }
             const inputFile = path__namespace.join(projectAbs, ".longform-pandoc-export.md");
             const args = buildPandocArgs({
                 inputFile,
@@ -24318,11 +26109,13 @@ const RunPandocExportStep = makeBuiltinStep({
                         cjkFont: builtinFormat === "pdf" &&
                             hasCjk(input.contents) &&
                             !fm.CJKmainfont
-                            ? defaultCjkFont(process.platform)
+                            ? defaultCjkFontFor(hostOs)
                             : null,
                         citeproc: needsBib,
                     }
                     : null,
+                variableOverrides: fontPlan.variables,
+                referenceDoc: adaptedReferenceDoc,
             });
             const env = Object.assign(Object.assign({}, process.env), { PATH: buildExecPath(platform) });
             const dryRun = context.optionValues["dry-run"] === true;
@@ -24391,6 +26184,32 @@ const RunPandocExportStep = makeBuiltinStep({
         });
     },
 });
+/** Font-adaptation notices already shown this session (see the export step). */
+const announcedFontAdaptations = new Set();
+/**
+ * An OS-adapted copy of a preset's reference.docx, written to the system temp
+ * folder (not the vault, so it is never synced), or null when the original
+ * already suits this OS or can't be read — pandoc then uses the preset's own.
+ * The name carries the original's hash, so two reference docs never collide.
+ */
+function adaptReferenceDoc(refAbs, hostOs) {
+    try {
+        const original = fs__namespace.readFileSync(refAbs);
+        const patched = patchReferenceDocx(new Uint8Array(original), hostOs);
+        if (!patched)
+            return null;
+        const hash = crypto$1.createHash("sha1").update(original).digest("hex").slice(0, 12);
+        const dir = path__namespace.join(os__namespace.tmpdir(), "paperout-reference-docs");
+        fs__namespace.mkdirSync(dir, { recursive: true });
+        const out = path__namespace.join(dir, `${path__namespace.basename(refAbs, ".docx")}-${hash}-${hostOs}.docx`);
+        fs__namespace.writeFileSync(out, patched.bytes);
+        return { path: out, changes: patched.changes };
+    }
+    catch (e) {
+        console.warn(`[Pandoc Export] Could not adapt reference doc ${refAbs}; using it as is.`, e);
+        return null;
+    }
+}
 /**
  * Resolve the bibliographies for `--bibliography`, merged so pandoc can draw
  * citations from several `.bib` files at once. Ordered:
@@ -24441,6 +26260,20 @@ function resolveBibliography(settings, context, base, platform) {
     return result;
 }
 
+/**
+ * True when the manuscript has `<!--ms:id-->` spans outside figure captions but
+ * the capture produced no line labels — almost always a preset without the
+ * manuscript_linelabel filter, which would otherwise write `{}` silently.
+ * Caption spans resolve to figure numbers instead (`captionFigs`), so a
+ * manuscript whose spans all sit in captions is not warned about.
+ */
+function shouldWarnEmptyHarvest(contents, lines, captionFigs) {
+    var _a;
+    if (Object.keys(lines).length > 0)
+        return false;
+    const ids = (_a = contents.match(/<!--ms:[\w-]+-->/g)) !== null && _a !== void 0 ? _a : [];
+    return ids.some((m) => !(m.slice(7, -3) in captionFigs));
+}
 /** Keep only alphanumerics ("S1" stays, "\relax 1" → "1"). */
 function alnum(s) {
     return s.replace(/[^A-Za-z0-9]/g, "");
@@ -24615,7 +26448,7 @@ const HarvestManuscriptLinesStep = makeBuiltinStep({
     id: "harvest-manuscript-lines",
     description: {
         name: "Harvest Manuscript Line Numbers",
-        description: "After the manuscript PDF is built, runs a second Pandoc→XeLaTeX pass with mslabels to capture line/figure/table numbers for <!--ms:id--> spans into sidecar JSON, so a response letter can cite the manuscript with correct Page/Line. Desktop only; leaves the manuscript unchanged. Requires the manuscript's remove-comments step to keep HTML comments (so ms: markers survive).",
+        description: "After the manuscript PDF is built, runs a second Pandoc→XeLaTeX pass with mslabels to capture line/figure/table numbers for <!--ms:id--> spans into sidecar JSON, so a response letter can cite the manuscript with correct Page/Line. Desktop only; leaves the manuscript unchanged. Requires the manuscript's remove-comments step to keep HTML comments (so ms: markers survive). The capture pass must use the same preset as the export (it supplies the line-label filters): set Template / preset below, or `template:` in the note / `_longform.template` in metadata.json.",
         availableKinds: [CompileStepKind.Manuscript],
         options: [
             {
@@ -24624,6 +26457,15 @@ const HarvestManuscriptLinesStep = makeBuiltinStep({
                 description: "Uncheck to skip line-number harvesting (e.g. while drafting, to save the extra XeLaTeX pass).",
                 type: CompileStepOptionType.Boolean,
                 default: true,
+            },
+            {
+                id: "template",
+                name: "Template / preset",
+                description: "Preset (defaults/<name>.yaml) for the capture pass. Choose the one your Run Pandoc Export step uses; leave empty to follow the note's `template:` key (falling back to the built-in default, which has no line-label filters).",
+                type: CompileStepOptionType.Dropdown,
+                dynamicChoices: "pandoc-templates",
+                emptyLabel: "(use metadata template)",
+                default: "",
             },
         ],
     },
@@ -24664,7 +26506,7 @@ function harvest(input, context, base) {
         const cslDir = path__namespace.join(assetsAbs, "csl");
         const projectAbs = path__namespace.join(base, context.projectPath);
         const fm = parseExportFrontmatter(input.contents);
-        const template = String(fm.template || "undefined");
+        const { template, source } = resolvePresetName(context.optionValues["template"], fm.template);
         const csl = String(fm.csl || "nature");
         const isSI = isSupplementaryFrontmatter(fm);
         const dirs = binSearchDirs(platform);
@@ -24724,6 +26566,11 @@ function harvest(input, context, base) {
             writeJsonSorted(figFile, mergeSidecar(readJsonSafe(figFile), figures));
             const tblFile = path__namespace.join(projectAbs, "table-numbers.json");
             writeJsonSorted(tblFile, mergeSidecar(readJsonSafe(tblFile), tables));
+            if (shouldWarnEmptyHarvest(input.contents, lines, captionFigs)) {
+                new obsidian.Notice(`Harvested 0 line labels using preset \`${template}\` (from ${PRESET_SOURCE_LABEL[source]}). ` +
+                    "That preset likely lacks the manuscript_linelabel filter. Set this step's Template / preset, " +
+                    "or `template:` in the note / `_longform.template` in metadata.json, to the preset you export with.", 15000);
+            }
             new obsidian.Notice(`Harvested ${Object.keys(allLines).length} span(s), ${Object.keys(figures).length} figure(s)${isSI ? " (SI)" : ""}.`);
         }
         finally {
@@ -24973,7 +26820,7 @@ const BUILTIN_STEPS = [
 
 /* src/view/compile/add-step-modal/AddStepModal.svelte generated by Svelte v3.49.0 */
 
-function add_css$g(target) {
+function add_css$h(target) {
 	append_styles(target, "svelte-muo6j5", ".longform-steps-grid.svelte-muo6j5.svelte-muo6j5{display:grid;grid-template-columns:1fr 1fr;gap:var(--size-4-4);grid-auto-rows:auto}.longform-compile-step.svelte-muo6j5.svelte-muo6j5{cursor:pointer;grid-column:auto;grid-row:auto;background-color:var(--background-secondary);border:var(--size-2-1) solid var(--background-modifier-border);border-radius:var(--size-4-4);padding:var(--size-4-2)}.longform-compile-step.svelte-muo6j5.svelte-muo6j5:hover{border:var(--size-2-1) solid var(--text-accent);background-color:var(--background-modifier-form-field)}.longform-compile-step.svelte-muo6j5 h3.svelte-muo6j5{padding:var(--size-4-2) 0;margin:0}.longform-compile-step.svelte-muo6j5 .longform-step-kind-pill.svelte-muo6j5{background-color:var(--text-accent);color:var(--text-on-accent);border-radius:var(--radius-l);font-size:var(--font-smallest);font-weight:bold;padding:var(--size-4-1);margin-right:var(--size-4-1);height:var(--size-4-5)}");
 }
 
@@ -25129,7 +26976,7 @@ function create_each_block_2$1(ctx) {
 }
 
 // (41:2) {#if $userScriptSteps}
-function create_if_block$e(ctx) {
+function create_if_block$f(ctx) {
 	let h2;
 	let t1;
 	let div;
@@ -25331,7 +27178,7 @@ function create_each_block$9(ctx) {
 	};
 }
 
-function create_fragment$h(ctx) {
+function create_fragment$i(ctx) {
 	let div1;
 	let p;
 	let t1;
@@ -25346,7 +27193,7 @@ function create_fragment$h(ctx) {
 		each_blocks[i] = create_each_block_2$1(get_each_context_2$1(ctx, each_value_2, i));
 	}
 
-	let if_block = /*$userScriptSteps*/ ctx[0] && create_if_block$e(ctx);
+	let if_block = /*$userScriptSteps*/ ctx[0] && create_if_block$f(ctx);
 
 	return {
 		c() {
@@ -25411,7 +27258,7 @@ function create_fragment$h(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$e(ctx);
+					if_block = create_if_block$f(ctx);
 					if_block.c();
 					if_block.m(div1, null);
 				}
@@ -25430,7 +27277,7 @@ function create_fragment$h(ctx) {
 	};
 }
 
-function instance$h($$self, $$props, $$invalidate) {
+function instance$i($$self, $$props, $$invalidate) {
 	let $workflows;
 	let $selectedDraft;
 	let $currentWorkflow;
@@ -25464,7 +27311,7 @@ function instance$h($$self, $$props, $$invalidate) {
 class AddStepModal extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$h, create_fragment$h, safe_not_equal, {}, add_css$g);
+		init(this, options, instance$i, create_fragment$i, safe_not_equal, {}, add_css$h);
 	}
 }
 
@@ -25616,7 +27463,6 @@ const en = {
     "components.conflictTitle": "Nothing was created",
     "components.conflictBody": "These files already exist, so no component was created. Remove or rename them and try again:",
     "components.failed": "Could not add components",
-    "components.siProjectFormWarning": "Heads up: in a single-index project, the compile steps look for metadata.json next to the index, so the Supplementary’s own metadata.json (and its S-numbering) is not picked up yet.",
     // ── New paper scaffold ──────────────────────────────────────────────────
     "scaffold.title": "New PaperBell paper project",
     "scaffold.desc": "Creates a paper project in a new folder named after the title: shared metadata, references, and the parts you select below. You can add the rest later.",
@@ -25706,6 +27552,8 @@ const en = {
     "market.installing": "Installing…",
     "market.installedNotice": "Installed",
     "market.failed": "Failed:",
+    "market.preservedFiles": "Kept your changes to {count} file(s); the new version is next to each as .new:\n{files}",
+    "market.keptFiles": "Kept {count} file(s) you had changed:\n{files}",
     // ── Explorer pane ───────────────────────────────────────────────────────
     "explorer.paneTitle": "PaperOut To-Authors",
     "explorer.tab.scenes": "Scenes",
@@ -25752,6 +27600,8 @@ const en = {
     "settings.bibliography.desc": "Path to a .bib for citations. Leave empty to auto-detect references.bib / mybib.bib in the project.",
     "settings.globalBibliography.name": "Global bibliography",
     "settings.globalBibliography.desc": "Extra .bib file(s) merged into every export, on top of each project's own. One path per line (or comma-separated); vault-relative or absolute. The project's bibliography wins on duplicate cite keys.",
+    "settings.adaptFonts.name": "Adapt preset fonts to this OS",
+    "settings.adaptFonts.desc": "Presets usually name macOS fonts (Songti SC, Heiti SC). When on, each export swaps them for this system's equivalents — SimSun / SimHei on Windows, Noto CJK on Linux — in PDF/TeX font variables and in a docx preset's reference document. Fonts set in the note's own frontmatter are never changed.",
     "settings.extraBinFolders.name": "Extra binary folders",
     "settings.extraBinFolders.desc": "Folders to search for pandoc, the PDF engine and pandoc-crossref, one per line. Searched before PATH and the built-in locations — use this when a tool is installed somewhere PATH doesn't know about.",
     "settings.pandocBinary.name": "Pandoc binary",
@@ -25813,7 +27663,7 @@ const en = {
 };
 
 /** Simplified Chinese catalog. Must cover every key in `en` (enforced by `Messages`). */
-const zh$1 = {
+const zh = {
     // ── 命令(命令面板) ──────────────────────────────────────────────────
     "cmd.compileCurrent": "用当前工作流编译当前项目",
     "cmd.compileProject": "编译项目…",
@@ -25870,7 +27720,6 @@ const zh$1 = {
     "components.conflictTitle": "未创建任何文件",
     "components.conflictBody": "以下文件已存在，因此没有创建任何组件。请删除或重命名后重试：",
     "components.failed": "添加组件失败",
-    "components.siProjectFormWarning": "提示：单一 Index 项目中，编译步骤只在 Index 同级目录查找 metadata.json，因此补充材料自带的 metadata.json（及其 S 编号）暂时不会生效。",
     // ── 新建论文脚手架 ────────────────────────────────────────────────────
     "scaffold.title": "新建 PaperBell 论文项目",
     "scaffold.desc": "在以标题命名的新文件夹里创建论文项目:共享元数据、参考文献,以及你在下面勾选的组件。其余部分之后可以再补。",
@@ -25960,6 +27809,8 @@ const zh$1 = {
     "market.installing": "安装中…",
     "market.installedNotice": "已安装",
     "market.failed": "失败:",
+    "market.preservedFiles": "保留了你改过的 {count} 个文件,新版本另存为同目录下的 .new:\n{files}",
+    "market.keptFiles": "保留了你改过的 {count} 个文件:\n{files}",
     // ── 资源管理器面板 ────────────────────────────────────────────────────
     "explorer.paneTitle": "PaperOut To-Authors",
     "explorer.tab.scenes": "场景",
@@ -26006,6 +27857,8 @@ const zh$1 = {
     "settings.bibliography.desc": "用于引用的 .bib 文件路径。留空则在项目中自动探测 references.bib / mybib.bib。",
     "settings.globalBibliography.name": "全局参考文献库",
     "settings.globalBibliography.desc": "在每个项目自带 .bib 之外,额外合并进每次导出的 .bib 文件(可多个)。每行一个路径(或用逗号分隔);可填库内相对路径或绝对路径。遇到重复 cite key 时,项目自带的优先。",
+    "settings.adaptFonts.name": "按当前系统适配预设字体",
+    "settings.adaptFonts.desc": "预设通常写的是 macOS 字体（Songti SC、Heiti SC）。开启后，每次导出会换成本机系统的等效字体 —— Windows 用 SimSun / SimHei，Linux 用 Noto CJK —— 作用于 PDF/TeX 的字体变量和 docx 预设的参考文档。笔记 frontmatter 里自己写的字体永远不会被改。",
     "settings.extraBinFolders.name": "额外的二进制目录",
     "settings.extraBinFolders.desc": "查找 pandoc、PDF 引擎和 pandoc-crossref 的额外目录，每行一个。优先级高于 PATH 和内置位置 —— 当工具装在 PATH 不知道的地方时填这里。",
     "settings.pandocBinary.name": "Pandoc 可执行文件",
@@ -26066,7 +27919,7 @@ const zh$1 = {
     "settings.credits.icon": '图标来自 <a href="https://www.flaticon.com/authors/zlatko-najdenovski" title="Zlatko Najdenovski">Zlatko Najdenovski</a>,取自 <a href="https://www.flaticon.com/" title="Flaticon">www.flaticon.com</a>。',
 };
 
-const catalogs = { en, zh: zh$1 };
+const catalogs = { en, zh };
 /** The active UI locale. Driven by `controller.ts`; defaults to English. */
 const locale = writable("en");
 function format$1(template, vars) {
@@ -26145,7 +27998,7 @@ function dropdownChoices(option, templates) {
 
 /* src/view/compile/CompileStepView.svelte generated by Svelte v3.49.0 */
 
-function add_css$f(target) {
+function add_css$g(target) {
 	append_styles(target, "svelte-1cn3ejz", ".longform-compile-step.svelte-1cn3ejz.svelte-1cn3ejz{background-color:var(--background-modifier-border);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:0;margin:var(--size-4-4) 0}.longform-compile-step-title-outer.svelte-1cn3ejz.svelte-1cn3ejz{display:flex;flex-direction:row;justify-content:space-between;align-items:flex-start}.longform-compile-step-title-container.svelte-1cn3ejz.svelte-1cn3ejz{display:flex;flex-direction:row;align-items:center;flex-wrap:wrap;font-size:var(--font-ui-smaller)}.longform-compile-step-title-container.svelte-1cn3ejz h4.svelte-1cn3ejz{display:inline-block;margin:var(--size-4-1) var(--size-4-2) var(--size-4-1) 0;padding:0}.longform-compile-step-title-container.svelte-1cn3ejz .longform-step-kind-pill.svelte-1cn3ejz{display:flex;justify-content:center;align-items:center;background-color:color-mix(in srgb, var(--text-accent) 50%, var(--background-modifier-border) 50%);color:var(--text-on-accent);border-radius:var(--radius-l);font-size:var(--font-smallest);font-weight:bold;padding:var(--size-4-1) var(--size-4-2);margin-right:var(--size-4-1);height:var(--h1-line-height)}.longform-compile-step-number.svelte-1cn3ejz.svelte-1cn3ejz{color:var(--text-faint);display:inline-block;width:var(--size-4-6);padding-left:var(--size-4-1)}.longform-remove-step-button.svelte-1cn3ejz.svelte-1cn3ejz{display:flex;width:var(--size-4-5);height:100%;margin:1px;align-items:center;justify-content:center;font-weight:bold;background:var(--background-modifier-error)}.longform-compile-step.svelte-1cn3ejz p.svelte-1cn3ejz{margin:0;background:var(--background-primary)}.longform-compile-step-description.svelte-1cn3ejz.svelte-1cn3ejz{font-size:var(--font-smallest);color:var(--text-muted);padding:var(--size-4-2) var(--size-4-1) var(--size-4-2) var(--size-4-6)}.longform-compile-step-options.svelte-1cn3ejz.svelte-1cn3ejz{padding:var(--size-4-2) 0;background:var(--background-primary)}.longform-compile-step-options.svelte-1cn3ejz>div.svelte-1cn3ejz{margin:0 var(--size-4-2) 0 var(--size-4-6)\n  }.longform-compile-step-option.svelte-1cn3ejz.svelte-1cn3ejz{margin:0 var(--size-4-4) var(--size-4-4) 0}.longform-compile-step-option.svelte-1cn3ejz label.svelte-1cn3ejz{display:block;font-weight:600;font-size:var(--font-smallest)}.longform-compile-step-checkbox-container.svelte-1cn3ejz.svelte-1cn3ejz{display:flex;flex-direction:row;align-items:center;justify-content:flex-start}.longform-compile-step-option.svelte-1cn3ejz input[type=\"text\"].svelte-1cn3ejz{margin:0 0 var(--size-4-1) 0;width:100%}.longform-compile-step-option.svelte-1cn3ejz select.svelte-1cn3ejz{margin:0 0 var(--size-4-1) 0;width:100%}.longform-compile-step-option.svelte-1cn3ejz textarea.svelte-1cn3ejz{color:var(--text-accent);margin:0 0 var(--size-4-1) 0;width:100%;resize:vertical}.longform-compile-step-option.svelte-1cn3ejz input[type=\"checkbox\"].svelte-1cn3ejz{margin:0 var(--size-4-2) var(--size-2-1) 0}.longform-compile-step-option.svelte-1cn3ejz input.svelte-1cn3ejz:focus{color:var(--text-accent-hover)}.longform-compile-step-option-description.svelte-1cn3ejz.svelte-1cn3ejz{font-size:var(--font-smallest);line-height:1em;color:var(--text-faint)}.longform-compile-step-error-container.svelte-1cn3ejz.svelte-1cn3ejz{margin-top:var(--size-4-2)}.longform-compile-step-error.svelte-1cn3ejz.svelte-1cn3ejz{color:var(--text-error);font-size:var(--font-smallest);line-height:1em}");
 }
 
@@ -26303,7 +28156,7 @@ function create_else_block$6(ctx) {
 }
 
 // (29:2) {#if step.description.canonicalID === PLACEHOLDER_MISSING_STEP.description.canonicalID}
-function create_if_block$d(ctx) {
+function create_if_block$e(ctx) {
 	let div1;
 	let div0;
 	let t1;
@@ -26909,11 +28762,11 @@ function create_if_block_1$a(ctx) {
 	};
 }
 
-function create_fragment$g(ctx) {
+function create_fragment$h(ctx) {
 	let div;
 
 	function select_block_type(ctx, dirty) {
-		if (/*step*/ ctx[0].description.canonicalID === PLACEHOLDER_MISSING_STEP.description.canonicalID) return create_if_block$d;
+		if (/*step*/ ctx[0].description.canonicalID === PLACEHOLDER_MISSING_STEP.description.canonicalID) return create_if_block$e;
 		return create_else_block$6;
 	}
 
@@ -26952,7 +28805,7 @@ function create_fragment$g(ctx) {
 	};
 }
 
-function instance$g($$self, $$props, $$invalidate) {
+function instance$h($$self, $$props, $$invalidate) {
 	let $pandocTemplates;
 	component_subscribe($$self, pandocTemplates, $$value => $$invalidate(4, $pandocTemplates = $$value));
 	let { step } = $$props;
@@ -27027,8 +28880,8 @@ class CompileStepView extends SvelteComponent {
 		init(
 			this,
 			options,
-			instance$g,
-			create_fragment$g,
+			instance$h,
+			create_fragment$h,
 			safe_not_equal,
 			{
 				step: 0,
@@ -27036,7 +28889,7 @@ class CompileStepView extends SvelteComponent {
 				calculatedKind: 2,
 				error: 3
 			},
-			add_css$f
+			add_css$g
 		);
 	}
 }
@@ -29907,7 +31760,7 @@ function create_each_block$7(key_1, ctx) {
 	};
 }
 
-function create_fragment$f(ctx) {
+function create_fragment$g(ctx) {
 	let ul;
 	let each_blocks = [];
 	let each_1_lookup = new Map();
@@ -30028,7 +31881,7 @@ function IndentPlugin() {
 // @ts-ignore
 Sortable.mount(new IndentPlugin());
 
-function instance$f($$self, $$props, $$invalidate) {
+function instance$g($$self, $$props, $$invalidate) {
 	let { $$slots: slots = {}, $$scope } = $$props;
 	let { items = [] } = $$props;
 	let { sortableOptions = {} } = $$props;
@@ -30119,7 +31972,7 @@ class SortableList extends SvelteComponent {
 	constructor(options) {
 		super();
 
-		init(this, options, instance$f, create_fragment$f, safe_not_equal, {
+		init(this, options, instance$g, create_fragment$g, safe_not_equal, {
 			items: 0,
 			sortableOptions: 3,
 			trackIndents: 4
@@ -30225,7 +32078,7 @@ function rowProgress(state, totalSteps) {
 
 /* src/view/compile/compile-matrix/CompileMatrix.svelte generated by Svelte v3.49.0 */
 
-function add_css$e(target) {
+function add_css$f(target) {
 	append_styles(target, "svelte-1d84fds", ".matrix.svelte-1d84fds.svelte-1d84fds{display:flex;flex-direction:column;gap:var(--size-4-2)}.matrix-header.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;flex-wrap:wrap;gap:var(--size-4-3);padding-bottom:var(--size-4-2);border-bottom:1px solid var(--background-modifier-border)}.matrix-heading.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:baseline;gap:var(--size-4-2);margin-right:auto}.matrix-title.svelte-1d84fds.svelte-1d84fds{font-weight:700;font-size:var(--font-ui-large, 1.1em);color:var(--text-normal)}.matrix-count.svelte-1d84fds.svelte-1d84fds{font-size:var(--font-ui-smaller);color:var(--text-faint)}.matrix-batch.svelte-1d84fds.svelte-1d84fds{display:flex;gap:var(--size-2-2);flex-wrap:wrap}.batch-toggle.svelte-1d84fds.svelte-1d84fds{display:inline-flex;align-items:center;gap:var(--size-2-1);font-size:var(--font-ui-smaller);color:var(--text-muted);padding:2px var(--size-2-3);border:1px solid var(--background-modifier-border);border-radius:var(--radius-l);cursor:pointer;user-select:none;transition:color 0.15s, border-color 0.15s, background-color 0.15s}.batch-toggle.on.svelte-1d84fds.svelte-1d84fds{color:var(--text-accent);border-color:var(--interactive-accent);background:color-mix(in srgb, var(--interactive-accent) 12%, transparent)}.batch-toggle.svelte-1d84fds input.svelte-1d84fds{margin:0}.matrix-run.svelte-1d84fds.svelte-1d84fds{font-weight:700;color:var(--text-on-accent);background:var(--interactive-accent);border:none;border-radius:var(--radius-s);padding:var(--size-2-2) var(--size-4-4);cursor:pointer;transition:background-color 0.15s, transform 0.1s}.matrix-run.svelte-1d84fds.svelte-1d84fds:hover:not(:disabled){background:var(--interactive-accent-hover)}.matrix-run.svelte-1d84fds.svelte-1d84fds:active:not(:disabled){transform:translateY(1px)}.matrix-run.svelte-1d84fds.svelte-1d84fds:disabled{background:var(--background-modifier-border);color:var(--text-faint);cursor:default}.matrix-hint.svelte-1d84fds.svelte-1d84fds{font-size:var(--font-smallest);color:var(--text-faint);margin-top:calc(-1 * var(--size-2-1))}.matrix ul{list-style:none;margin:0;padding:0}.matrix-row.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;gap:var(--size-4-2);padding:var(--size-4-2) var(--size-4-1);border-radius:var(--radius-m, 8px);background:var(--background-secondary-alt);border:1px solid transparent;margin-bottom:var(--size-2-3);animation:svelte-1d84fds-matrix-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) both;transition:border-color 0.2s, box-shadow 0.2s}.matrix-row.status-running.svelte-1d84fds.svelte-1d84fds{border-color:color-mix(in srgb, var(--interactive-accent) 55%, transparent);box-shadow:0 0 0 1px\n      color-mix(in srgb, var(--interactive-accent) 25%, transparent)}.matrix-row.status-done.svelte-1d84fds.svelte-1d84fds{border-color:color-mix(in srgb, var(--interactive-success) 45%, transparent)}.matrix-row.status-error.svelte-1d84fds.svelte-1d84fds{border-color:color-mix(in srgb, var(--text-error) 55%, transparent)}.matrix-row.not-runnable.svelte-1d84fds.svelte-1d84fds{opacity:0.55}.matrix-drag.svelte-1d84fds.svelte-1d84fds{cursor:grab;color:var(--text-faint);letter-spacing:-3px;padding:0 var(--size-2-1);line-height:1;user-select:none}.matrix-drag.svelte-1d84fds.svelte-1d84fds:hover{color:var(--text-muted)}.matrix-draft.svelte-1d84fds.svelte-1d84fds{display:flex;flex-direction:column;gap:var(--size-2-1);width:200px;min-width:200px}.matrix-draft-head.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;gap:var(--size-2-3)}.matrix-workflow.svelte-1d84fds.svelte-1d84fds{max-width:100%;font-size:var(--font-smallest);color:var(--text-muted);background:var(--background-primary);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:1px var(--size-2-2);cursor:pointer}.matrix-workflow.svelte-1d84fds.svelte-1d84fds:disabled{cursor:default;opacity:0.7}.matrix-abbrev.svelte-1d84fds.svelte-1d84fds{display:inline-flex;align-items:center;justify-content:center;min-width:2.1em;height:1.7em;padding:0 var(--size-2-2);font-size:var(--font-smallest);font-weight:700;letter-spacing:0.04em;color:var(--text-on-accent);background:color-mix(\n      in srgb,\n      var(--text-accent) 55%,\n      var(--background-modifier-border) 45%\n    );border-radius:var(--radius-s)}.matrix-name.svelte-1d84fds.svelte-1d84fds{color:var(--text-normal);font-size:var(--font-ui-smaller);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.matrix-progress.svelte-1d84fds.svelte-1d84fds{flex:1;min-width:160px;display:flex;flex-direction:column;gap:2px}.matrix-runway.svelte-1d84fds.svelte-1d84fds{position:relative;min-width:160px;height:28px;display:flex;align-items:center;padding:0 var(--size-4-2)}.runway-track.svelte-1d84fds.svelte-1d84fds{position:absolute;left:var(--size-4-2);right:var(--size-4-2);top:50%;height:2px;transform:translateY(-50%);background:var(--background-modifier-border);border-radius:2px}.runway-fill.svelte-1d84fds.svelte-1d84fds{position:absolute;left:var(--size-4-2);right:var(--size-4-2);top:50%;height:3px;transform-origin:left center;transform:translateY(-50%) scaleX(0);background:var(--interactive-accent);border-radius:2px;transition:transform 0.4s cubic-bezier(0.3, 0.7, 0.3, 1)}.runway-nodes.svelte-1d84fds.svelte-1d84fds{position:relative;z-index:1;flex:1;display:flex;justify-content:space-between;align-items:center}.node.svelte-1d84fds.svelte-1d84fds{width:20px;height:20px;padding:0;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;background:var(--background-primary);border:2px solid var(--background-modifier-border);color:var(--text-faint);cursor:pointer;transition:background-color 0.2s, border-color 0.2s, transform 0.2s,\n      box-shadow 0.2s, color 0.2s}.node.svelte-1d84fds.svelte-1d84fds:hover,.node.is-hovered.svelte-1d84fds.svelte-1d84fds{border-color:var(--text-accent);color:var(--text-accent);transform:scale(1.12)}.node.is-open.svelte-1d84fds.svelte-1d84fds{box-shadow:0 0 0 2px\n      color-mix(in srgb, var(--text-accent) 60%, transparent)}.node.svelte-1d84fds.svelte-1d84fds:focus-visible{outline:none;box-shadow:0 0 0 2px var(--text-accent)}.node.is-done.svelte-1d84fds.svelte-1d84fds{background:var(--interactive-accent);border-color:var(--interactive-accent);color:var(--text-on-accent);animation:svelte-1d84fds-node-pop 0.25s ease}.node.is-active.svelte-1d84fds.svelte-1d84fds{border-color:var(--text-accent);background:var(--background-primary);animation:svelte-1d84fds-node-pulse 1.4s ease-in-out infinite}.node.is-error.svelte-1d84fds.svelte-1d84fds{background:var(--text-error);border-color:var(--text-error);color:var(--text-on-accent)}.node-num.svelte-1d84fds.svelte-1d84fds{font-size:10px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums}.node-glyph.svelte-1d84fds.svelte-1d84fds{font-size:11px;line-height:1;color:var(--text-on-accent);font-weight:800}.node-spinner.svelte-1d84fds.svelte-1d84fds{width:14px;height:14px;border-radius:50%;border:2px solid transparent;border-top-color:var(--text-accent);border-right-color:var(--text-accent);animation:svelte-1d84fds-matrix-spin 0.7s linear infinite}.runway-caption.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:baseline;gap:var(--size-2-2);min-height:1.1em;padding:0 var(--size-4-2);font-size:var(--font-smallest);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.caption-counter.svelte-1d84fds.svelte-1d84fds{flex:none;font-variant-numeric:tabular-nums;font-weight:700;color:var(--text-accent)}.caption-name.svelte-1d84fds.svelte-1d84fds{color:var(--text-muted);overflow:hidden;text-overflow:ellipsis}.caption-error.svelte-1d84fds.svelte-1d84fds{color:var(--text-error)}.caption-hint.svelte-1d84fds.svelte-1d84fds{color:var(--text-faint);font-style:italic}.matrix-skip.svelte-1d84fds.svelte-1d84fds{font-size:var(--font-ui-smaller);color:var(--text-faint);font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.matrix-status.svelte-1d84fds.svelte-1d84fds{width:24px;min-width:24px;text-align:center;font-weight:800}.status-done.svelte-1d84fds.svelte-1d84fds{color:var(--interactive-success)}.status-error.svelte-1d84fds.svelte-1d84fds{color:var(--text-error)}.status-skip.svelte-1d84fds.svelte-1d84fds{color:var(--text-faint)}.status-spinner.svelte-1d84fds.svelte-1d84fds{display:inline-block;width:14px;height:14px;border-radius:50%;border:2px solid var(--background-modifier-border);border-top-color:var(--text-accent);animation:svelte-1d84fds-matrix-spin 0.7s linear infinite}.step-editor.svelte-1d84fds.svelte-1d84fds{margin:calc(-1 * var(--size-2-2)) 0 var(--size-2-3) 0;padding:var(--size-4-2) var(--size-4-3);background:var(--background-primary);border:1px solid var(--background-modifier-border);border-top:2px solid var(--interactive-accent);border-radius:0 0 var(--radius-m, 8px) var(--radius-m, 8px);animation:svelte-1d84fds-step-editor-in 0.2s ease both}.step-editor-head.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;gap:var(--size-2-3)}.step-editor-head.svelte-1d84fds h4.svelte-1d84fds{margin:0;font-size:var(--font-ui-small);color:var(--text-normal);display:flex;align-items:center;gap:var(--size-2-2)}.step-editor-ord.svelte-1d84fds.svelte-1d84fds{display:inline-flex;align-items:center;justify-content:center;min-width:1.5em;height:1.5em;font-size:var(--font-smallest);font-weight:700;color:var(--text-on-accent);background:var(--interactive-accent);border-radius:50%}.step-editor-kind.svelte-1d84fds.svelte-1d84fds{font-size:var(--font-smallest);color:var(--text-muted);padding:1px var(--size-2-2);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s)}.step-editor-close.svelte-1d84fds.svelte-1d84fds{margin-left:auto;background:transparent;border:none;color:var(--text-faint);cursor:pointer;padding:2px var(--size-2-2);border-radius:var(--radius-s);font-weight:700}.step-editor-close.svelte-1d84fds.svelte-1d84fds:hover{color:var(--text-normal);background:var(--background-modifier-hover)}.step-editor-desc.svelte-1d84fds.svelte-1d84fds{margin:var(--size-2-2) 0 var(--size-2-3) 0;font-size:var(--font-ui-smaller);color:var(--text-muted)}.step-editor-option.svelte-1d84fds.svelte-1d84fds{margin-bottom:var(--size-4-2)}.step-editor-option.svelte-1d84fds>label.svelte-1d84fds{display:block;font-size:var(--font-ui-smaller);font-weight:600;color:var(--text-normal);margin-bottom:2px}.step-editor-option.svelte-1d84fds input[type=\"text\"].svelte-1d84fds,.step-editor-option.svelte-1d84fds textarea.svelte-1d84fds,.step-editor-option.svelte-1d84fds select.svelte-1d84fds{width:100%;box-sizing:border-box}.step-editor-option.svelte-1d84fds textarea.svelte-1d84fds{min-height:4.5em;resize:vertical;font-family:var(--font-monospace);font-size:var(--font-ui-smaller)}.step-editor-checkbox.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;gap:var(--size-2-2)}.step-editor-checkbox.svelte-1d84fds label.svelte-1d84fds{font-size:var(--font-ui-smaller);color:var(--text-normal)}.step-editor-option-desc.svelte-1d84fds.svelte-1d84fds{margin:2px 0 0 0;font-size:var(--font-smallest);color:var(--text-faint)}.step-editor-noopts.svelte-1d84fds.svelte-1d84fds{margin:0;font-size:var(--font-ui-smaller);color:var(--text-faint);font-style:italic}@keyframes svelte-1d84fds-step-editor-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}.caption-error-btn.svelte-1d84fds.svelte-1d84fds{background:transparent;border:none;padding:0;cursor:pointer;text-align:left;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.caption-error-btn.svelte-1d84fds:hover .caption-error.svelte-1d84fds{text-decoration:underline}.error-panel.svelte-1d84fds.svelte-1d84fds{margin:calc(-1 * var(--size-2-2)) 0 var(--size-2-3) 0;padding:var(--size-4-2) var(--size-4-3);background:var(--background-primary);border:1px solid var(--background-modifier-border);border-top:2px solid var(--text-error);border-radius:0 0 var(--radius-m, 8px) var(--radius-m, 8px)}.error-panel-head.svelte-1d84fds.svelte-1d84fds{display:flex;align-items:center;justify-content:space-between;gap:var(--size-2-3);margin-bottom:var(--size-2-2);font-size:var(--font-ui-smaller);font-weight:600;color:var(--text-error)}.error-copy.svelte-1d84fds.svelte-1d84fds{flex:none;font-size:var(--font-smallest);color:var(--text-muted);background:var(--background-secondary);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:2px var(--size-2-3);cursor:pointer}.error-copy.svelte-1d84fds.svelte-1d84fds:hover{color:var(--text-normal);border-color:var(--text-accent)}.error-panel-body.svelte-1d84fds.svelte-1d84fds{margin:0;max-height:40vh;overflow:auto;white-space:pre-wrap;word-break:break-word;font-family:var(--font-monospace);font-size:var(--font-smallest);color:var(--text-muted);user-select:text}@keyframes svelte-1d84fds-matrix-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}@keyframes svelte-1d84fds-matrix-spin{to{transform:rotate(360deg)}}@keyframes svelte-1d84fds-node-pop{0%{transform:scale(0.6)}60%{transform:scale(1.25)}100%{transform:scale(1)}}@keyframes svelte-1d84fds-node-pulse{0%,100%{box-shadow:0 0 0 0\n        color-mix(in srgb, var(--text-accent) 45%, transparent)}50%{box-shadow:0 0 0 5px transparent}}@media(prefers-reduced-motion: reduce){.matrix-row.svelte-1d84fds.svelte-1d84fds,.node.is-done.svelte-1d84fds.svelte-1d84fds,.step-editor.svelte-1d84fds.svelte-1d84fds{animation:none}.node.svelte-1d84fds.svelte-1d84fds:hover{transform:none}.node.is-active.svelte-1d84fds.svelte-1d84fds{animation:none;border-color:var(--text-accent)}.node-spinner.svelte-1d84fds.svelte-1d84fds,.status-spinner.svelte-1d84fds.svelte-1d84fds{animation:none;border-top-color:var(--text-accent);border-right-color:var(--text-accent)}.runway-fill.svelte-1d84fds.svelte-1d84fds{transition:none}}");
 }
 
@@ -31014,7 +32867,7 @@ function create_if_block_5$4(ctx) {
 }
 
 // (318:4) {#if item.runnable && item.openStep >= 0 && item.workflow.steps[item.openStep]}
-function create_if_block$c(ctx) {
+function create_if_block$d(ctx) {
 	let div1;
 	let div0;
 	let h4;
@@ -31724,7 +33577,7 @@ function create_default_slot$2(ctx) {
 	let current_block_type_1 = select_block_type_3(ctx);
 	let if_block2 = current_block_type_1 && current_block_type_1(ctx);
 	let if_block3 = /*item*/ ctx[41].state.status === "error" && /*openError*/ ctx[5] === /*item*/ ctx[41].id && create_if_block_5$4(ctx);
-	let if_block4 = /*item*/ ctx[41].runnable && /*item*/ ctx[41].openStep >= 0 && /*item*/ ctx[41].workflow.steps[/*item*/ ctx[41].openStep] && create_if_block$c(get_if_ctx$1(ctx));
+	let if_block4 = /*item*/ ctx[41].runnable && /*item*/ ctx[41].openStep >= 0 && /*item*/ ctx[41].workflow.steps[/*item*/ ctx[41].openStep] && create_if_block$d(get_if_ctx$1(ctx));
 
 	return {
 		c() {
@@ -31938,7 +33791,7 @@ function create_default_slot$2(ctx) {
 				if (if_block4) {
 					if_block4.p(get_if_ctx$1(ctx), dirty);
 				} else {
-					if_block4 = create_if_block$c(get_if_ctx$1(ctx));
+					if_block4 = create_if_block$d(get_if_ctx$1(ctx));
 					if_block4.c();
 					if_block4.m(if_block4_anchor.parentNode, if_block4_anchor);
 				}
@@ -31968,7 +33821,7 @@ function create_default_slot$2(ctx) {
 	};
 }
 
-function create_fragment$e(ctx) {
+function create_fragment$f(ctx) {
 	let div4;
 	let div2;
 	let div0;
@@ -32250,7 +34103,7 @@ function nodeClass(state, i) {
 	return "is-pending";
 }
 
-function instance$e($$self, $$props, $$invalidate) {
+function instance$f($$self, $$props, $$invalidate) {
 	let anyRunnable;
 	let sortableOptions;
 	let $t;
@@ -32544,7 +34397,7 @@ function instance$e($$self, $$props, $$invalidate) {
 class CompileMatrix extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$e, create_fragment$e, safe_not_equal, {}, add_css$e, [-1, -1]);
+		init(this, options, instance$f, create_fragment$f, safe_not_equal, {}, add_css$f, [-1, -1]);
 	}
 }
 
@@ -34422,11 +36275,11 @@ var omit_1 = omit;
 
 /* src/view/components/AutoTextArea.svelte generated by Svelte v3.49.0 */
 
-function add_css$d(target) {
+function add_css$e(target) {
 	append_styles(target, "svelte-1wdi5lq", ".container.svelte-1wdi5lq{position:relative}pre.svelte-1wdi5lq,textarea.svelte-1wdi5lq{font-family:inherit;padding:var(--size-4-2);box-sizing:border-box;border:none;line-height:1.2;overflow:hidden}textarea.svelte-1wdi5lq{position:absolute;width:100%;height:100%;top:0;resize:none}");
 }
 
-function create_fragment$d(ctx) {
+function create_fragment$e(ctx) {
 	let div;
 	let pre;
 	let t0_value = /*value*/ ctx[0] + "\n" + "";
@@ -34500,7 +36353,7 @@ function create_fragment$d(ctx) {
 	};
 }
 
-function instance$d($$self, $$props, $$invalidate) {
+function instance$e($$self, $$props, $$invalidate) {
 	let minHeight;
 	let maxHeight;
 	let { value = "" } = $$props;
@@ -34537,7 +36390,7 @@ function instance$d($$self, $$props, $$invalidate) {
 class AutoTextArea extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$d, create_fragment$d, safe_not_equal, { value: 0, minRows: 4, maxRows: 5 }, add_css$d);
+		init(this, options, instance$e, create_fragment$e, safe_not_equal, { value: 0, minRows: 4, maxRows: 5 }, add_css$e);
 	}
 }
 
@@ -34595,493 +36448,6 @@ function showErrorModal(app, title, message, actions = []) {
     new LongformErrorModal(app, title, message, actions).open();
 }
 
-// DEFLATE is a complex format; to read this code, you should probably check the RFC first:
-
-// aliases for shorter compressed code (most minifers don't do this)
-var u8 = Uint8Array, u16 = Uint16Array, i32 = Int32Array;
-// fixed length extra bits
-var fleb = new u8([0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0, /* unused */ 0, 0, /* impossible */ 0]);
-// fixed distance extra bits
-var fdeb = new u8([0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13, /* unused */ 0, 0]);
-// code length index map
-var clim = new u8([16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15]);
-// get base, reverse index map from extra bits
-var freb = function (eb, start) {
-    var b = new u16(31);
-    for (var i = 0; i < 31; ++i) {
-        b[i] = start += 1 << eb[i - 1];
-    }
-    // numbers here are at max 18 bits
-    var r = new i32(b[30]);
-    for (var i = 1; i < 30; ++i) {
-        for (var j = b[i]; j < b[i + 1]; ++j) {
-            r[j] = ((j - b[i]) << 5) | i;
-        }
-    }
-    return { b: b, r: r };
-};
-var _a = freb(fleb, 2), fl = _a.b, revfl = _a.r;
-// we can ignore the fact that the other numbers are wrong; they never happen anyway
-fl[28] = 258, revfl[258] = 28;
-var _b = freb(fdeb, 0), fd = _b.b;
-// map of value to reverse (assuming 16 bits)
-var rev = new u16(32768);
-for (var i = 0; i < 32768; ++i) {
-    // reverse table algorithm from SO
-    var x = ((i & 0xAAAA) >> 1) | ((i & 0x5555) << 1);
-    x = ((x & 0xCCCC) >> 2) | ((x & 0x3333) << 2);
-    x = ((x & 0xF0F0) >> 4) | ((x & 0x0F0F) << 4);
-    rev[i] = (((x & 0xFF00) >> 8) | ((x & 0x00FF) << 8)) >> 1;
-}
-// create huffman tree from u8 "map": index -> code length for code index
-// mb (max bits) must be at most 15
-// TODO: optimize/split up?
-var hMap = (function (cd, mb, r) {
-    var s = cd.length;
-    // index
-    var i = 0;
-    // u16 "map": index -> # of codes with bit length = index
-    var l = new u16(mb);
-    // length of cd must be 288 (total # of codes)
-    for (; i < s; ++i) {
-        if (cd[i])
-            ++l[cd[i] - 1];
-    }
-    // u16 "map": index -> minimum code for bit length = index
-    var le = new u16(mb);
-    for (i = 1; i < mb; ++i) {
-        le[i] = (le[i - 1] + l[i - 1]) << 1;
-    }
-    var co;
-    if (r) {
-        // u16 "map": index -> number of actual bits, symbol for code
-        co = new u16(1 << mb);
-        // bits to remove for reverser
-        var rvb = 15 - mb;
-        for (i = 0; i < s; ++i) {
-            // ignore 0 lengths
-            if (cd[i]) {
-                // num encoding both symbol and bits read
-                var sv = (i << 4) | cd[i];
-                // free bits
-                var r_1 = mb - cd[i];
-                // start value
-                var v = le[cd[i] - 1]++ << r_1;
-                // m is end value
-                for (var m = v | ((1 << r_1) - 1); v <= m; ++v) {
-                    // every 16 bit value starting with the code yields the same result
-                    co[rev[v] >> rvb] = sv;
-                }
-            }
-        }
-    }
-    else {
-        co = new u16(s);
-        for (i = 0; i < s; ++i) {
-            if (cd[i]) {
-                co[i] = rev[le[cd[i] - 1]++] >> (15 - cd[i]);
-            }
-        }
-    }
-    return co;
-});
-// fixed length tree
-var flt = new u8(288);
-for (var i = 0; i < 144; ++i)
-    flt[i] = 8;
-for (var i = 144; i < 256; ++i)
-    flt[i] = 9;
-for (var i = 256; i < 280; ++i)
-    flt[i] = 7;
-for (var i = 280; i < 288; ++i)
-    flt[i] = 8;
-// fixed distance tree
-var fdt = new u8(32);
-for (var i = 0; i < 32; ++i)
-    fdt[i] = 5;
-// fixed length map
-var flrm = /*#__PURE__*/ hMap(flt, 9, 1);
-// fixed distance map
-var fdrm = /*#__PURE__*/ hMap(fdt, 5, 1);
-// find max of array
-var max$1 = function (a) {
-    var m = a[0];
-    for (var i = 1; i < a.length; ++i) {
-        if (a[i] > m)
-            m = a[i];
-    }
-    return m;
-};
-// read d, starting at bit p and mask with m
-var bits = function (d, p, m) {
-    var o = (p / 8) | 0;
-    return ((d[o] | (d[o + 1] << 8)) >> (p & 7)) & m;
-};
-// read d, starting at bit p continuing for at least 16 bits
-var bits16 = function (d, p) {
-    var o = (p / 8) | 0;
-    return ((d[o] | (d[o + 1] << 8) | (d[o + 2] << 16)) >> (p & 7));
-};
-// get end of byte
-var shft = function (p) { return ((p + 7) / 8) | 0; };
-// typed array slice - allows garbage collector to free original reference,
-// while being more compatible than .slice
-var slc = function (v, s, e) {
-    if (s == null || s < 0)
-        s = 0;
-    if (e == null || e > v.length)
-        e = v.length;
-    // can't use .constructor in case user-supplied
-    return new u8(v.subarray(s, e));
-};
-// error codes
-var ec = [
-    'unexpected EOF',
-    'invalid block type',
-    'invalid length/literal',
-    'invalid distance',
-    'stream finished',
-    'no stream handler',
-    , // determined by compression function
-    'no callback',
-    'invalid UTF-8 data',
-    'extra field too long',
-    'date not in range 1980-2099',
-    'filename too long',
-    'stream finishing',
-    'invalid zip data'
-    // determined by unknown compression method
-];
-var err = function (ind, msg, nt) {
-    var e = new Error(msg || ec[ind]);
-    e.code = ind;
-    if (Error.captureStackTrace)
-        Error.captureStackTrace(e, err);
-    if (!nt)
-        throw e;
-    return e;
-};
-// expands raw DEFLATE data
-var inflt = function (dat, st, buf, dict) {
-    // source length       dict length
-    var sl = dat.length, dl = dict ? dict.length : 0;
-    if (!sl || st.f && !st.l)
-        return buf || new u8(0);
-    var noBuf = !buf;
-    // have to estimate size
-    var resize = noBuf || st.i != 2;
-    // no state
-    var noSt = st.i;
-    // Assumes roughly 33% compression ratio average
-    if (noBuf)
-        buf = new u8(sl * 3);
-    // ensure buffer can fit at least l elements
-    var cbuf = function (l) {
-        var bl = buf.length;
-        // need to increase size to fit
-        if (l > bl) {
-            // Double or set to necessary, whichever is greater
-            var nbuf = new u8(Math.max(bl * 2, l));
-            nbuf.set(buf);
-            buf = nbuf;
-        }
-    };
-    //  last chunk         bitpos           bytes
-    var final = st.f || 0, pos = st.p || 0, bt = st.b || 0, lm = st.l, dm = st.d, lbt = st.m, dbt = st.n;
-    // total bits
-    var tbts = sl * 8;
-    do {
-        if (!lm) {
-            // BFINAL - this is only 1 when last chunk is next
-            final = bits(dat, pos, 1);
-            // type: 0 = no compression, 1 = fixed huffman, 2 = dynamic huffman
-            var type = bits(dat, pos + 1, 3);
-            pos += 3;
-            if (!type) {
-                // go to end of byte boundary
-                var s = shft(pos) + 4, l = dat[s - 4] | (dat[s - 3] << 8), t = s + l;
-                if (t > sl) {
-                    if (noSt)
-                        err(0);
-                    break;
-                }
-                // ensure size
-                if (resize)
-                    cbuf(bt + l);
-                // Copy over uncompressed data
-                buf.set(dat.subarray(s, t), bt);
-                // Get new bitpos, update byte count
-                st.b = bt += l, st.p = pos = t * 8, st.f = final;
-                continue;
-            }
-            else if (type == 1)
-                lm = flrm, dm = fdrm, lbt = 9, dbt = 5;
-            else if (type == 2) {
-                //  literal                            lengths
-                var hLit = bits(dat, pos, 31) + 257, hcLen = bits(dat, pos + 10, 15) + 4;
-                var tl = hLit + bits(dat, pos + 5, 31) + 1;
-                pos += 14;
-                // length+distance tree
-                var ldt = new u8(tl);
-                // code length tree
-                var clt = new u8(19);
-                for (var i = 0; i < hcLen; ++i) {
-                    // use index map to get real code
-                    clt[clim[i]] = bits(dat, pos + i * 3, 7);
-                }
-                pos += hcLen * 3;
-                // code lengths bits
-                var clb = max$1(clt), clbmsk = (1 << clb) - 1;
-                // code lengths map
-                var clm = hMap(clt, clb, 1);
-                for (var i = 0; i < tl;) {
-                    var r = clm[bits(dat, pos, clbmsk)];
-                    // bits read
-                    pos += r & 15;
-                    // symbol
-                    var s = r >> 4;
-                    // code length to copy
-                    if (s < 16) {
-                        ldt[i++] = s;
-                    }
-                    else {
-                        //  copy   count
-                        var c = 0, n = 0;
-                        if (s == 16)
-                            n = 3 + bits(dat, pos, 3), pos += 2, c = ldt[i - 1];
-                        else if (s == 17)
-                            n = 3 + bits(dat, pos, 7), pos += 3;
-                        else if (s == 18)
-                            n = 11 + bits(dat, pos, 127), pos += 7;
-                        while (n--)
-                            ldt[i++] = c;
-                    }
-                }
-                //    length tree                 distance tree
-                var lt = ldt.subarray(0, hLit), dt = ldt.subarray(hLit);
-                // max length bits
-                lbt = max$1(lt);
-                // max dist bits
-                dbt = max$1(dt);
-                lm = hMap(lt, lbt, 1);
-                dm = hMap(dt, dbt, 1);
-            }
-            else
-                err(1);
-            if (pos > tbts) {
-                if (noSt)
-                    err(0);
-                break;
-            }
-        }
-        // Make sure the buffer can hold this + the largest possible addition
-        // Maximum chunk size (practically, theoretically infinite) is 2^17
-        if (resize)
-            cbuf(bt + 131072);
-        var lms = (1 << lbt) - 1, dms = (1 << dbt) - 1;
-        var lpos = pos;
-        for (;; lpos = pos) {
-            // bits read, code
-            var c = lm[bits16(dat, pos) & lms], sym = c >> 4;
-            pos += c & 15;
-            if (pos > tbts) {
-                if (noSt)
-                    err(0);
-                break;
-            }
-            if (!c)
-                err(2);
-            if (sym < 256)
-                buf[bt++] = sym;
-            else if (sym == 256) {
-                lpos = pos, lm = null;
-                break;
-            }
-            else {
-                var add = sym - 254;
-                // no extra bits needed if less
-                if (sym > 264) {
-                    // index
-                    var i = sym - 257, b = fleb[i];
-                    add = bits(dat, pos, (1 << b) - 1) + fl[i];
-                    pos += b;
-                }
-                // dist
-                var d = dm[bits16(dat, pos) & dms], dsym = d >> 4;
-                if (!d)
-                    err(3);
-                pos += d & 15;
-                var dt = fd[dsym];
-                if (dsym > 3) {
-                    var b = fdeb[dsym];
-                    dt += bits16(dat, pos) & (1 << b) - 1, pos += b;
-                }
-                if (pos > tbts) {
-                    if (noSt)
-                        err(0);
-                    break;
-                }
-                if (resize)
-                    cbuf(bt + 131072);
-                var end = bt + add;
-                if (bt < dt) {
-                    var shift = dl - dt, dend = Math.min(dt, end);
-                    if (shift + bt < 0)
-                        err(3);
-                    for (; bt < dend; ++bt)
-                        buf[bt] = dict[shift + bt];
-                }
-                for (; bt < end; ++bt)
-                    buf[bt] = buf[bt - dt];
-            }
-        }
-        st.l = lm, st.p = lpos, st.b = bt, st.f = final;
-        if (lm)
-            final = 1, st.m = lbt, st.d = dm, st.n = dbt;
-    } while (!final);
-    // don't reallocate for streams or user buffers
-    return bt != buf.length && noBuf ? slc(buf, 0, bt) : buf.subarray(0, bt);
-};
-// empty
-var et = /*#__PURE__*/ new u8(0);
-// read 2 bytes
-var b2 = function (d, b) { return d[b] | (d[b + 1] << 8); };
-// read 4 bytes
-var b4 = function (d, b) { return (d[b] | (d[b + 1] << 8) | (d[b + 2] << 16) | (d[b + 3] << 24)) >>> 0; };
-// read 8 bytes
-var b8 = function (d, b) { return b4(d, b) + (b4(d, b + 4) * 4294967296); };
-function inflateSync(data, opts) {
-    return inflt(data, { i: 2 }, opts && opts.out, opts && opts.dictionary);
-}
-// text decoder
-var td = typeof TextDecoder != 'undefined' && /*#__PURE__*/ new TextDecoder();
-// text decoder stream
-var tds = 0;
-try {
-    td.decode(et, { stream: true });
-    tds = 1;
-}
-catch (e) { }
-// decode UTF8
-var dutf8 = function (d) {
-    for (var r = '', i = 0;;) {
-        var c = d[i++];
-        var eb = (c > 127) + (c > 223) + (c > 239);
-        if (i + eb > d.length)
-            return { s: r, r: slc(d, i - 1) };
-        if (!eb)
-            r += String.fromCharCode(c);
-        else if (eb == 3) {
-            c = ((c & 15) << 18 | (d[i++] & 63) << 12 | (d[i++] & 63) << 6 | (d[i++] & 63)) - 65536,
-                r += String.fromCharCode(55296 | (c >> 10), 56320 | (c & 1023));
-        }
-        else if (eb & 1)
-            r += String.fromCharCode((c & 31) << 6 | (d[i++] & 63));
-        else
-            r += String.fromCharCode((c & 15) << 12 | (d[i++] & 63) << 6 | (d[i++] & 63));
-    }
-};
-/**
- * Converts a Uint8Array to a string
- * @param dat The data to decode to string
- * @param latin1 Whether or not to interpret the data as Latin-1. This should
- *               not need to be true unless encoding to binary string.
- * @returns The original UTF-8/Latin-1 string
- */
-function strFromU8(dat, latin1) {
-    if (latin1) {
-        var r = '';
-        for (var i = 0; i < dat.length; i += 16384)
-            r += String.fromCharCode.apply(null, dat.subarray(i, i + 16384));
-        return r;
-    }
-    else if (td) {
-        return td.decode(dat);
-    }
-    else {
-        var _a = dutf8(dat), s = _a.s, r = _a.r;
-        if (r.length)
-            err(8);
-        return s;
-    }
-}
-// skip local zip header
-var slzh = function (d, b) { return b + 30 + b2(d, b + 26) + b2(d, b + 28); };
-// read zip header
-var zh = function (d, b, z) {
-    var fnl = b2(d, b + 28), efl = b2(d, b + 30), fn = strFromU8(d.subarray(b + 46, b + 46 + fnl), !(b2(d, b + 8) & 2048)), es = b + 46 + fnl;
-    var _a = z64hs(d, es, efl, z, b4(d, b + 20), b4(d, b + 24), b4(d, b + 42)), sc = _a[0], su = _a[1], off = _a[2];
-    return [b2(d, b + 10), sc, su, fn, es + efl + b2(d, b + 32), off];
-};
-// read zip64 header sizes
-var z64hs = function (d, b, l, z, sc, su, off) {
-    var nsc = sc == 4294967295, nsu = su == 4294967295, noff = off == 4294967295, e = b + l;
-    var nf = nsc + nsu + noff;
-    if (z && nf) {
-        for (; b + 4 < e; b += 4 + b2(d, b + 2)) {
-            if (b2(d, b) == 1) {
-                return [
-                    nsc ? b8(d, b + 4 + 8 * nsu) : sc,
-                    nsu ? b8(d, b + 4) : su,
-                    noff ? b8(d, b + 4 + 8 * (nsu + nsc)) : off,
-                    1
-                ];
-            }
-        }
-        // z == 2 for unknown whether or not zip64
-        if (z < 2)
-            err(13);
-    }
-    return [sc, su, off, 0];
-};
-/**
- * Synchronously decompresses a ZIP archive. Prefer using `unzip` for better
- * performance with more than one file.
- * @param data The raw compressed ZIP file
- * @param opts The ZIP extraction options
- * @returns The decompressed files
- */
-function unzipSync(data, opts) {
-    var files = {};
-    var e = data.length - 22;
-    for (; b4(data, e) != 0x6054B50; --e) {
-        if (!e || data.length - e > 65558)
-            err(13);
-    }
-    var c = b2(data, e + 8);
-    if (!c)
-        return {};
-    var o = b4(data, e + 16);
-    var z = b4(data, e - 20) == 0x7064B50;
-    if (z) {
-        var ze = b4(data, e - 12);
-        z = b4(data, ze) == 0x6064B50;
-        if (z) {
-            c = b4(data, ze + 32);
-            o = b4(data, ze + 48);
-        }
-    }
-    var fltr = opts && opts.filter;
-    for (var i = 0; i < c; ++i) {
-        var _a = zh(data, o, z), c_2 = _a[0], sc = _a[1], su = _a[2], fn = _a[3], no = _a[4], off = _a[5], b = slzh(data, off);
-        o = no;
-        if (!fltr || fltr({
-            name: fn,
-            size: sc,
-            originalSize: su,
-            compression: c_2
-        })) {
-            if (!c_2)
-                files[fn] = slc(data, b, b + sc);
-            else if (c_2 == 8)
-                files[fn] = inflateSync(data.subarray(b, b + sc), { out: new u8(su) });
-            else
-                err(14, 'unknown compression type ' + c_2);
-        }
-    }
-    return files;
-}
-
 function ensureFolder$1(adapter, folder) {
     return __awaiter(this, void 0, void 0, function* () {
         const parts = folder.split("/").filter((p) => p.length > 0);
@@ -35099,6 +36465,76 @@ function ensureFolder$1(adapter, folder) {
         }
     });
 }
+/** Hash (and, for a hash-less record, mtime evidence) of a file on disk. */
+function readDiskState(app, full, installedAt) {
+    var _a;
+    return __awaiter(this, void 0, void 0, function* () {
+        const adapter = app.vault.adapter;
+        if (!(yield adapter.exists(full))) {
+            return { hash: null, modifiedSinceInstall: false };
+        }
+        const stat = yield adapter.stat(full);
+        return {
+            hash: yield sha256Hex(yield adapter.readBinary(full)),
+            modifiedSinceInstall: modifiedSinceInstall((_a = stat === null || stat === void 0 ? void 0 : stat.mtime) !== null && _a !== void 0 ? _a : null, installedAt),
+        };
+    });
+}
+/**
+ * Write one installed file without clobbering a user's change to it (#48);
+ * see {@link planFileWrite}. Records into `out`.
+ */
+function writeInstalledFile(app, destFolder, rel, ab, baseline, out) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const adapter = app.vault.adapter;
+        const full = `${destFolder}/${rel}`;
+        const incomingHash = yield sha256Hex(ab);
+        const plan = planFileWrite({
+            disk: yield readDiskState(app, full, baseline.installedAt[rel]),
+            incomingHash,
+            tracked: baseline.tracked.has(rel),
+            recordedHash: baseline.hashes[rel],
+        });
+        out.files.push(rel);
+        out.hashes[rel] = incomingHash;
+        if (plan === "skip-same") {
+            yield removeStaleNew(app, full, baseline.hashes[rel + PRESERVED_SUFFIX]);
+            return;
+        }
+        const parent = full.split("/").slice(0, -1).join("/");
+        if (parent)
+            yield ensureFolder$1(adapter, parent);
+        if (plan === "write") {
+            yield adapter.writeBinary(full, ab);
+            yield removeStaleNew(app, full, baseline.hashes[rel + PRESERVED_SUFFIX]);
+            return;
+        }
+        yield adapter.writeBinary(full + PRESERVED_SUFFIX, ab);
+        out.files.push(rel + PRESERVED_SUFFIX);
+        out.hashes[rel + PRESERVED_SUFFIX] = incomingHash;
+        out.preserved.push(rel);
+    });
+}
+/**
+ * Once a file installs normally again, drop the `.new` an earlier install left
+ * beside it — if it is still exactly what that install wrote.
+ */
+function removeStaleNew(app, full, recordedHash) {
+    return __awaiter(this, void 0, void 0, function* () {
+        if (recordedHash === undefined)
+            return;
+        const stale = full + PRESERVED_SUFFIX;
+        const disk = yield readDiskState(app, stale, undefined);
+        if (disk.hash === recordedHash)
+            yield app.vault.adapter.remove(stale);
+    });
+}
+/** The manifest-derived baseline for `destFolder` (empty when none exists). */
+function readInstallBaseline(app, destFolder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        return installBaseline(yield readInstalledManifest(app, destFolder));
+    });
+}
 /**
  * Download the Pandoc toolchain zip from `url` and extract it into the
  * vault-relative `destFolder`. Files (filters, templates, CSL, defaults) are
@@ -35106,7 +36542,7 @@ function ensureFolder$1(adapter, folder) {
  * they are not bundled with the plugin. A single wrapping top-level directory
  * (as in GitHub source zipballs) is stripped.
  */
-function downloadPandocAssets(app, url, destFolder) {
+function downloadPandocAssets(app, url, destFolder, baseline) {
     return __awaiter(this, void 0, void 0, function* () {
         if (!url || !/^https?:\/\//.test(url)) {
             throw new Error("No valid assets URL configured. Set the 'Pandoc assets URL' in Longform settings to a link to the toolchain zip.");
@@ -35125,28 +36561,38 @@ function downloadPandocAssets(app, url, destFolder) {
         }
         const filePaths = Object.keys(files).filter((p) => !p.endsWith("/"));
         const top = commonTopDir(filePaths);
-        const adapter = app.vault.adapter;
-        const written = [];
+        const base = baseline !== null && baseline !== void 0 ? baseline : (yield readInstallBaseline(app, destFolder));
+        const out = { files: [], hashes: {}, preserved: [] };
+        let count = 0;
         for (const p of filePaths) {
             const rel = top ? p.slice(top.length) : p;
             if (!rel)
                 continue;
-            const full = `${destFolder}/${rel}`;
-            const parent = full.split("/").slice(0, -1).join("/");
-            if (parent)
-                yield ensureFolder$1(adapter, parent);
             const data = files[p];
             const ab = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-            yield adapter.writeBinary(full, ab);
-            written.push(rel);
+            yield writeInstalledFile(app, destFolder, rel, ab, base, out);
+            count += 1;
         }
-        if (written.length === 0) {
+        if (count === 0) {
             throw new Error("The downloaded archive contained no files.");
         }
-        return { count: written.length, dest: destFolder, files: written };
+        return Object.assign({ count, dest: destFolder }, out);
     });
 }
-/** SHA-256 of an ArrayBuffer as lowercase hex, for optional integrity checks. */
+/**
+ * The setup modal's "Download assets": the toolchain zip, recorded in the
+ * install manifest like a market install (see {@link TOOLCHAIN_RECORD_ID}), so
+ * files it overwrote or parked at `<path>.new` stay accounted for.
+ */
+function installToolchainZip(app, url, destFolder) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const manifest = yield readInstalledManifest(app, destFolder);
+        const result = yield downloadPandocAssets(app, url, destFolder, installBaseline(manifest));
+        yield writeInstalledManifest(app, destFolder, manifestAfterToolchainDownload(manifest, result, new Date().toISOString()));
+        return result;
+    });
+}
+/** SHA-256 of an ArrayBuffer as lowercase hex. */
 function sha256Hex(ab) {
     return __awaiter(this, void 0, void 0, function* () {
         const digest = yield crypto.subtle.digest("SHA-256", ab);
@@ -35241,10 +36687,9 @@ function writeInstalledManifest(app, destFolder, manifest) {
     });
 }
 /** Download one asset's files into `destFolder`; verify sha256 when provided. */
-function installMarketAsset(app, asset, destFolder) {
+function installMarketAsset(app, asset, destFolder, baseline) {
     return __awaiter(this, void 0, void 0, function* () {
-        const adapter = app.vault.adapter;
-        const written = [];
+        const out = { files: [], hashes: {}, preserved: [] };
         for (const file of asset.files) {
             const res = yield obsidian.requestUrl({ url: file.download, method: "GET" });
             if (res.status < 200 || res.status >= 300) {
@@ -35257,40 +36702,41 @@ function installMarketAsset(app, asset, destFolder) {
                     throw new Error(`Checksum mismatch for ${file.path}.`);
                 }
             }
-            const full = `${destFolder}/${file.path}`;
-            const parent = full.split("/").slice(0, -1).join("/");
-            if (parent)
-                yield ensureFolder$1(adapter, parent);
-            yield adapter.writeBinary(full, ab);
-            written.push(file.path);
+            yield writeInstalledFile(app, destFolder, file.path, ab, baseline, out);
         }
-        return written;
+        return out;
     });
 }
 /**
  * Install an asset and its `requires` closure (recipe → its filters/template/csl),
- * recording each in the install manifest. Returns the added/updated records.
+ * recording each in the install manifest. Returns the added/updated records
+ * and the files kept because the user had changed them.
  */
 function installAssetWithDeps(app, index, assetId, destFolder) {
     return __awaiter(this, void 0, void 0, function* () {
         const set = resolveInstallSet(index, assetId);
-        const manifest = yield readInstalledManifest(app, destFolder);
+        let manifest = yield readInstalledManifest(app, destFolder);
+        const baseline = installBaseline(manifest);
         const records = [];
+        const preserved = [];
         for (const asset of set) {
-            const files = yield installMarketAsset(app, asset, destFolder);
+            const out = yield installMarketAsset(app, asset, destFolder, baseline);
             const rec = {
                 id: asset.id,
                 version: asset.version,
                 kind: "asset",
-                files,
+                files: out.files,
                 installedAt: new Date().toISOString(),
                 presetDeps: presetSystemDeps([asset]),
+                hashes: out.hashes,
             };
             manifest[asset.id] = rec;
             records.push(rec);
+            preserved.push(...out.preserved);
         }
+        manifest = releaseKeptFiles(manifest, [].concat(...records.map((r) => r.files)));
         yield writeInstalledManifest(app, destFolder, manifest);
-        return records;
+        return { records, preserved };
     });
 }
 /**
@@ -35301,8 +36747,8 @@ function installAssetWithDeps(app, index, assetId, destFolder) {
  */
 function installMarketBundle(app, bundle, destFolder, index) {
     return __awaiter(this, void 0, void 0, function* () {
-        const { files } = yield downloadPandocAssets(app, bundle.download, destFolder);
         const manifest = yield readInstalledManifest(app, destFolder);
+        const { files, hashes, preserved } = yield downloadPandocAssets(app, bundle.download, destFolder, installBaseline(manifest));
         const rec = {
             id: bundle.id,
             version: bundle.version,
@@ -35310,69 +36756,90 @@ function installMarketBundle(app, bundle, destFolder, index) {
             files,
             installedAt: new Date().toISOString(),
             presetDeps: presetSystemDeps(bundledAssets(index, bundle)),
+            hashes,
         };
         manifest[bundle.id] = rec;
-        yield writeInstalledManifest(app, destFolder, manifest);
-        return rec;
+        yield writeInstalledManifest(app, destFolder, releaseKeptFiles(manifest, files));
+        return { record: rec, preserved };
     });
 }
 /**
  * Remove an installed asset/bundle's files and its manifest record. If the item
  * isn't tracked in the manifest (present on disk but untracked), `fallbackFiles`
- * (e.g. the index's declared file paths) are removed instead. Returns how many
- * files were deleted.
+ * (e.g. the index's declared file paths) are removed instead. A file the user
+ * changed since it was installed is kept (see {@link planFileRemove}) and stays
+ * tracked (see {@link manifestAfterUninstall}).
+ * Returns how many files were deleted and which were kept.
  */
 function uninstallMarketItem(app, destFolder, id, fallbackFiles = []) {
+    var _a;
     return __awaiter(this, void 0, void 0, function* () {
         const manifest = yield readInstalledManifest(app, destFolder);
         const rec = manifest[id];
         const files = rec ? rec.files : fallbackFiles;
         let removed = 0;
+        const kept = [];
         for (const rel of files) {
             const full = `${destFolder}/${rel}`;
-            if (yield app.vault.adapter.exists(full)) {
+            const disk = yield readDiskState(app, full, rec === null || rec === void 0 ? void 0 : rec.installedAt);
+            const plan = planFileRemove(disk, (_a = rec === null || rec === void 0 ? void 0 : rec.hashes) === null || _a === void 0 ? void 0 : _a[rel]);
+            if (plan === "remove") {
                 yield app.vault.adapter.remove(full);
                 removed += 1;
             }
+            else if (plan === "keep") {
+                kept.push(rel);
+            }
         }
         if (rec) {
-            delete manifest[id];
-            yield writeInstalledManifest(app, destFolder, manifest);
+            // Kept files stay in the manifest, so a reinstall still protects them.
+            yield writeInstalledManifest(app, destFolder, manifestAfterUninstall(manifest, id, kept));
         }
-        return removed;
+        return { removed, kept };
     });
+}
+
+/**
+ * List the asset files an install or uninstall left alone because the user had
+ * changed them (#48). `key` is `market.preservedFiles` (a `.new` was written
+ * beside each) or `market.keptFiles` (uninstall).
+ */
+function noticeKeptFiles(key, files) {
+    if (files.length === 0)
+        return;
+    new obsidian.Notice(translate(key, { count: String(files.length), files: files.join("\n") }), 15000);
 }
 
 /* src/view/pandoc-market/PandocMarket.svelte generated by Svelte v3.49.0 */
 
-function add_css$c(target) {
+function add_css$d(target) {
 	append_styles(target, "svelte-xbtpff", ".market.svelte-xbtpff{display:flex;flex-direction:column;gap:var(--size-4-2)}.market-header.svelte-xbtpff{display:flex;align-items:center;gap:var(--size-4-2);padding-bottom:var(--size-4-2);border-bottom:1px solid var(--background-modifier-border)}.market-heading.svelte-xbtpff{display:flex;align-items:baseline;gap:var(--size-2-3);margin-right:auto}.market-title.svelte-xbtpff{font-weight:700;font-size:var(--font-ui-large, 1.1em);color:var(--text-normal)}.market-count.svelte-xbtpff{font-size:var(--font-ui-smaller);color:var(--text-faint)}.market-search.svelte-xbtpff{flex:1;max-width:260px;background:var(--background-primary);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:4px var(--size-2-3);color:var(--text-normal);font-size:var(--font-ui-smaller)}.market-reload.svelte-xbtpff{font-size:var(--font-ui-smaller);color:var(--text-muted);background:var(--background-primary);border:1px solid var(--background-modifier-border);border-radius:var(--radius-s);padding:4px var(--size-4-2);cursor:pointer}.market-reload.svelte-xbtpff:hover:not(:disabled){color:var(--text-normal);border-color:var(--text-accent)}.market-note.svelte-xbtpff{font-size:var(--font-smallest);color:var(--text-muted);background:var(--background-secondary);border-radius:var(--radius-s);padding:var(--size-2-2) var(--size-2-3)}.market-section-title.svelte-xbtpff{font-size:var(--font-ui-smaller);font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-faint);margin-top:var(--size-2-2)}.market-grid.svelte-xbtpff{display:grid;grid-template-columns:repeat(auto-fill, minmax(230px, 1fr));gap:var(--size-2-3)}.card.svelte-xbtpff{display:flex;flex-direction:column;gap:var(--size-2-2);padding:var(--size-4-2) var(--size-4-3);background:var(--background-secondary-alt);border:1px solid var(--background-modifier-border);border-radius:var(--radius-m, 8px)}.card-bundle.svelte-xbtpff{border-color:color-mix(in srgb, var(--interactive-accent) 40%, var(--background-modifier-border))}.card-top.svelte-xbtpff{display:flex;align-items:baseline;gap:var(--size-2-2);flex-wrap:wrap}.card-name.svelte-xbtpff{font-weight:600;color:var(--text-normal);font-size:var(--font-ui-small)}.card-version.svelte-xbtpff{margin-left:auto;font-size:var(--font-smallest);color:var(--text-faint);font-variant-numeric:tabular-nums}.card-type.svelte-xbtpff{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.04em;padding:1px 5px;border-radius:var(--radius-s);color:var(--text-on-accent);background:var(--text-accent)}.type-filter.svelte-xbtpff{background:var(--color-green, #4caf7d)}.type-template.svelte-xbtpff{background:var(--color-orange, #e0883a)}.type-csl.svelte-xbtpff{background:var(--color-cyan, #3a9bd0)}.card-desc.svelte-xbtpff{margin:0;font-size:var(--font-ui-smaller);color:var(--text-muted)}.card-meta.svelte-xbtpff{font-size:var(--font-smallest);color:var(--text-faint)}.card-sysdep.svelte-xbtpff{color:var(--text-warning, var(--text-muted))}.card-actions.svelte-xbtpff{margin-top:auto;display:flex;justify-content:flex-end}.card-install.svelte-xbtpff{font-weight:600;font-size:var(--font-ui-smaller);color:var(--text-on-accent);background:var(--interactive-accent);border:none;border-radius:var(--radius-s);padding:4px var(--size-4-3);cursor:pointer;transition:background-color 0.15s}.card-install.svelte-xbtpff:hover:not(:disabled){background:var(--interactive-accent-hover)}.card-install.is-installed.svelte-xbtpff{background:transparent;color:var(--interactive-success);border:1px solid color-mix(in srgb, var(--interactive-success) 45%, transparent);cursor:default}.card-install.svelte-xbtpff:disabled:not(.is-installed){opacity:0.6;cursor:default}.installed-check.svelte-xbtpff{color:var(--interactive-success);font-weight:800;font-size:var(--font-ui-smaller)}.clickable.svelte-xbtpff{cursor:pointer;transition:border-color 0.15s, transform 0.1s}.clickable.svelte-xbtpff:hover{border-color:var(--text-accent)}.card-hint.svelte-xbtpff{font-size:var(--font-smallest);color:var(--text-faint);font-style:italic}.detail.svelte-xbtpff{display:flex;flex-direction:column;gap:var(--size-2-3)}.detail-back.svelte-xbtpff{align-self:flex-start;background:transparent;border:none;color:var(--text-muted);cursor:pointer;padding:2px 0;font-size:var(--font-ui-smaller)}.detail-back.svelte-xbtpff:hover{color:var(--text-normal)}.detail-head.svelte-xbtpff{display:flex;align-items:baseline;gap:var(--size-2-2);flex-wrap:wrap}.detail-name.svelte-xbtpff{font-weight:700;font-size:var(--font-ui-large);color:var(--text-normal)}.detail-desc.svelte-xbtpff{margin:0;color:var(--text-muted);font-size:var(--font-ui-small)}.detail-readme.svelte-xbtpff{border-top:1px solid var(--background-modifier-border);padding-top:var(--size-4-2);margin-top:var(--size-2-2);max-height:52vh;overflow-y:auto}.detail-readme.svelte-xbtpff h1,.detail-readme.svelte-xbtpff h2,.detail-readme.svelte-xbtpff h3{margin-top:var(--size-4-3)}.detail-readme.svelte-xbtpff pre{overflow-x:auto}.detail-readme.svelte-xbtpff img{max-width:100%}.detail-actions.svelte-xbtpff{display:flex;justify-content:flex-end;align-items:center;gap:var(--size-2-3)}.detail-uninstall.svelte-xbtpff{margin-right:auto;font-size:var(--font-ui-smaller);color:var(--text-error);background:transparent;border:1px solid color-mix(in srgb, var(--text-error) 45%, transparent);border-radius:var(--radius-s);padding:4px var(--size-4-3);cursor:pointer}.detail-uninstall.svelte-xbtpff:hover:not(:disabled){background:color-mix(in srgb, var(--text-error) 12%, transparent)}.detail-uninstall.svelte-xbtpff:disabled{opacity:0.5;cursor:default}.market-state.svelte-xbtpff{display:flex;flex-direction:column;align-items:center;gap:var(--size-2-2);padding:var(--size-4-6, 24px);color:var(--text-muted);font-size:var(--font-ui-smaller)}.market-error-detail.svelte-xbtpff{font-size:var(--font-smallest);color:var(--text-error);font-family:var(--font-monospace);word-break:break-word}.market-spinner.svelte-xbtpff{width:22px;height:22px;border-radius:50%;border:3px solid var(--background-modifier-border);border-top-color:var(--text-accent);animation:svelte-xbtpff-market-spin 0.8s linear infinite}@keyframes svelte-xbtpff-market-spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion: reduce){.market-spinner.svelte-xbtpff{animation:none}}");
 }
 
 function get_each_context$5(ctx, list, i) {
 	const child_ctx = ctx.slice();
-	child_ctx[39] = list[i];
-	const constants_0 = installStateFor(/*manifest*/ child_ctx[3], /*a*/ child_ctx[39].id, /*a*/ child_ctx[39].version, /*present*/ child_ctx[4]);
-	child_ctx[40] = constants_0;
+	child_ctx[41] = list[i];
+	const constants_0 = installStateFor(/*manifest*/ child_ctx[3], /*a*/ child_ctx[41].id, /*a*/ child_ctx[41].version, /*present*/ child_ctx[4]);
+	child_ctx[42] = constants_0;
 	return child_ctx;
 }
 
 function get_each_context_1$1(ctx, list, i) {
 	const child_ctx = ctx.slice();
-	child_ctx[43] = list[i];
-	const constants_0 = installStateFor(/*manifest*/ child_ctx[3], /*b*/ child_ctx[43].id, /*b*/ child_ctx[43].version, /*present*/ child_ctx[4]);
-	child_ctx[40] = constants_0;
+	child_ctx[45] = list[i];
+	const constants_0 = installStateFor(/*manifest*/ child_ctx[3], /*b*/ child_ctx[45].id, /*b*/ child_ctx[45].version, /*present*/ child_ctx[4]);
+	child_ctx[42] = constants_0;
 	return child_ctx;
 }
 
 function get_if_ctx(ctx) {
 	const child_ctx = ctx.slice();
 	const constants_0 = installStateFor(/*manifest*/ child_ctx[3], /*detail*/ child_ctx[7].id, /*detail*/ child_ctx[7].version, /*present*/ child_ctx[4]);
-	child_ctx[38] = constants_0;
+	child_ctx[40] = constants_0;
 	return child_ctx;
 }
 
-// (194:6) {#if index}
+// (213:6) {#if index}
 function create_if_block_24(ctx) {
 	let span;
 	let t0_value = /*index*/ ctx[0].bundles.length + /*index*/ ctx[0].assets.length + "";
@@ -35405,7 +36872,7 @@ function create_if_block_24(ctx) {
 	};
 }
 
-// (212:2) {#if !Platform.isDesktop}
+// (231:2) {#if !Platform.isDesktop}
 function create_if_block_23(ctx) {
 	let div;
 	let t_1_value = /*$t*/ ctx[12]("market.desktopNote") + "";
@@ -35430,7 +36897,7 @@ function create_if_block_23(ctx) {
 	};
 }
 
-// (284:18) 
+// (303:18) 
 function create_if_block_12(ctx) {
 	let t0;
 	let t1;
@@ -35507,7 +36974,7 @@ function create_if_block_12(ctx) {
 	};
 }
 
-// (224:28) 
+// (243:28) 
 function create_if_block_2$7(ctx) {
 	let div3;
 	let button0;
@@ -35521,7 +36988,7 @@ function create_if_block_2$7(ctx) {
 	let t3;
 	let span0_class_value;
 	let t4;
-	let show_if = /*isPresent*/ ctx[17](/*dstate*/ ctx[38]);
+	let show_if = /*isPresent*/ ctx[17](/*dstate*/ ctx[40]);
 	let t5;
 	let span1;
 	let t6_value = /*detail*/ ctx[7].name + "";
@@ -35544,7 +37011,7 @@ function create_if_block_2$7(ctx) {
 
 	let t17_value = (/*busy*/ ctx[6][/*detail*/ ctx[7].id]
 	? /*$t*/ ctx[12]("market.installing")
-	: /*stateLabel*/ ctx[16](/*dstate*/ ctx[38])) + "";
+	: /*stateLabel*/ ctx[16](/*dstate*/ ctx[40])) + "";
 
 	let t17;
 	let button1_disabled_value;
@@ -35565,7 +37032,7 @@ function create_if_block_2$7(ctx) {
 
 	let current_block_type = select_block_type_1(ctx);
 	let if_block5 = current_block_type(ctx);
-	let if_block6 = /*dstate*/ ctx[38] !== "not-installed" && create_if_block_3$3(ctx);
+	let if_block6 = /*dstate*/ ctx[40] !== "not-installed" && create_if_block_3$3(ctx);
 
 	return {
 		c() {
@@ -35610,8 +37077,8 @@ function create_if_block_2$7(ctx) {
 			attr(div0, "class", "detail-head svelte-xbtpff");
 			attr(div1, "class", "detail-readme svelte-xbtpff");
 			attr(button1, "class", "card-install svelte-xbtpff");
-			button1.disabled = button1_disabled_value = /*busy*/ ctx[6][/*detail*/ ctx[7].id] || /*dstate*/ ctx[38] === "installed";
-			toggle_class(button1, "is-installed", /*dstate*/ ctx[38] === "installed");
+			button1.disabled = button1_disabled_value = /*busy*/ ctx[6][/*detail*/ ctx[7].id] || /*dstate*/ ctx[40] === "installed";
+			toggle_class(button1, "is-installed", /*dstate*/ ctx[40] === "installed");
 			attr(div2, "class", "detail-actions svelte-xbtpff");
 			attr(div3, "class", "detail svelte-xbtpff");
 		},
@@ -35668,7 +37135,7 @@ function create_if_block_2$7(ctx) {
 				attr(span0, "class", span0_class_value);
 			}
 
-			if (dirty[0] & /*manifest, detail, present*/ 152) show_if = /*isPresent*/ ctx[17](/*dstate*/ ctx[38]);
+			if (dirty[0] & /*manifest, detail, present*/ 152) show_if = /*isPresent*/ ctx[17](/*dstate*/ ctx[40]);
 
 			if (show_if) {
 				if (if_block0) {
@@ -35750,7 +37217,7 @@ function create_if_block_2$7(ctx) {
 				}
 			}
 
-			if (/*dstate*/ ctx[38] !== "not-installed") {
+			if (/*dstate*/ ctx[40] !== "not-installed") {
 				if (if_block6) {
 					if_block6.p(ctx, dirty);
 				} else {
@@ -35765,14 +37232,14 @@ function create_if_block_2$7(ctx) {
 
 			if (dirty[0] & /*busy, detail, $t, manifest, present*/ 4312 && t17_value !== (t17_value = (/*busy*/ ctx[6][/*detail*/ ctx[7].id]
 			? /*$t*/ ctx[12]("market.installing")
-			: /*stateLabel*/ ctx[16](/*dstate*/ ctx[38])) + "")) set_data(t17, t17_value);
+			: /*stateLabel*/ ctx[16](/*dstate*/ ctx[40])) + "")) set_data(t17, t17_value);
 
-			if (dirty[0] & /*busy, detail, manifest, present*/ 216 && button1_disabled_value !== (button1_disabled_value = /*busy*/ ctx[6][/*detail*/ ctx[7].id] || /*dstate*/ ctx[38] === "installed")) {
+			if (dirty[0] & /*busy, detail, manifest, present*/ 216 && button1_disabled_value !== (button1_disabled_value = /*busy*/ ctx[6][/*detail*/ ctx[7].id] || /*dstate*/ ctx[40] === "installed")) {
 				button1.disabled = button1_disabled_value;
 			}
 
 			if (dirty[0] & /*manifest, detail, present*/ 152) {
-				toggle_class(button1, "is-installed", /*dstate*/ ctx[38] === "installed");
+				toggle_class(button1, "is-installed", /*dstate*/ ctx[40] === "installed");
 			}
 		},
 		d(detaching) {
@@ -35790,7 +37257,7 @@ function create_if_block_2$7(ctx) {
 	};
 }
 
-// (218:18) 
+// (237:18) 
 function create_if_block_1$8(ctx) {
 	let div;
 	let p0;
@@ -35850,8 +37317,8 @@ function create_if_block_1$8(ctx) {
 	};
 }
 
-// (216:2) {#if loading}
-function create_if_block$b(ctx) {
+// (235:2) {#if loading}
+function create_if_block$c(ctx) {
 	let div;
 
 	return {
@@ -35870,7 +37337,7 @@ function create_if_block$b(ctx) {
 	};
 }
 
-// (285:4) {#if bundles.length}
+// (304:4) {#if bundles.length}
 function create_if_block_19(ctx) {
 	let div0;
 	let t0_value = /*$t*/ ctx[12]("market.bundles") + "";
@@ -35880,7 +37347,7 @@ function create_if_block_19(ctx) {
 	let each_blocks = [];
 	let each_1_lookup = new Map();
 	let each_value_1 = /*bundles*/ ctx[11];
-	const get_key = ctx => /*b*/ ctx[43].id;
+	const get_key = ctx => /*b*/ ctx[45].id;
 
 	for (let i = 0; i < each_value_1.length; i += 1) {
 		let child_ctx = get_each_context_1$1(ctx, each_value_1, i);
@@ -35932,7 +37399,7 @@ function create_if_block_19(ctx) {
 	};
 }
 
-// (292:14) {#if isPresent(state)}
+// (311:14) {#if isPresent(state)}
 function create_if_block_22(ctx) {
 	let span;
 	let t_1;
@@ -35960,10 +37427,10 @@ function create_if_block_22(ctx) {
 	};
 }
 
-// (296:12) {#if b.description}
+// (315:12) {#if b.description}
 function create_if_block_21(ctx) {
 	let p;
-	let t_1_value = /*b*/ ctx[43].description + "";
+	let t_1_value = /*b*/ ctx[45].description + "";
 	let t_1;
 
 	return {
@@ -35977,7 +37444,7 @@ function create_if_block_21(ctx) {
 			append(p, t_1);
 		},
 		p(ctx, dirty) {
-			if (dirty[0] & /*bundles*/ 2048 && t_1_value !== (t_1_value = /*b*/ ctx[43].description + "")) set_data(t_1, t_1_value);
+			if (dirty[0] & /*bundles*/ 2048 && t_1_value !== (t_1_value = /*b*/ ctx[45].description + "")) set_data(t_1, t_1_value);
 		},
 		d(detaching) {
 			if (detaching) detach(p);
@@ -35985,10 +37452,10 @@ function create_if_block_21(ctx) {
 	};
 }
 
-// (297:12) {#if b.assets?.length}
+// (316:12) {#if b.assets?.length}
 function create_if_block_20(ctx) {
 	let div;
-	let t0_value = /*b*/ ctx[43].assets.length + "";
+	let t0_value = /*b*/ ctx[45].assets.length + "";
 	let t0;
 	let t1;
 	let t2_value = /*$t*/ ctx[12]("market.assetsIncluded") + "";
@@ -36009,7 +37476,7 @@ function create_if_block_20(ctx) {
 			append(div, t2);
 		},
 		p(ctx, dirty) {
-			if (dirty[0] & /*bundles*/ 2048 && t0_value !== (t0_value = /*b*/ ctx[43].assets.length + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*bundles*/ 2048 && t0_value !== (t0_value = /*b*/ ctx[45].assets.length + "")) set_data(t0, t0_value);
 			if (dirty[0] & /*$t*/ 4096 && t2_value !== (t2_value = /*$t*/ ctx[12]("market.assetsIncluded") + "")) set_data(t2, t2_value);
 		},
 		d(detaching) {
@@ -36018,19 +37485,19 @@ function create_if_block_20(ctx) {
 	};
 }
 
-// (288:8) {#each bundles as b (b.id)}
+// (307:8) {#each bundles as b (b.id)}
 function create_each_block_1$1(key_1, ctx) {
 	let div2;
 	let div0;
-	let show_if = /*isPresent*/ ctx[17](/*state*/ ctx[40]);
+	let show_if = /*isPresent*/ ctx[17](/*state*/ ctx[42]);
 	let t0;
 	let span0;
-	let t1_value = /*b*/ ctx[43].name + "";
+	let t1_value = /*b*/ ctx[45].name + "";
 	let t1;
 	let t2;
 	let span1;
 	let t3;
-	let t4_value = /*b*/ ctx[43].version + "";
+	let t4_value = /*b*/ ctx[45].version + "";
 	let t4;
 	let t5;
 	let t6;
@@ -36038,9 +37505,9 @@ function create_each_block_1$1(key_1, ctx) {
 	let div1;
 	let button;
 
-	let t8_value = (/*busy*/ ctx[6][/*b*/ ctx[43].id]
+	let t8_value = (/*busy*/ ctx[6][/*b*/ ctx[45].id]
 	? /*$t*/ ctx[12]("market.installing")
-	: /*stateLabel*/ ctx[16](/*state*/ ctx[40])) + "";
+	: /*stateLabel*/ ctx[16](/*state*/ ctx[42])) + "";
 
 	let t8;
 	let button_disabled_value;
@@ -36048,15 +37515,15 @@ function create_each_block_1$1(key_1, ctx) {
 	let mounted;
 	let dispose;
 	let if_block0 = show_if && create_if_block_22(ctx);
-	let if_block1 = /*b*/ ctx[43].description && create_if_block_21(ctx);
-	let if_block2 = /*b*/ ctx[43].assets?.length && create_if_block_20(ctx);
+	let if_block1 = /*b*/ ctx[45].description && create_if_block_21(ctx);
+	let if_block2 = /*b*/ ctx[45].assets?.length && create_if_block_20(ctx);
 
 	function click_handler_3() {
-		return /*click_handler_3*/ ctx[26](/*b*/ ctx[43]);
+		return /*click_handler_3*/ ctx[26](/*b*/ ctx[45]);
 	}
 
 	function click_handler_4() {
-		return /*click_handler_4*/ ctx[27](/*b*/ ctx[43]);
+		return /*click_handler_4*/ ctx[27](/*b*/ ctx[45]);
 	}
 
 	return {
@@ -36086,8 +37553,8 @@ function create_each_block_1$1(key_1, ctx) {
 			attr(span1, "class", "card-version svelte-xbtpff");
 			attr(div0, "class", "card-top svelte-xbtpff");
 			attr(button, "class", "card-install svelte-xbtpff");
-			button.disabled = button_disabled_value = /*busy*/ ctx[6][/*b*/ ctx[43].id] || /*state*/ ctx[40] === "installed";
-			toggle_class(button, "is-installed", /*state*/ ctx[40] === "installed");
+			button.disabled = button_disabled_value = /*busy*/ ctx[6][/*b*/ ctx[45].id] || /*state*/ ctx[42] === "installed";
+			toggle_class(button, "is-installed", /*state*/ ctx[42] === "installed");
 			attr(div1, "class", "card-actions svelte-xbtpff");
 			attr(div2, "class", "card card-bundle clickable svelte-xbtpff");
 			this.first = div2;
@@ -36124,7 +37591,7 @@ function create_each_block_1$1(key_1, ctx) {
 		},
 		p(new_ctx, dirty) {
 			ctx = new_ctx;
-			if (dirty[0] & /*manifest, bundles, present*/ 2072) show_if = /*isPresent*/ ctx[17](/*state*/ ctx[40]);
+			if (dirty[0] & /*manifest, bundles, present*/ 2072) show_if = /*isPresent*/ ctx[17](/*state*/ ctx[42]);
 
 			if (show_if) {
 				if (if_block0) {
@@ -36139,10 +37606,10 @@ function create_each_block_1$1(key_1, ctx) {
 				if_block0 = null;
 			}
 
-			if (dirty[0] & /*bundles*/ 2048 && t1_value !== (t1_value = /*b*/ ctx[43].name + "")) set_data(t1, t1_value);
-			if (dirty[0] & /*bundles*/ 2048 && t4_value !== (t4_value = /*b*/ ctx[43].version + "")) set_data(t4, t4_value);
+			if (dirty[0] & /*bundles*/ 2048 && t1_value !== (t1_value = /*b*/ ctx[45].name + "")) set_data(t1, t1_value);
+			if (dirty[0] & /*bundles*/ 2048 && t4_value !== (t4_value = /*b*/ ctx[45].version + "")) set_data(t4, t4_value);
 
-			if (/*b*/ ctx[43].description) {
+			if (/*b*/ ctx[45].description) {
 				if (if_block1) {
 					if_block1.p(ctx, dirty);
 				} else {
@@ -36155,7 +37622,7 @@ function create_each_block_1$1(key_1, ctx) {
 				if_block1 = null;
 			}
 
-			if (/*b*/ ctx[43].assets?.length) {
+			if (/*b*/ ctx[45].assets?.length) {
 				if (if_block2) {
 					if_block2.p(ctx, dirty);
 				} else {
@@ -36168,16 +37635,16 @@ function create_each_block_1$1(key_1, ctx) {
 				if_block2 = null;
 			}
 
-			if (dirty[0] & /*busy, bundles, $t, manifest, present*/ 6232 && t8_value !== (t8_value = (/*busy*/ ctx[6][/*b*/ ctx[43].id]
+			if (dirty[0] & /*busy, bundles, $t, manifest, present*/ 6232 && t8_value !== (t8_value = (/*busy*/ ctx[6][/*b*/ ctx[45].id]
 			? /*$t*/ ctx[12]("market.installing")
-			: /*stateLabel*/ ctx[16](/*state*/ ctx[40])) + "")) set_data(t8, t8_value);
+			: /*stateLabel*/ ctx[16](/*state*/ ctx[42])) + "")) set_data(t8, t8_value);
 
-			if (dirty[0] & /*busy, bundles, manifest, present*/ 2136 && button_disabled_value !== (button_disabled_value = /*busy*/ ctx[6][/*b*/ ctx[43].id] || /*state*/ ctx[40] === "installed")) {
+			if (dirty[0] & /*busy, bundles, manifest, present*/ 2136 && button_disabled_value !== (button_disabled_value = /*busy*/ ctx[6][/*b*/ ctx[45].id] || /*state*/ ctx[42] === "installed")) {
 				button.disabled = button_disabled_value;
 			}
 
 			if (dirty[0] & /*manifest, bundles, present*/ 2072) {
-				toggle_class(button, "is-installed", /*state*/ ctx[40] === "installed");
+				toggle_class(button, "is-installed", /*state*/ ctx[42] === "installed");
 			}
 		},
 		d(detaching) {
@@ -36191,7 +37658,7 @@ function create_each_block_1$1(key_1, ctx) {
 	};
 }
 
-// (315:4) {#if assets.length}
+// (334:4) {#if assets.length}
 function create_if_block_14(ctx) {
 	let div0;
 	let t0_value = /*$t*/ ctx[12]("market.assets") + "";
@@ -36201,7 +37668,7 @@ function create_if_block_14(ctx) {
 	let each_blocks = [];
 	let each_1_lookup = new Map();
 	let each_value = /*assets*/ ctx[10];
-	const get_key = ctx => /*a*/ ctx[39].id;
+	const get_key = ctx => /*a*/ ctx[41].id;
 
 	for (let i = 0; i < each_value.length; i += 1) {
 		let child_ctx = get_each_context$5(ctx, each_value, i);
@@ -36253,7 +37720,7 @@ function create_if_block_14(ctx) {
 	};
 }
 
-// (323:14) {#if isPresent(state)}
+// (342:14) {#if isPresent(state)}
 function create_if_block_18(ctx) {
 	let span;
 	let t_1;
@@ -36281,10 +37748,10 @@ function create_if_block_18(ctx) {
 	};
 }
 
-// (327:12) {#if a.description}
+// (346:12) {#if a.description}
 function create_if_block_17(ctx) {
 	let p;
-	let t_1_value = /*a*/ ctx[39].description + "";
+	let t_1_value = /*a*/ ctx[41].description + "";
 	let t_1;
 
 	return {
@@ -36298,7 +37765,7 @@ function create_if_block_17(ctx) {
 			append(p, t_1);
 		},
 		p(ctx, dirty) {
-			if (dirty[0] & /*assets*/ 1024 && t_1_value !== (t_1_value = /*a*/ ctx[39].description + "")) set_data(t_1, t_1_value);
+			if (dirty[0] & /*assets*/ 1024 && t_1_value !== (t_1_value = /*a*/ ctx[41].description + "")) set_data(t_1, t_1_value);
 		},
 		d(detaching) {
 			if (detaching) detach(p);
@@ -36306,7 +37773,7 @@ function create_if_block_17(ctx) {
 	};
 }
 
-// (328:12) {#if a.reviewed === false}
+// (347:12) {#if a.reviewed === false}
 function create_if_block_16(ctx) {
 	let div;
 	let t0;
@@ -36334,13 +37801,13 @@ function create_if_block_16(ctx) {
 	};
 }
 
-// (331:12) {#if a.systemDeps?.length}
+// (350:12) {#if a.systemDeps?.length}
 function create_if_block_15(ctx) {
 	let div;
 	let t0_value = /*$t*/ ctx[12]("market.systemDeps") + "";
 	let t0;
 	let t1;
-	let t2_value = /*a*/ ctx[39].systemDeps.join(", ") + "";
+	let t2_value = /*a*/ ctx[41].systemDeps.join(", ") + "";
 	let t2;
 
 	return {
@@ -36359,7 +37826,7 @@ function create_if_block_15(ctx) {
 		},
 		p(ctx, dirty) {
 			if (dirty[0] & /*$t*/ 4096 && t0_value !== (t0_value = /*$t*/ ctx[12]("market.systemDeps") + "")) set_data(t0, t0_value);
-			if (dirty[0] & /*assets*/ 1024 && t2_value !== (t2_value = /*a*/ ctx[39].systemDeps.join(", ") + "")) set_data(t2, t2_value);
+			if (dirty[0] & /*assets*/ 1024 && t2_value !== (t2_value = /*a*/ ctx[41].systemDeps.join(", ") + "")) set_data(t2, t2_value);
 		},
 		d(detaching) {
 			if (detaching) detach(div);
@@ -36367,24 +37834,24 @@ function create_if_block_15(ctx) {
 	};
 }
 
-// (318:8) {#each assets as a (a.id)}
+// (337:8) {#each assets as a (a.id)}
 function create_each_block$5(key_1, ctx) {
 	let div3;
 	let div0;
 	let span0;
-	let t0_value = /*a*/ ctx[39].type + "";
+	let t0_value = /*a*/ ctx[41].type + "";
 	let t0;
 	let span0_class_value;
 	let t1;
-	let show_if = /*isPresent*/ ctx[17](/*state*/ ctx[40]);
+	let show_if = /*isPresent*/ ctx[17](/*state*/ ctx[42]);
 	let t2;
 	let span1;
-	let t3_value = /*a*/ ctx[39].name + "";
+	let t3_value = /*a*/ ctx[41].name + "";
 	let t3;
 	let t4;
 	let span2;
 	let t5;
-	let t6_value = /*a*/ ctx[39].version + "";
+	let t6_value = /*a*/ ctx[41].version + "";
 	let t6;
 	let t7;
 	let t8;
@@ -36397,9 +37864,9 @@ function create_each_block$5(key_1, ctx) {
 	let div2;
 	let button;
 
-	let t13_value = (/*busy*/ ctx[6][/*a*/ ctx[39].id]
+	let t13_value = (/*busy*/ ctx[6][/*a*/ ctx[41].id]
 	? /*$t*/ ctx[12]("market.installing")
-	: /*stateLabel*/ ctx[16](/*state*/ ctx[40])) + "";
+	: /*stateLabel*/ ctx[16](/*state*/ ctx[42])) + "";
 
 	let t13;
 	let button_disabled_value;
@@ -36407,16 +37874,16 @@ function create_each_block$5(key_1, ctx) {
 	let mounted;
 	let dispose;
 	let if_block0 = show_if && create_if_block_18(ctx);
-	let if_block1 = /*a*/ ctx[39].description && create_if_block_17(ctx);
-	let if_block2 = /*a*/ ctx[39].reviewed === false && create_if_block_16(ctx);
-	let if_block3 = /*a*/ ctx[39].systemDeps?.length && create_if_block_15(ctx);
+	let if_block1 = /*a*/ ctx[41].description && create_if_block_17(ctx);
+	let if_block2 = /*a*/ ctx[41].reviewed === false && create_if_block_16(ctx);
+	let if_block3 = /*a*/ ctx[41].systemDeps?.length && create_if_block_15(ctx);
 
 	function click_handler_5() {
-		return /*click_handler_5*/ ctx[28](/*a*/ ctx[39]);
+		return /*click_handler_5*/ ctx[28](/*a*/ ctx[41]);
 	}
 
 	function click_handler_6() {
-		return /*click_handler_6*/ ctx[29](/*a*/ ctx[39]);
+		return /*click_handler_6*/ ctx[29](/*a*/ ctx[41]);
 	}
 
 	return {
@@ -36450,14 +37917,14 @@ function create_each_block$5(key_1, ctx) {
 			button = element("button");
 			t13 = text(t13_value);
 			t14 = space();
-			attr(span0, "class", span0_class_value = "card-type type-" + /*a*/ ctx[39].type + " svelte-xbtpff");
+			attr(span0, "class", span0_class_value = "card-type type-" + /*a*/ ctx[41].type + " svelte-xbtpff");
 			attr(span1, "class", "card-name svelte-xbtpff");
 			attr(span2, "class", "card-version svelte-xbtpff");
 			attr(div0, "class", "card-top svelte-xbtpff");
 			attr(div1, "class", "card-hint svelte-xbtpff");
 			attr(button, "class", "card-install svelte-xbtpff");
-			button.disabled = button_disabled_value = /*busy*/ ctx[6][/*a*/ ctx[39].id] || /*state*/ ctx[40] === "installed";
-			toggle_class(button, "is-installed", /*state*/ ctx[40] === "installed");
+			button.disabled = button_disabled_value = /*busy*/ ctx[6][/*a*/ ctx[41].id] || /*state*/ ctx[42] === "installed";
+			toggle_class(button, "is-installed", /*state*/ ctx[42] === "installed");
 			attr(div2, "class", "card-actions svelte-xbtpff");
 			attr(div3, "class", "card clickable svelte-xbtpff");
 			this.first = div3;
@@ -36502,13 +37969,13 @@ function create_each_block$5(key_1, ctx) {
 		},
 		p(new_ctx, dirty) {
 			ctx = new_ctx;
-			if (dirty[0] & /*assets*/ 1024 && t0_value !== (t0_value = /*a*/ ctx[39].type + "")) set_data(t0, t0_value);
+			if (dirty[0] & /*assets*/ 1024 && t0_value !== (t0_value = /*a*/ ctx[41].type + "")) set_data(t0, t0_value);
 
-			if (dirty[0] & /*assets*/ 1024 && span0_class_value !== (span0_class_value = "card-type type-" + /*a*/ ctx[39].type + " svelte-xbtpff")) {
+			if (dirty[0] & /*assets*/ 1024 && span0_class_value !== (span0_class_value = "card-type type-" + /*a*/ ctx[41].type + " svelte-xbtpff")) {
 				attr(span0, "class", span0_class_value);
 			}
 
-			if (dirty[0] & /*manifest, assets, present*/ 1048) show_if = /*isPresent*/ ctx[17](/*state*/ ctx[40]);
+			if (dirty[0] & /*manifest, assets, present*/ 1048) show_if = /*isPresent*/ ctx[17](/*state*/ ctx[42]);
 
 			if (show_if) {
 				if (if_block0) {
@@ -36523,10 +37990,10 @@ function create_each_block$5(key_1, ctx) {
 				if_block0 = null;
 			}
 
-			if (dirty[0] & /*assets*/ 1024 && t3_value !== (t3_value = /*a*/ ctx[39].name + "")) set_data(t3, t3_value);
-			if (dirty[0] & /*assets*/ 1024 && t6_value !== (t6_value = /*a*/ ctx[39].version + "")) set_data(t6, t6_value);
+			if (dirty[0] & /*assets*/ 1024 && t3_value !== (t3_value = /*a*/ ctx[41].name + "")) set_data(t3, t3_value);
+			if (dirty[0] & /*assets*/ 1024 && t6_value !== (t6_value = /*a*/ ctx[41].version + "")) set_data(t6, t6_value);
 
-			if (/*a*/ ctx[39].description) {
+			if (/*a*/ ctx[41].description) {
 				if (if_block1) {
 					if_block1.p(ctx, dirty);
 				} else {
@@ -36539,7 +38006,7 @@ function create_each_block$5(key_1, ctx) {
 				if_block1 = null;
 			}
 
-			if (/*a*/ ctx[39].reviewed === false) {
+			if (/*a*/ ctx[41].reviewed === false) {
 				if (if_block2) {
 					if_block2.p(ctx, dirty);
 				} else {
@@ -36552,7 +38019,7 @@ function create_each_block$5(key_1, ctx) {
 				if_block2 = null;
 			}
 
-			if (/*a*/ ctx[39].systemDeps?.length) {
+			if (/*a*/ ctx[41].systemDeps?.length) {
 				if (if_block3) {
 					if_block3.p(ctx, dirty);
 				} else {
@@ -36567,16 +38034,16 @@ function create_each_block$5(key_1, ctx) {
 
 			if (dirty[0] & /*$t*/ 4096 && t11_value !== (t11_value = /*$t*/ ctx[12]("market.clickForDetails") + "")) set_data(t11, t11_value);
 
-			if (dirty[0] & /*busy, assets, $t, manifest, present*/ 5208 && t13_value !== (t13_value = (/*busy*/ ctx[6][/*a*/ ctx[39].id]
+			if (dirty[0] & /*busy, assets, $t, manifest, present*/ 5208 && t13_value !== (t13_value = (/*busy*/ ctx[6][/*a*/ ctx[41].id]
 			? /*$t*/ ctx[12]("market.installing")
-			: /*stateLabel*/ ctx[16](/*state*/ ctx[40])) + "")) set_data(t13, t13_value);
+			: /*stateLabel*/ ctx[16](/*state*/ ctx[42])) + "")) set_data(t13, t13_value);
 
-			if (dirty[0] & /*busy, assets, manifest, present*/ 1112 && button_disabled_value !== (button_disabled_value = /*busy*/ ctx[6][/*a*/ ctx[39].id] || /*state*/ ctx[40] === "installed")) {
+			if (dirty[0] & /*busy, assets, manifest, present*/ 1112 && button_disabled_value !== (button_disabled_value = /*busy*/ ctx[6][/*a*/ ctx[41].id] || /*state*/ ctx[42] === "installed")) {
 				button.disabled = button_disabled_value;
 			}
 
 			if (dirty[0] & /*manifest, assets, present*/ 1048) {
-				toggle_class(button, "is-installed", /*state*/ ctx[40] === "installed");
+				toggle_class(button, "is-installed", /*state*/ ctx[42] === "installed");
 			}
 		},
 		d(detaching) {
@@ -36591,7 +38058,7 @@ function create_each_block$5(key_1, ctx) {
 	};
 }
 
-// (352:4) {#if !bundles.length && !assets.length}
+// (371:4) {#if !bundles.length && !assets.length}
 function create_if_block_13(ctx) {
 	let div;
 	let t_1_value = /*$t*/ ctx[12]("market.empty") + "";
@@ -36616,7 +38083,7 @@ function create_if_block_13(ctx) {
 	};
 }
 
-// (234:8) {#if isPresent(dstate)}
+// (253:8) {#if isPresent(dstate)}
 function create_if_block_11(ctx) {
 	let span;
 	let t_1;
@@ -36644,7 +38111,7 @@ function create_if_block_11(ctx) {
 	};
 }
 
-// (238:6) {#if detail.description}
+// (257:6) {#if detail.description}
 function create_if_block_10(ctx) {
 	let p;
 	let t_1_value = /*detail*/ ctx[7].description + "";
@@ -36669,7 +38136,7 @@ function create_if_block_10(ctx) {
 	};
 }
 
-// (239:6) {#if detail.reviewed === false}
+// (258:6) {#if detail.reviewed === false}
 function create_if_block_9$1(ctx) {
 	let div;
 	let t0;
@@ -36697,7 +38164,7 @@ function create_if_block_9$1(ctx) {
 	};
 }
 
-// (242:6) {#if detail.requires?.length}
+// (261:6) {#if detail.requires?.length}
 function create_if_block_8$1(ctx) {
 	let div;
 	let t0_value = /*$t*/ ctx[12]("market.requires") + "";
@@ -36730,7 +38197,7 @@ function create_if_block_8$1(ctx) {
 	};
 }
 
-// (247:6) {#if detail.systemDeps?.length}
+// (266:6) {#if detail.systemDeps?.length}
 function create_if_block_7$2(ctx) {
 	let div;
 	let t0_value = /*$t*/ ctx[12]("market.systemDeps") + "";
@@ -36763,7 +38230,7 @@ function create_if_block_7$2(ctx) {
 	};
 }
 
-// (259:8) {:else}
+// (278:8) {:else}
 function create_else_block$4(ctx) {
 	let p;
 	let t_1_value = /*$t*/ ctx[12]("market.noReadme") + "";
@@ -36788,7 +38255,7 @@ function create_else_block$4(ctx) {
 	};
 }
 
-// (257:42) 
+// (276:42) 
 function create_if_block_6$2(ctx) {
 	let p;
 	let t_1_value = /*$t*/ ctx[12]("market.readmeError") + "";
@@ -36813,7 +38280,7 @@ function create_if_block_6$2(ctx) {
 	};
 }
 
-// (255:39) 
+// (274:39) 
 function create_if_block_5$3(ctx) {
 	let div;
 	let renderMarkdown_action;
@@ -36844,7 +38311,7 @@ function create_if_block_5$3(ctx) {
 	};
 }
 
-// (253:8) {#if readmeState === "loading"}
+// (272:8) {#if readmeState === "loading"}
 function create_if_block_4$3(ctx) {
 	let span;
 
@@ -36863,7 +38330,7 @@ function create_if_block_4$3(ctx) {
 	};
 }
 
-// (264:8) {#if dstate !== "not-installed"}
+// (283:8) {#if dstate !== "not-installed"}
 function create_if_block_3$3(ctx) {
 	let button;
 	let t_1_value = /*$t*/ ctx[12]("market.uninstall") + "";
@@ -36903,7 +38370,7 @@ function create_if_block_3$3(ctx) {
 	};
 }
 
-function create_fragment$c(ctx) {
+function create_fragment$d(ctx) {
 	let div2;
 	let div1;
 	let div0;
@@ -36927,7 +38394,7 @@ function create_fragment$c(ctx) {
 	let if_block1 = !obsidian.Platform.isDesktop && create_if_block_23(ctx);
 
 	function select_block_type(ctx, dirty) {
-		if (/*loading*/ ctx[1]) return create_if_block$b;
+		if (/*loading*/ ctx[1]) return create_if_block$c;
 		if (/*error*/ ctx[2]) return create_if_block_1$8;
 		if (/*index*/ ctx[0] && /*detail*/ ctx[7]) return create_if_block_2$7;
 		if (/*index*/ ctx[0]) return create_if_block_12;
@@ -37063,7 +38530,9 @@ function create_fragment$c(ctx) {
 	};
 }
 
-function instance$c($$self, $$props, $$invalidate) {
+const COVER_LETTER_ID = "cover_letter";
+
+function instance$d($$self, $$props, $$invalidate) {
 	let bundles;
 	let assets;
 	let $t;
@@ -37166,6 +38635,17 @@ function instance$c($$self, $$props, $$invalidate) {
 			: $t("market.install");
 
 	const isPresent = s => s !== "not-installed";
+	const isCoverLetterInstalled = () => installsAsset(index, Object.keys(manifest !== null && manifest !== void 0 ? manifest : {}), COVER_LETTER_ID);
+
+	function showCoverLetterGuide(installedIds, wasInstalled) {
+		if (wasInstalled || !installsAsset(index, installedIds, COVER_LETTER_ID)) return;
+
+		const asset = index === null || index === void 0
+		? void 0
+		: index.assets.find(a => a.id === COVER_LETTER_ID);
+
+		if (asset) openDetail(asset);
+	}
 
 	function installBundle(b) {
 		var _a, _b;
@@ -37176,7 +38656,8 @@ function instance$c($$self, $$props, $$invalidate) {
 			const n = new obsidian.Notice($t("market.installing") + " " + b.name, 0);
 
 			try {
-				const rec = yield installMarketBundle(app, b, destFolder, index);
+				const hadCoverLetter = isCoverLetterInstalled();
+				const { record: rec, preserved } = yield installMarketBundle(app, b, destFolder, index);
 				$$invalidate(3, manifest[rec.id] = rec, manifest);
 
 				if ((_a = b.workflows) === null || _a === void 0
@@ -37189,6 +38670,8 @@ function instance$c($$self, $$props, $$invalidate) {
 				refresh();
 				$$invalidate(3, manifest = Object.assign({}, manifest));
 				new obsidian.Notice($t("market.installedNotice") + " " + b.name);
+				noticeKeptFiles("market.preservedFiles", preserved);
+				showCoverLetterGuide([b.id], hadCoverLetter);
 			} catch(e) {
 				new obsidian.Notice($t("market.failed") + " " + String((_b = e === null || e === void 0 ? void 0 : e.message) !== null && _b !== void 0
 					? _b
@@ -37209,12 +38692,15 @@ function instance$c($$self, $$props, $$invalidate) {
 			const n = new obsidian.Notice($t("market.installing") + " " + a.name, 0);
 
 			try {
-				const recs = yield installAssetWithDeps(app, index, a.id, destFolder);
+				const hadCoverLetter = isCoverLetterInstalled();
+				const { records: recs, preserved } = yield installAssetWithDeps(app, index, a.id, destFolder);
 				for (const r of recs) $$invalidate(3, manifest[r.id] = r, manifest);
 				refresh();
 				$$invalidate(3, manifest = Object.assign({}, manifest));
 				const extra = recs.length - 1;
 				new obsidian.Notice($t("market.installedNotice") + " " + a.name + (extra > 0 ? ` (+${extra})` : ""));
+				noticeKeptFiles("market.preservedFiles", preserved);
+				showCoverLetterGuide(recs.map(r => r.id), hadCoverLetter);
 			} catch(e) {
 				new obsidian.Notice($t("market.failed") + " " + String((_a = e === null || e === void 0 ? void 0 : e.message) !== null && _a !== void 0
 					? _a
@@ -37241,12 +38727,13 @@ function instance$c($$self, $$props, $$invalidate) {
 				? (_a = item.assets) !== null && _a !== void 0 ? _a : []
 				: ((_b = item.files) !== null && _b !== void 0 ? _b : []).map(f => f.path);
 
-				yield uninstallMarketItem(app, destFolder, item.id, files);
+				const { kept } = yield uninstallMarketItem(app, destFolder, item.id, files);
 				delete manifest[item.id];
 				$$invalidate(3, manifest = Object.assign({}, manifest));
 				$$invalidate(4, present = new Set([...present].filter(x => x !== item.id)));
 				refresh();
 				new obsidian.Notice(translate("market.uninstalled") + " " + item.name);
+				noticeKeptFiles("market.keptFiles", kept);
 			} catch(e) {
 				new obsidian.Notice(translate("market.failed") + " " + String((_c = e === null || e === void 0 ? void 0 : e.message) !== null && _c !== void 0
 					? _c
@@ -37340,7 +38827,7 @@ function instance$c($$self, $$props, $$invalidate) {
 class PandocMarket extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$c, create_fragment$c, safe_not_equal, {}, add_css$c, [-1, -1]);
+		init(this, options, instance$d, create_fragment$d, safe_not_equal, {}, add_css$d, [-1, -1]);
 	}
 }
 
@@ -37615,11 +39102,12 @@ class PandocSetupModal extends obsidian.Modal {
             const dest = DEFAULT_ASSETS_DIR;
             const notice = new obsidian.Notice(translate("setup.downloading"), 0);
             try {
-                const { count } = yield downloadPandocAssets(this.app, url, dest);
+                const { count, preserved } = yield installToolchainZip(this.app, url, dest);
                 pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocAssetsFolder: dest })));
                 refreshPandocTemplates(this.app);
                 notice.hide();
                 new obsidian.Notice(translate("setup.downloaded", { count: String(count), dest }));
+                noticeKeptFiles("market.preservedFiles", preserved);
                 this.render();
             }
             catch (e) {
@@ -37675,7 +39163,7 @@ function recoverableActions(app, status) {
 
 /* src/view/compile/CompileView.svelte generated by Svelte v3.49.0 */
 
-function add_css$b(target) {
+function add_css$c(target) {
 	append_styles(target, "svelte-1br8pmp", ".longform-workflow-picker-container.svelte-1br8pmp.svelte-1br8pmp{padding:var(--size-4-2);background:var(--background-primary);display:flex;flex-direction:column}#longform-workflows.svelte-1br8pmp.svelte-1br8pmp{color:var(--color-accent-2)}.longform-workflow-picker.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-bottom:var(--size-4-2)}.longform-workflow-picker.svelte-1br8pmp .longform-hint.svelte-1br8pmp{font-size:1em}select.svelte-1br8pmp.svelte-1br8pmp{background-color:transparent;border:none;padding:var(--size-4-1) 0;margin:0;font-family:inherit;font-size:inherit;cursor:inherit;line-height:inherit;outline:none;box-shadow:none}.select.svelte-1br8pmp.svelte-1br8pmp{cursor:pointer}.select.svelte-1br8pmp>select.svelte-1br8pmp{color:var(--text-accent)}.select.svelte-1br8pmp>select.svelte-1br8pmp:hover{text-decoration:underline;color:var(--text-accent-hover)}.longform-compile-container.svelte-1br8pmp .longform-sortable-step-list{list-style-type:none;padding:0;margin:0}.options-button.svelte-1br8pmp.svelte-1br8pmp{background-color:var(--background-secondary-alt);color:var(--text-accent)}.options-button.svelte-1br8pmp.svelte-1br8pmp:hover{background-color:var(--background-primary);color:var(--text-accent-hover)}.add-step-container.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;align-items:center;justify-content:center}.add-step-container.svelte-1br8pmp button.svelte-1br8pmp{font-weight:bold;color:var(--text-accent)}.add-step-container.svelte-1br8pmp button.svelte-1br8pmp:hover{text-decoration:underline;color:var(--text-accent-hover)}.longform-compile-instructions.svelte-1br8pmp.svelte-1br8pmp{font-size:var(--font-smallest);padding:var(--size-4-4) var(--size-4-4) var(--size-4-1) var(--size-4-8);color:var(--text-muted)}.longform-compile-instructions.svelte-1br8pmp li.svelte-1br8pmp{margin-bottom:var(--size-4-1)\n    }.longform-compile-instructions.svelte-1br8pmp strong.svelte-1br8pmp{color:var(--color-accent-2)}.compile-button.svelte-1br8pmp.svelte-1br8pmp{font-weight:bold;background-color:var(--interactive-accent);color:var(--text-on-accent)}.compile-button.svelte-1br8pmp.svelte-1br8pmp:hover{background-color:var(--interactive-accent-hover);color:var(--text-on-accent)}.compile-button.svelte-1br8pmp.svelte-1br8pmp:disabled{background-color:var(--text-muted);color:var(--text-faint)}.longform-compile-run-container.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;align-items:center;justify-content:space-between;margin-top:var(--size-4-8)}.longform-compile-buttons.svelte-1br8pmp.svelte-1br8pmp{display:flex;flex-direction:row;align-items:center;gap:var(--size-4-2)}.longform-compile-run-container.svelte-1br8pmp .compile-status.svelte-1br8pmp{color:var(--text-muted)}.compile-status-error{color:var(--text-error) !important}.compile-status-success{color:var(--interactive-success) !important}.step-ghost{background-color:var(--interactive-accent-hover);color:var(--text-on-accent)}");
 }
 
@@ -37686,7 +39174,7 @@ function get_each_context$4(ctx, list, i) {
 }
 
 // (207:0) {#if $selectedDraft}
-function create_if_block$a(ctx) {
+function create_if_block$b(ctx) {
 	let div3;
 	let div1;
 	let div0;
@@ -38446,10 +39934,10 @@ function create_if_block_2$6(ctx) {
 	};
 }
 
-function create_fragment$b(ctx) {
+function create_fragment$c(ctx) {
 	let if_block_anchor;
 	let current;
-	let if_block = /*$selectedDraft*/ ctx[2] && create_if_block$a(ctx);
+	let if_block = /*$selectedDraft*/ ctx[2] && create_if_block$b(ctx);
 
 	return {
 		c() {
@@ -38470,7 +39958,7 @@ function create_fragment$b(ctx) {
 						transition_in(if_block, 1);
 					}
 				} else {
-					if_block = create_if_block$a(ctx);
+					if_block = create_if_block$b(ctx);
 					if_block.c();
 					transition_in(if_block, 1);
 					if_block.m(if_block_anchor.parentNode, if_block_anchor);
@@ -38507,7 +39995,7 @@ function focusOnInit(el) {
 	el.focus();
 }
 
-function instance$b($$self, $$props, $$invalidate) {
+function instance$c($$self, $$props, $$invalidate) {
 	let $selectedDraft;
 	let $selectedProject;
 	let $workflows;
@@ -38871,7 +40359,7 @@ function instance$b($$self, $$props, $$invalidate) {
 class CompileView extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$b, create_fragment$b, safe_not_equal, {}, add_css$b, [-1, -1]);
+		init(this, options, instance$c, create_fragment$c, safe_not_equal, {}, add_css$c, [-1, -1]);
 	}
 }
 
@@ -38931,12 +40419,12 @@ const goalProgress = derived([selectedDraft, sessions, pluginSettings, activeFil
 
 /* src/view/explorer/NewSceneField.svelte generated by Svelte v3.49.0 */
 
-function add_css$a(target) {
+function add_css$b(target) {
 	append_styles(target, "svelte-e1ncqi", ".new-scene-container.svelte-e1ncqi{margin:0;padding:var(--size-4-2) 0}#new-scene.svelte-e1ncqi{width:100%;background:var(--background-modifier-form-field);border:var(--input-border-width) solid var(--background-modifier-border);border-radius:var(--input-radius);font-size:var(--font-ui-small);padding:var(--size-4-1) var(--size-4-2)}#new-scene.invalid.svelte-e1ncqi{color:var(--text-error)}");
 }
 
 // (50:2) {#if error}
-function create_if_block$9(ctx) {
+function create_if_block$a(ctx) {
 	let p;
 	let t;
 
@@ -38958,13 +40446,13 @@ function create_if_block$9(ctx) {
 	};
 }
 
-function create_fragment$a(ctx) {
+function create_fragment$b(ctx) {
 	let div;
 	let input;
 	let t;
 	let mounted;
 	let dispose;
-	let if_block = /*error*/ ctx[2] && create_if_block$9(ctx);
+	let if_block = /*error*/ ctx[2] && create_if_block$a(ctx);
 
 	return {
 		c() {
@@ -39009,7 +40497,7 @@ function create_fragment$a(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$9(ctx);
+					if_block = create_if_block$a(ctx);
 					if_block.c();
 					if_block.m(div, null);
 				}
@@ -39030,7 +40518,7 @@ function create_fragment$a(ctx) {
 	};
 }
 
-function instance$a($$self, $$props, $$invalidate) {
+function instance$b($$self, $$props, $$invalidate) {
 	let $selectedDraft;
 	component_subscribe($$self, selectedDraft, $$value => $$invalidate(7, $selectedDraft = $$value));
 	let newSceneName = "";
@@ -39101,13 +40589,13 @@ function instance$a($$self, $$props, $$invalidate) {
 class NewSceneField extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$a, create_fragment$a, safe_not_equal, {}, add_css$a);
+		init(this, options, instance$b, create_fragment$b, safe_not_equal, {}, add_css$b);
 	}
 }
 
 /* src/view/explorer/ProjectPicker.svelte generated by Svelte v3.49.0 */
 
-function add_css$9(target) {
+function add_css$a(target) {
 	append_styles(target, "svelte-1hf8c86", "#project-picker-container.svelte-1hf8c86.svelte-1hf8c86{margin-bottom:var(--size-4-2)}select.svelte-1hf8c86.svelte-1hf8c86{background-color:transparent;border:var(--input-border-width) solid var(--background-modifier-border);border-radius:var(--input-radius);padding:var(--size-4-2) var(--size-4-3);width:100%;height:100%;font-family:inherit;font-size:var(--font-ui-large);cursor:inherit;line-height:inherit;outline:none;box-shadow:none}.select.svelte-1hf8c86>select.svelte-1hf8c86:hover{color:var(--text-normal);background-color:var(--background-modifier-hover);box-shadow:0 0 0 2px var(--background-modifier-border-focus);border-color:var(--background-modifier-border-focus);transition:box-shadow 0.15s ease-in-out,\n      border 0.15s ease-in-out}.current-draft-path.svelte-1hf8c86.svelte-1hf8c86{color:var(--text-faint);font-size:var(--font-smallest);padding:0 0 var(--size-4-1) var(--size-4-3)}.current-draft-path.svelte-1hf8c86.svelte-1hf8c86:hover{color:var(--text-accent);cursor:pointer}#select-drafts.svelte-1hf8c86.svelte-1hf8c86{margin-top:var(--size-4-1)}");
 }
 
@@ -39146,7 +40634,7 @@ function create_else_block$2(ctx) {
 }
 
 // (55:2) {#if projectOptions.length > 0}
-function create_if_block$8(ctx) {
+function create_if_block$9(ctx) {
 	let div1;
 	let div0;
 	let select;
@@ -39461,11 +40949,11 @@ function create_if_block_1$6(ctx) {
 	};
 }
 
-function create_fragment$9(ctx) {
+function create_fragment$a(ctx) {
 	let div;
 
 	function select_block_type(ctx, dirty) {
-		if (/*projectOptions*/ ctx[0].length > 0) return create_if_block$8;
+		if (/*projectOptions*/ ctx[0].length > 0) return create_if_block$9;
 		return create_else_block$2;
 	}
 
@@ -39505,7 +40993,7 @@ function create_fragment$9(ctx) {
 	};
 }
 
-function instance$9($$self, $$props, $$invalidate) {
+function instance$a($$self, $$props, $$invalidate) {
 	let $selectedDraft;
 	let $selectedDraftVaultPath;
 	let $projects;
@@ -39603,17 +41091,17 @@ function instance$9($$self, $$props, $$invalidate) {
 class ProjectPicker extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$9, create_fragment$9, safe_not_equal, {}, add_css$9);
+		init(this, options, instance$a, create_fragment$a, safe_not_equal, {}, add_css$a);
 	}
 }
 
 /* src/view/components/Disclosure.svelte generated by Svelte v3.49.0 */
 
-function add_css$8(target) {
+function add_css$9(target) {
 	append_styles(target, "svelte-ff880f", ".right-triangle.svelte-ff880f.svelte-ff880f{transition:transform 0.3s;display:flex;align-items:center;justify-content:center;width:var(--size-4-3);color:var(--icon-color);margin-left:calc(var(--size-4-1) * -1);margin-top:calc(var(--size-4-1) * -.25)}.collapsed.svelte-ff880f .right-triangle.svelte-ff880f{transform:rotate(-90deg)}");
 }
 
-function create_fragment$8(ctx) {
+function create_fragment$9(ctx) {
 	let span;
 	let svg;
 	let path;
@@ -39669,7 +41157,7 @@ function create_fragment$8(ctx) {
 	};
 }
 
-function instance$8($$self, $$props, $$invalidate) {
+function instance$9($$self, $$props, $$invalidate) {
 	let { collapsed = false } = $$props;
 	let { class: className = "" } = $$props;
 
@@ -39688,7 +41176,7 @@ function instance$8($$self, $$props, $$invalidate) {
 class Disclosure extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$8, create_fragment$8, safe_not_equal, { collapsed: 0, class: 1 }, add_css$8);
+		init(this, options, instance$9, create_fragment$9, safe_not_equal, { collapsed: 0, class: 1 }, add_css$9);
 	}
 }
 
@@ -39774,7 +41262,7 @@ const ignoreAll = () => {
 
 /* src/view/explorer/SceneList.svelte generated by Svelte v3.49.0 */
 
-function add_css$7(target) {
+function add_css$8(target) {
 	append_styles(target, "svelte-u6nqd", ".group{margin-left:var(--size-4-2)}#scene-list.svelte-u6nqd.svelte-u6nqd{margin:var(--size-4-1) 0}#scene-list.svelte-u6nqd .sortable-scene-list{list-style-type:none;padding:0;margin:0}.scene-container.svelte-u6nqd.svelte-u6nqd{display:flex;flex-direction:row;align-items:center;border:var(--border-width) solid transparent;border-radius:var(--radius-s);cursor:pointer;color:var(--nav-item-color);font-size:var(--nav-item-size);font-weight:var(--nav-item-weight);line-height:var(--line-height-tight);padding:var(--size-4-1) var(--size-4-2);white-space:normal}.scene-container.collapsible.svelte-u6nqd.svelte-u6nqd{display:flex;flex-direction:row;align-items:center;border:var(--border-width) solid transparent;border-radius:var(--radius-s);cursor:pointer;color:var(--nav-item-color);font-size:var(--nav-item-size);font-weight:var(--nav-item-weight);line-height:var(--line-height-tight);padding:var(--size-4-1) var(--size-4-2);white-space:normal}.scene-container.hidden.svelte-u6nqd.svelte-u6nqd{display:none}.scene-container.svelte-u6nqd .svelte-u6nqd:nth-child(2){margin-left:var(--size-4-2)}.selected.svelte-u6nqd.svelte-u6nqd,.svelte-u6nqd:not(.dragging) .scene-container.svelte-u6nqd:hover{background-color:var(--background-secondary-alt);color:var(--text-normal)}.scene-container.svelte-u6nqd.svelte-u6nqd:active{background-color:inherit;color:var(--text-muted)}.longform-scene-number.svelte-u6nqd.svelte-u6nqd{color:var(--text-muted);margin-right:var(--size-4-1);font-weight:bold}.longform-scene-number.svelte-u6nqd.svelte-u6nqd::after{content:\".\"}#longform-unknown-files-wizard.svelte-u6nqd.svelte-u6nqd{border-top:var(--border-width) solid var(--text-muted);padding:var(--size-4-2) 0}.longform-unknown-inner.svelte-u6nqd.svelte-u6nqd{border-left:var(--size-2-1) solid var(--text-accent);padding:0 0 0 var(--size-4-1)}.longform-unknown-explanation.svelte-u6nqd.svelte-u6nqd{color:var(--text-muted);font-size:1em}#longform-unknown-files-wizard.svelte-u6nqd ul.svelte-u6nqd{list-style-type:none;padding:0 0 0 var(--size-4-2)}.longform-unknown-file.svelte-u6nqd.svelte-u6nqd{display:flex;flex-direction:row;justify-content:space-between}.longform-unknown-add.svelte-u6nqd.svelte-u6nqd{color:var(--text-accent);font-weight:bold}.longform-unknown-ignore.svelte-u6nqd.svelte-u6nqd{color:var(--text-muted);font-weight:bold}.scene-drag-ghost{background-color:var(--interactive-accent-hover);color:var(--text-on-accent);margin-left:var(--ghost-indent)}");
 }
 
@@ -40093,7 +41581,7 @@ function create_default_slot(ctx) {
 }
 
 // (384:2) {#if $selectedDraft && $selectedDraft.format === "scenes" && $selectedDraft.unknownFiles.length > 0}
-function create_if_block$7(ctx) {
+function create_if_block$8(ctx) {
 	let div2;
 	let div1;
 	let p;
@@ -40300,7 +41788,7 @@ function create_each_block$2(ctx) {
 	};
 }
 
-function create_fragment$7(ctx) {
+function create_fragment$8(ctx) {
 	let div1;
 	let div0;
 	let sortablelist;
@@ -40334,7 +41822,7 @@ function create_fragment$7(ctx) {
 	binding_callbacks.push(() => bind(sortablelist, 'items', sortablelist_items_binding));
 	sortablelist.$on("orderChanged", /*itemOrderChanged*/ ctx[9]);
 	sortablelist.$on("indentChanged", /*itemIndentChanged*/ ctx[10]);
-	let if_block = /*$selectedDraft*/ ctx[1] && /*$selectedDraft*/ ctx[1].format === "scenes" && /*$selectedDraft*/ ctx[1].unknownFiles.length > 0 && create_if_block$7(ctx);
+	let if_block = /*$selectedDraft*/ ctx[1] && /*$selectedDraft*/ ctx[1].format === "scenes" && /*$selectedDraft*/ ctx[1].unknownFiles.length > 0 && create_if_block$8(ctx);
 
 	return {
 		c() {
@@ -40384,7 +41872,7 @@ function create_fragment$7(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$7(ctx);
+					if_block = create_if_block$8(ctx);
 					if_block.c();
 					if_block.m(div1, null);
 				}
@@ -40410,7 +41898,7 @@ function create_fragment$7(ctx) {
 	};
 }
 
-function instance$7($$self, $$props, $$invalidate) {
+function instance$8($$self, $$props, $$invalidate) {
 	let $drafts;
 	let $selectedDraft;
 	let $activeFile;
@@ -40845,18 +42333,18 @@ function instance$7($$self, $$props, $$invalidate) {
 class SceneList extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$7, create_fragment$7, safe_not_equal, {}, add_css$7, [-1, -1]);
+		init(this, options, instance$8, create_fragment$8, safe_not_equal, {}, add_css$8, [-1, -1]);
 	}
 }
 
 /* src/view/components/Icon.svelte generated by Svelte v3.49.0 */
 
-function add_css$6(target) {
+function add_css$7(target) {
 	append_styles(target, "svelte-eq2zbb", "span.svelte-eq2zbb{display:flex;align-items:center;justify-content:center}");
 }
 
 // (9:0) {#if iconName.length > 0}
-function create_if_block$6(ctx) {
+function create_if_block$7(ctx) {
 	let span;
 	let icon_action;
 	let mounted;
@@ -40886,9 +42374,9 @@ function create_if_block$6(ctx) {
 	};
 }
 
-function create_fragment$6(ctx) {
+function create_fragment$7(ctx) {
 	let if_block_anchor;
-	let if_block = /*iconName*/ ctx[0].length > 0 && create_if_block$6(ctx);
+	let if_block = /*iconName*/ ctx[0].length > 0 && create_if_block$7(ctx);
 
 	return {
 		c() {
@@ -40904,7 +42392,7 @@ function create_fragment$6(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$6(ctx);
+					if_block = create_if_block$7(ctx);
 					if_block.c();
 					if_block.m(if_block_anchor.parentNode, if_block_anchor);
 				}
@@ -40922,7 +42410,7 @@ function create_fragment$6(ctx) {
 	};
 }
 
-function instance$6($$self, $$props, $$invalidate) {
+function instance$7($$self, $$props, $$invalidate) {
 	let { iconName = "" } = $$props;
 
 	const icon = (node, icon) => {
@@ -40939,7 +42427,7 @@ function instance$6($$self, $$props, $$invalidate) {
 class Icon extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$6, create_fragment$6, safe_not_equal, { iconName: 0 }, add_css$6);
+		init(this, options, instance$7, create_fragment$7, safe_not_equal, { iconName: 0 }, add_css$7);
 	}
 }
 
@@ -43112,7 +44600,7 @@ class FolderSuggest extends TextInputSuggest {
 
 /* src/view/explorer/DraftList.svelte generated by Svelte v3.49.0 */
 
-function add_css$5(target) {
+function add_css$6(target) {
 	append_styles(target, "svelte-1ytjg2y", "#draft-list.svelte-1ytjg2y.svelte-1ytjg2y{margin:var(--size-4-1) 0}#draft-list.svelte-1ytjg2y ol.svelte-1ytjg2y{list-style-type:none;padding:0;margin:0}.draft-container.svelte-1ytjg2y.svelte-1ytjg2y{display:flex;border:var(--border-width) solid transparent;border-radius:var(--radius-s);cursor:pointer;color:var(--text-muted);font-size:var(--font-small);line-height:var(--h3-line-height);white-space:nowrap;padding:var(--size-2-1) 0}.selected.svelte-1ytjg2y.svelte-1ytjg2y,.draft-container.svelte-1ytjg2y.svelte-1ytjg2y:hover{background-color:var(--background-secondary-alt);color:var(--text-normal)}.draft-container.svelte-1ytjg2y.svelte-1ytjg2y:active{background-color:inherit;color:var(--text-muted)}");
 }
 
@@ -43123,7 +44611,7 @@ function get_each_context$1(ctx, list, i) {
 }
 
 // (52:2) {#if $selectedProject}
-function create_if_block$5(ctx) {
+function create_if_block$6(ctx) {
 	let ol;
 	let each_value = /*$selectedProject*/ ctx[1];
 	let each_blocks = [];
@@ -43260,9 +44748,9 @@ function create_each_block$1(ctx) {
 	};
 }
 
-function create_fragment$5(ctx) {
+function create_fragment$6(ctx) {
 	let div;
-	let if_block = /*$selectedProject*/ ctx[1] && create_if_block$5(ctx);
+	let if_block = /*$selectedProject*/ ctx[1] && create_if_block$6(ctx);
 
 	return {
 		c() {
@@ -43280,7 +44768,7 @@ function create_fragment$5(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$5(ctx);
+					if_block = create_if_block$6(ctx);
 					if_block.c();
 					if_block.m(div, null);
 				}
@@ -43298,7 +44786,7 @@ function create_fragment$5(ctx) {
 	};
 }
 
-function instance$5($$self, $$props, $$invalidate) {
+function instance$6($$self, $$props, $$invalidate) {
 	let $drafts;
 	let $selectedDraftVaultPath;
 	let $selectedProject;
@@ -43379,13 +44867,13 @@ function instance$5($$self, $$props, $$invalidate) {
 class DraftList extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$5, create_fragment$5, safe_not_equal, {}, add_css$5);
+		init(this, options, instance$6, create_fragment$6, safe_not_equal, {}, add_css$6);
 	}
 }
 
 /* src/view/explorer/ProjectDetails.svelte generated by Svelte v3.49.0 */
 
-function add_css$4(target) {
+function add_css$5(target) {
 	append_styles(target, "svelte-1ioudaq", ".longform-project-section.svelte-1ioudaq.svelte-1ioudaq{margin-top:var(--size-4-4);padding-bottom:var(--size-4-2);padding-left:var(--size-4-8)}.longform-project-section.svelte-1ioudaq+.longform-project-section.svelte-1ioudaq{border-top:var(--border-width) solid var(--background-modifier-border);padding-top:var(--size-4-4)}.longform-project-details-section-header.svelte-1ioudaq.svelte-1ioudaq{display:flex;flex-direction:row;justify-content:start;align-items:center;cursor:pointer;margin-left:calc(var(--size-4-6) * -1)}h4.svelte-1ioudaq.svelte-1ioudaq{font-size:var(--font-ui-medium);color:var(--text-normal);user-select:none;font-weight:inherit;margin:0 0 0 var(--size-4-4)}input.svelte-1ioudaq.svelte-1ioudaq{width:100%}label.svelte-1ioudaq.svelte-1ioudaq{display:block;font-size:var(--font-ui-smaller);color:var(--text-muted);margin-top:var(--size-4-4);line-height:var(--line-height-tight)}p.longform-project-warning.svelte-1ioudaq.svelte-1ioudaq{color:var(--text-faint);font-size:var(--font-smallest);margin:var(--size-2-1) 0 0 var(--size-2-1);line-height:normal}.word-counts.svelte-1ioudaq p.svelte-1ioudaq{margin:var(--size-4-2) 0;font-size:var(--font-smallest);color:var(--text-muted)}.word-counts.svelte-1ioudaq p strong.svelte-1ioudaq{color:var(--text-normal)}.progress.svelte-1ioudaq.svelte-1ioudaq{height:var(--size-4-6);width:100%;background-color:var(--background-secondary-alt);border-radius:var(--radius-s);position:relative;overflow:hidden;margin-top:var(--size-4-4)}.progress.svelte-1ioudaq.svelte-1ioudaq:before{content:attr(data-label);font-size:var(--font-smallest);color:var(--progress-text-color);font-weight:bold;position:absolute;text-align:center;top:0;left:0;right:0;display:flex;justify-content:center;align-items:center;align-self:center;height:100%}.progress.svelte-1ioudaq .value.svelte-1ioudaq{height:100%;background-color:var(--text-accent)}.drafts-title-container.svelte-1ioudaq.svelte-1ioudaq{display:flex;flex-direction:row;justify-content:space-between;align-items:center;margin-bottom:var(--size-4-2)}.drafts-title-container.svelte-1ioudaq h4.svelte-1ioudaq{margin-right:var(--size-4-2)}.drafts-title-container.svelte-1ioudaq button.svelte-1ioudaq{margin:0;padding:var(--size-4-2);color:var(--interactive-accent);background-color:inherit}.longform-manuscript-metadata-help.svelte-1ioudaq.svelte-1ioudaq{color:var(--text-muted);font-size:var(--font-ui-smaller);line-height:var(--line-height-tight);margin:var(--size-4-2) 0 var(--size-4-3) 0}.longform-manuscript-metadata-help.svelte-1ioudaq a.svelte-1ioudaq{color:var(--text-accent)}.longform-edit-metadata-button.svelte-1ioudaq.svelte-1ioudaq{width:100%}");
 }
 
@@ -43981,7 +45469,7 @@ function create_if_block_2$3(ctx) {
 }
 
 // (298:4) {#if showDrafts}
-function create_if_block$4(ctx) {
+function create_if_block$5(ctx) {
 	let draftlist;
 	let current;
 	draftlist = new DraftList({});
@@ -44009,7 +45497,7 @@ function create_if_block$4(ctx) {
 	};
 }
 
-function create_fragment$4(ctx) {
+function create_fragment$5(ctx) {
 	let div5;
 	let t0;
 	let t1;
@@ -44048,7 +45536,7 @@ function create_fragment$4(ctx) {
 		});
 
 	icon = new Icon({ props: { iconName: "plus-with-circle" } });
-	let if_block3 = /*showDrafts*/ ctx[3] && create_if_block$4();
+	let if_block3 = /*showDrafts*/ ctx[3] && create_if_block$5();
 
 	return {
 		c() {
@@ -44210,7 +45698,7 @@ function create_fragment$4(ctx) {
 						transition_in(if_block3, 1);
 					}
 				} else {
-					if_block3 = create_if_block$4();
+					if_block3 = create_if_block$5();
 					if_block3.c();
 					transition_in(if_block3, 1);
 					if_block3.m(div4, null);
@@ -44273,7 +45761,7 @@ function pluralize(count, noun, pluralNoun = null) {
 	}
 }
 
-function instance$4($$self, $$props, $$invalidate) {
+function instance$5($$self, $$props, $$invalidate) {
 	let $pluginSettings;
 	let $goalProgress;
 	let $selectedDraft;
@@ -44514,7 +46002,7 @@ function instance$4($$self, $$props, $$invalidate) {
 class ProjectDetails extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$4, create_fragment$4, safe_not_equal, {}, add_css$4, [-1, -1]);
+		init(this, options, instance$5, create_fragment$5, safe_not_equal, {}, add_css$5, [-1, -1]);
 	}
 }
 
@@ -44552,6 +46040,7 @@ const DEFAULT_SETTINGS = {
     pandocGlobalBibliography: "",
     pandocSetupDismissed: false,
     pandocMarketIndexUrl: "",
+    pandocAdaptFontsToOS: true,
 };
 const TRACKED_SETTINGS_PATHS = [
     "version",
@@ -44584,6 +46073,7 @@ const TRACKED_SETTINGS_PATHS = [
     "pandocGlobalBibliography",
     "pandocSetupDismissed",
     "pandocMarketIndexUrl",
+    "pandocAdaptFontsToOS",
 ];
 const PASSTHROUGH_SAVE_SETTINGS_PATHS = [
     "language",
@@ -44607,10 +46097,23 @@ const PASSTHROUGH_SAVE_SETTINGS_PATHS = [
     "pandocAssetsFolder",
     "pandocOutputFolder",
     "pandocBinary",
+    "pandocExtraBinFolders",
     "pandocBibliography",
+    "pandocGlobalBibliography",
     "pandocSetupDismissed",
     "pandocMarketIndexUrl",
+    "pandocAdaptFontsToOS",
 ];
+/**
+ * Whether a settings-store update must be written to disk: true when any
+ * setting the plugin persists on change differs between `prev` and `next`.
+ * `prev` is null for the very first value the store emits (the load itself).
+ */
+function settingsNeedSave(prev, next) {
+    if (!prev)
+        return false;
+    return PASSTHROUGH_SAVE_SETTINGS_PATHS.some((k) => prev[k] !== next[k]);
+}
 
 const INDEX_MIGRATION_NOTICE = "\n\nThis is a Longform 1.0 Index File, and the project it corresponded to has since been migrated. It has been marked as to-be-ignored in the new project and can be safely deleted.";
 const needsMigration = writable(false);
@@ -44730,7 +46233,7 @@ function migrate(settings, app) {
 
 /* src/view/explorer/Tab.svelte generated by Svelte v3.49.0 */
 
-function add_css$3(target) {
+function add_css$4(target) {
 	append_styles(target, "svelte-1ohhb9z", ".tab-button.svelte-1ohhb9z{background:none;border:none;border-bottom:none;border-radius:var(--tab-radius-active);padding:0 1em 0 0.4em;box-shadow:none;margin:0;color:var(--tab-text-color-focused);font-size:var(--tab-font-size);font-weight:var(--tab-font-weight);white-space:nowrap;border-right:1px solid var(--tab-outline-color)}.tab-button.svelte-1ohhb9z:hover{color:var(--tab-text-color-focused);background-color:var(--background-modifier-hover)}.tab-button.selected.svelte-1ohhb9z{background-color:var(--tab-background-active);color:var(--tab-text-color-focused-active)}");
 }
 
@@ -44817,7 +46320,7 @@ function create_if_block_1$3(ctx) {
 }
 
 // (54:2) {#if tab == "Compile"}
-function create_if_block$3(ctx) {
+function create_if_block$4(ctx) {
 	let svg;
 	let rect;
 	let path;
@@ -44855,7 +46358,7 @@ function create_if_block$3(ctx) {
 	};
 }
 
-function create_fragment$3(ctx) {
+function create_fragment$4(ctx) {
 	let button;
 	let t0;
 	let t1;
@@ -44866,7 +46369,7 @@ function create_fragment$3(ctx) {
 	let dispose;
 	let if_block0 = /*tab*/ ctx[0] == "Scenes" && create_if_block_2$2();
 	let if_block1 = /*tab*/ ctx[0] == "Project" && create_if_block_1$3();
-	let if_block2 = /*tab*/ ctx[0] == "Compile" && create_if_block$3();
+	let if_block2 = /*tab*/ ctx[0] == "Compile" && create_if_block$4();
 
 	return {
 		c() {
@@ -44921,7 +46424,7 @@ function create_fragment$3(ctx) {
 
 			if (/*tab*/ ctx[0] == "Compile") {
 				if (if_block2) ; else {
-					if_block2 = create_if_block$3();
+					if_block2 = create_if_block$4();
 					if_block2.c();
 					if_block2.m(button, t2);
 				}
@@ -44949,7 +46452,7 @@ function create_fragment$3(ctx) {
 	};
 }
 
-function instance$3($$self, $$props, $$invalidate) {
+function instance$4($$self, $$props, $$invalidate) {
 	let $selectedTab;
 	let $t;
 	component_subscribe($$self, selectedTab, $$value => $$invalidate(1, $selectedTab = $$value));
@@ -44974,13 +46477,13 @@ function instance$3($$self, $$props, $$invalidate) {
 class Tab extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$3, create_fragment$3, safe_not_equal, { tab: 0 }, add_css$3);
+		init(this, options, instance$4, create_fragment$4, safe_not_equal, { tab: 0 }, add_css$4);
 	}
 }
 
 /* src/view/explorer/ExplorerView.svelte generated by Svelte v3.49.0 */
 
-function add_css$2(target) {
+function add_css$3(target) {
 	append_styles(target, "svelte-1v1mbat", ".longform-explorer.svelte-1v1mbat{font-size:var(--longform-explorer-font-size)}.longform-migrate-button.svelte-1v1mbat{background-color:var(--interactive-accent);color:var(--text-on-accent)}.longform-migrate-button.svelte-1v1mbat:hover{background-color:var(--interactive-accent-hover)}.tab-list.svelte-1v1mbat{margin:0;font-size:0}.tab-panel-container.svelte-1v1mbat{background:var(--background-primary);padding:var(--size-4-1) var(--size-4-2)}.tab-panel-container.disconnected.svelte-1v1mbat{background:none;padding:0}.longform-sync-wait.svelte-1v1mbat{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:2rem;gap:1rem}.longform-spinner.svelte-1v1mbat{border:3px solid var(--background-modifier-border);border-top:3px solid var(--text-accent);border-radius:50%;width:24px;height:24px;animation:svelte-1v1mbat-spin 1s linear infinite}.longform-sync-message.svelte-1v1mbat{color:var(--text-muted);font-size:0.8em;text-align:center}@keyframes svelte-1v1mbat-spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}");
 }
 
@@ -45104,7 +46607,7 @@ function create_if_block_1$2(ctx) {
 }
 
 // (26:0) {#if $needsMigration}
-function create_if_block$2(ctx) {
+function create_if_block$3(ctx) {
 	let div;
 	let p0;
 	let t0_value = /*$t*/ ctx[3]("explorer.migration.body1") + "";
@@ -45557,12 +47060,12 @@ function create_if_block_3(ctx) {
 	};
 }
 
-function create_fragment$2(ctx) {
+function create_fragment$3(ctx) {
 	let current_block_type_index;
 	let if_block;
 	let if_block_anchor;
 	let current;
-	const if_block_creators = [create_if_block$2, create_if_block_1$2, create_else_block$1];
+	const if_block_creators = [create_if_block$3, create_if_block_1$2, create_else_block$1];
 	const if_blocks = [];
 
 	function select_block_type(ctx, dirty) {
@@ -45627,7 +47130,7 @@ function create_fragment$2(ctx) {
 	};
 }
 
-function instance$2($$self, $$props, $$invalidate) {
+function instance$3($$self, $$props, $$invalidate) {
 	let $selectedTab;
 	let $selectedDraft;
 	let $needsMigration;
@@ -45667,18 +47170,18 @@ function instance$2($$self, $$props, $$invalidate) {
 class ExplorerView extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$2, create_fragment$2, safe_not_equal, {}, add_css$2);
+		init(this, options, instance$3, create_fragment$3, safe_not_equal, {}, add_css$3);
 	}
 }
 
 /* src/view/project-lifecycle/new-draft-modal/NewDraftModal.svelte generated by Svelte v3.49.0 */
 
-function add_css$1(target) {
+function add_css$2(target) {
 	append_styles(target, "svelte-1kaigjd", ".draft-title-container.svelte-1kaigjd.svelte-1kaigjd{margin-bottom:var(--size-4-4)}label.svelte-1kaigjd.svelte-1kaigjd{font-weight:bold;color:var(--text-muted);display:block;font-size:var(--font-smallest)}input[type=\"text\"].svelte-1kaigjd.svelte-1kaigjd{width:100%;font-size:var(--h2-size);height:var(--size-4-12);padding:var(--size-4-2)}.source-path.svelte-1kaigjd.svelte-1kaigjd{color:var(--text-muted)}.target-path.svelte-1kaigjd.svelte-1kaigjd{color:var(--text-accent)}.draft-creation-container.svelte-1kaigjd.svelte-1kaigjd{display:flex;flex-direction:row;justify-content:end}.draft-creation-container.svelte-1kaigjd button.svelte-1kaigjd{font-weight:bold;background-color:var(--interactive-accent);color:var(--text-on-accent);margin:0}");
 }
 
 // (73:4) {#if valid && $selectedDraft}
-function create_if_block$1(ctx) {
+function create_if_block$2(ctx) {
 	let p;
 	let t0;
 	let t1;
@@ -45779,7 +47282,7 @@ function create_if_block_1$1(ctx) {
 	};
 }
 
-function create_fragment$1(ctx) {
+function create_fragment$2(ctx) {
 	let div3;
 	let p;
 	let t1;
@@ -45794,7 +47297,7 @@ function create_fragment$1(ctx) {
 	let div2;
 	let mounted;
 	let dispose;
-	let if_block = /*valid*/ ctx[1] && /*$selectedDraft*/ ctx[2] && create_if_block$1(ctx);
+	let if_block = /*valid*/ ctx[1] && /*$selectedDraft*/ ctx[2] && create_if_block$2(ctx);
 
 	return {
 		c() {
@@ -45859,7 +47362,7 @@ function create_fragment$1(ctx) {
 				if (if_block) {
 					if_block.p(ctx, dirty);
 				} else {
-					if_block = create_if_block$1(ctx);
+					if_block = create_if_block$2(ctx);
 					if_block.c();
 					if_block.m(div2, null);
 				}
@@ -45882,7 +47385,7 @@ function create_fragment$1(ctx) {
 
 const regex = /[:\\\/]/;
 
-function instance$1($$self, $$props, $$invalidate) {
+function instance$2($$self, $$props, $$invalidate) {
 	let $selectedDraft;
 	component_subscribe($$self, selectedDraft, $$value => $$invalidate(2, $selectedDraft = $$value));
 	let title;
@@ -45968,7 +47471,7 @@ function instance$1($$self, $$props, $$invalidate) {
 class NewDraftModal extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance$1, create_fragment$1, safe_not_equal, {}, add_css$1);
+		init(this, options, instance$2, create_fragment$2, safe_not_equal, {}, add_css$2);
 	}
 }
 
@@ -46025,6 +47528,98 @@ class NewDraftModalContainer extends obsidian.Modal {
     }
 }
 
+/* src/view/metadata-modal/OverrideHint.svelte generated by Svelte v3.49.0 */
+
+function add_css$1(target) {
+	append_styles(target, "svelte-erm6mt", ".override-hint.svelte-erm6mt{display:block;margin-top:2px;color:var(--text-warning);font-size:var(--font-ui-smaller);line-height:var(--line-height-tight)}");
+}
+
+// (5:0) {#if by}
+function create_if_block$1(ctx) {
+	let span;
+	let t0;
+	let code;
+	let t1;
+	let t2;
+
+	return {
+		c() {
+			span = element("span");
+			t0 = text("Overridden by ");
+			code = element("code");
+			t1 = text(/*by*/ ctx[0]);
+			t2 = text(" for this draft.");
+			attr(span, "class", "override-hint svelte-erm6mt");
+		},
+		m(target, anchor) {
+			insert(target, span, anchor);
+			append(span, t0);
+			append(span, code);
+			append(code, t1);
+			append(span, t2);
+		},
+		p(ctx, dirty) {
+			if (dirty & /*by*/ 1) set_data(t1, /*by*/ ctx[0]);
+		},
+		d(detaching) {
+			if (detaching) detach(span);
+		}
+	};
+}
+
+function create_fragment$1(ctx) {
+	let if_block_anchor;
+	let if_block = /*by*/ ctx[0] && create_if_block$1(ctx);
+
+	return {
+		c() {
+			if (if_block) if_block.c();
+			if_block_anchor = empty();
+		},
+		m(target, anchor) {
+			if (if_block) if_block.m(target, anchor);
+			insert(target, if_block_anchor, anchor);
+		},
+		p(ctx, [dirty]) {
+			if (/*by*/ ctx[0]) {
+				if (if_block) {
+					if_block.p(ctx, dirty);
+				} else {
+					if_block = create_if_block$1(ctx);
+					if_block.c();
+					if_block.m(if_block_anchor.parentNode, if_block_anchor);
+				}
+			} else if (if_block) {
+				if_block.d(1);
+				if_block = null;
+			}
+		},
+		i: noop,
+		o: noop,
+		d(detaching) {
+			if (if_block) if_block.d(detaching);
+			if (detaching) detach(if_block_anchor);
+		}
+	};
+}
+
+function instance$1($$self, $$props, $$invalidate) {
+	let { by } = $$props;
+
+	$$self.$$set = $$props => {
+		if ('by' in $$props) $$invalidate(0, by = $$props.by);
+	};
+
+	return [by];
+}
+
+class OverrideHint extends SvelteComponent {
+	constructor(options) {
+		super();
+		init(this, options, instance$1, create_fragment$1, safe_not_equal, { by: 0 }, add_css$1);
+	}
+}
+
 /* src/view/metadata-modal/MetadataModal.svelte generated by Svelte v3.49.0 */
 
 function add_css(target) {
@@ -46033,13 +47628,13 @@ function add_css(target) {
 
 function get_each_context(ctx, list, i) {
 	const child_ctx = ctx.slice();
-	child_ctx[35] = list[i];
-	child_ctx[36] = list;
-	child_ctx[37] = i;
+	child_ctx[38] = list[i];
+	child_ctx[39] = list;
+	child_ctx[40] = i;
 	return child_ctx;
 }
 
-// (236:2) {:else}
+// (261:2) {:else}
 function create_else_block(ctx) {
 	let form_1;
 	let section0;
@@ -46051,70 +47646,134 @@ function create_else_block(ctx) {
 	let t4;
 	let input0;
 	let t5;
+	let overridehint0;
+	let t6;
 	let label1;
 	let span2;
-	let t7;
-	let input1;
 	let t8;
+	let input1;
+	let t9;
+	let overridehint1;
+	let t10;
 	let div1;
 	let label2;
 	let span3;
-	let t10;
+	let t12;
 	let input2;
-	let t11;
+	let t13;
+	let overridehint2;
+	let t14;
 	let label3;
 	let span4;
-	let t13;
+	let t16;
 	let input3;
-	let t14;
+	let t17;
+	let overridehint3;
+	let t18;
 	let label4;
 	let span5;
-	let t16;
+	let t20;
 	let input4;
-	let t17;
+	let t21;
+	let overridehint4;
+	let t22;
 	let label5;
 	let span6;
-	let t19;
+	let t24;
 	let textarea;
-	let t20;
+	let t25;
+	let overridehint5;
+	let t26;
 	let label6;
 	let span7;
-	let t22;
+	let t28;
 	let input5;
-	let t23;
+	let t29;
+	let overridehint6;
+	let t30;
 	let section1;
 	let div2;
 	let h31;
-	let t24;
-	let t25;
+	let t31;
+	let t32;
 	let button0;
 	let icon;
-	let t26;
+	let t33;
 	let p0;
-	let t36;
+	let t43;
+	let overridehint7;
+	let t44;
+	let overridehint8;
+	let t45;
 	let div3;
 	let each_blocks = [];
 	let each_1_lookup = new Map();
-	let t37;
+	let t46;
 	let footer;
 	let p1;
-	let t38;
+	let t47;
 	let code3;
-	let t39;
-	let t40;
+	let t48;
+	let t49;
 	let div4;
 	let button1;
-	let t42;
+	let t51;
 	let button2;
-	let t43;
+	let t52;
 	let button2_disabled_value;
 	let current;
 	let mounted;
 	let dispose;
+
+	overridehint0 = new OverrideHint({
+			props: { by: /*overrides*/ ctx[6]["title"] }
+		});
+
+	overridehint1 = new OverrideHint({
+			props: {
+				by: /*overrides*/ ctx[6]["_longform.acronym"]
+			}
+		});
+
+	overridehint2 = new OverrideHint({
+			props: {
+				by: /*overrides*/ ctx[6]["publication_date"]
+			}
+		});
+
+	overridehint3 = new OverrideHint({
+			props: { by: /*overrides*/ ctx[6]["version"] }
+		});
+
+	overridehint4 = new OverrideHint({
+			props: {
+				by: /*overrides*/ ctx[6]["journal_title"]
+			}
+		});
+
+	overridehint5 = new OverrideHint({
+			props: { by: /*overrides*/ ctx[6]["description"] }
+		});
+
+	overridehint6 = new OverrideHint({
+			props: { by: /*overrides*/ ctx[6]["keywords"] }
+		});
+
 	let if_block = !/*creatorsOk*/ ctx[3] && create_if_block_2();
 	icon = new Icon({ props: { iconName: "plus-with-circle" } });
+
+	overridehint7 = new OverrideHint({
+			props: { by: /*overrides*/ ctx[6]["creators"] }
+		});
+
+	overridehint8 = new OverrideHint({
+			props: {
+				by: /*overrides*/ ctx[6]["_longform.corresponding"]
+			}
+		});
+
 	let each_value = /*form*/ ctx[2].creators;
-	const get_key = ctx => /*i*/ ctx[37];
+	const get_key = ctx => /*i*/ ctx[40];
 
 	for (let i = 0; i < each_value.length; i += 1) {
 		let child_ctx = get_each_context(ctx, each_value, i);
@@ -46136,52 +47795,66 @@ function create_else_block(ctx) {
 			t4 = space();
 			input0 = element("input");
 			t5 = space();
+			create_component(overridehint0.$$.fragment);
+			t6 = space();
 			label1 = element("label");
 			span2 = element("span");
 			span2.textContent = "Acronym";
-			t7 = space();
-			input1 = element("input");
 			t8 = space();
+			input1 = element("input");
+			t9 = space();
+			create_component(overridehint1.$$.fragment);
+			t10 = space();
 			div1 = element("div");
 			label2 = element("label");
 			span3 = element("span");
 			span3.textContent = "Publication date";
-			t10 = space();
+			t12 = space();
 			input2 = element("input");
-			t11 = space();
+			t13 = space();
+			create_component(overridehint2.$$.fragment);
+			t14 = space();
 			label3 = element("label");
 			span4 = element("span");
 			span4.textContent = "Version";
-			t13 = space();
+			t16 = space();
 			input3 = element("input");
-			t14 = space();
+			t17 = space();
+			create_component(overridehint3.$$.fragment);
+			t18 = space();
 			label4 = element("label");
 			span5 = element("span");
 			span5.textContent = "Journal";
-			t16 = space();
+			t20 = space();
 			input4 = element("input");
-			t17 = space();
+			t21 = space();
+			create_component(overridehint4.$$.fragment);
+			t22 = space();
 			label5 = element("label");
 			span6 = element("span");
 			span6.textContent = "Abstract / description";
-			t19 = space();
+			t24 = space();
 			textarea = element("textarea");
-			t20 = space();
+			t25 = space();
+			create_component(overridehint5.$$.fragment);
+			t26 = space();
 			label6 = element("label");
 			span7 = element("span");
 			span7.textContent = "Keywords";
-			t22 = space();
+			t28 = space();
 			input5 = element("input");
-			t23 = space();
+			t29 = space();
+			create_component(overridehint6.$$.fragment);
+			t30 = space();
 			section1 = element("section");
 			div2 = element("div");
 			h31 = element("h3");
-			t24 = text("Creators\n            ");
+			t31 = text("Creators\n            ");
 			if (if_block) if_block.c();
-			t25 = space();
+			t32 = space();
 			button0 = element("button");
 			create_component(icon.$$.fragment);
-			t26 = space();
+			t33 = space();
 			p0 = element("p");
 
 			p0.innerHTML = `Zenodo treats <code class="svelte-1blte8z">affiliation</code> as a single string. For
@@ -46190,26 +47863,30 @@ function create_else_block(ctx) {
           Check <strong>Corresponding</strong> to mark an author; their
           <code class="svelte-1blte8z">email</code> is printed as the “Corresponding author” line.`;
 
-			t36 = space();
+			t43 = space();
+			create_component(overridehint7.$$.fragment);
+			t44 = space();
+			create_component(overridehint8.$$.fragment);
+			t45 = space();
 			div3 = element("div");
 
 			for (let i = 0; i < each_blocks.length; i += 1) {
 				each_blocks[i].c();
 			}
 
-			t37 = space();
+			t46 = space();
 			footer = element("footer");
 			p1 = element("p");
-			t38 = text("Saving to ");
+			t47 = text("Saving to ");
 			code3 = element("code");
-			t39 = text(/*filePath*/ ctx[4]);
-			t40 = space();
+			t48 = text(/*filePath*/ ctx[4]);
+			t49 = space();
 			div4 = element("div");
 			button1 = element("button");
 			button1.textContent = "Cancel";
-			t42 = space();
+			t51 = space();
 			button2 = element("button");
-			t43 = text("Save");
+			t52 = text("Save");
 			attr(h30, "class", "svelte-1blte8z");
 			attr(span1, "class", "svelte-1blte8z");
 			attr(input0, "type", "text");
@@ -46262,7 +47939,7 @@ function create_else_block(ctx) {
 			attr(button1, "class", "ghost svelte-1blte8z");
 			attr(button2, "type", "submit");
 			attr(button2, "class", "primary svelte-1blte8z");
-			button2.disabled = button2_disabled_value = !/*canSave*/ ctx[6];
+			button2.disabled = button2_disabled_value = !/*canSave*/ ctx[7];
 			attr(div4, "class", "actions svelte-1blte8z");
 			attr(footer, "class", "svelte-1blte8z");
 		},
@@ -46277,87 +47954,105 @@ function create_else_block(ctx) {
 			append(label0, t4);
 			append(label0, input0);
 			set_input_value(input0, /*form*/ ctx[2].title);
-			append(div0, t5);
+			append(label0, t5);
+			mount_component(overridehint0, label0, null);
+			append(div0, t6);
 			append(div0, label1);
 			append(label1, span2);
-			append(label1, t7);
+			append(label1, t8);
 			append(label1, input1);
 			set_input_value(input1, /*form*/ ctx[2].acronym);
-			append(section0, t8);
+			append(label1, t9);
+			mount_component(overridehint1, label1, null);
+			append(section0, t10);
 			append(section0, div1);
 			append(div1, label2);
 			append(label2, span3);
-			append(label2, t10);
+			append(label2, t12);
 			append(label2, input2);
 			set_input_value(input2, /*form*/ ctx[2].publication_date);
-			append(div1, t11);
+			append(label2, t13);
+			mount_component(overridehint2, label2, null);
+			append(div1, t14);
 			append(div1, label3);
 			append(label3, span4);
-			append(label3, t13);
+			append(label3, t16);
 			append(label3, input3);
 			set_input_value(input3, /*form*/ ctx[2].version);
-			append(section0, t14);
+			append(label3, t17);
+			mount_component(overridehint3, label3, null);
+			append(section0, t18);
 			append(section0, label4);
 			append(label4, span5);
-			append(label4, t16);
+			append(label4, t20);
 			append(label4, input4);
 			set_input_value(input4, /*form*/ ctx[2].journal_title);
-			append(section0, t17);
+			append(label4, t21);
+			mount_component(overridehint4, label4, null);
+			append(section0, t22);
 			append(section0, label5);
 			append(label5, span6);
-			append(label5, t19);
+			append(label5, t24);
 			append(label5, textarea);
 			set_input_value(textarea, /*form*/ ctx[2].description);
-			append(section0, t20);
+			append(label5, t25);
+			mount_component(overridehint5, label5, null);
+			append(section0, t26);
 			append(section0, label6);
 			append(label6, span7);
-			append(label6, t22);
+			append(label6, t28);
 			append(label6, input5);
 			set_input_value(input5, /*form*/ ctx[2].keywords);
-			append(form_1, t23);
+			append(label6, t29);
+			mount_component(overridehint6, label6, null);
+			append(form_1, t30);
 			append(form_1, section1);
 			append(section1, div2);
 			append(div2, h31);
-			append(h31, t24);
+			append(h31, t31);
 			if (if_block) if_block.m(h31, null);
-			append(div2, t25);
+			append(div2, t32);
 			append(div2, button0);
 			mount_component(icon, button0, null);
-			append(section1, t26);
+			append(section1, t33);
 			append(section1, p0);
-			append(section1, t36);
+			append(section1, t43);
+			mount_component(overridehint7, section1, null);
+			append(section1, t44);
+			mount_component(overridehint8, section1, null);
+			append(section1, t45);
 			append(section1, div3);
 
 			for (let i = 0; i < each_blocks.length; i += 1) {
 				each_blocks[i].m(div3, null);
 			}
 
-			append(form_1, t37);
+			append(form_1, t46);
 			append(form_1, footer);
 			append(footer, p1);
-			append(p1, t38);
+			append(p1, t47);
 			append(p1, code3);
-			append(code3, t39);
-			append(footer, t40);
+			append(code3, t48);
+			append(footer, t49);
 			append(footer, div4);
 			append(div4, button1);
-			append(div4, t42);
+			append(div4, t51);
 			append(div4, button2);
-			append(button2, t43);
+			append(button2, t52);
 			current = true;
 
 			if (!mounted) {
 				dispose = [
-					listen(input0, "input", /*input0_input_handler*/ ctx[15]),
-					listen(input1, "input", /*input1_input_handler*/ ctx[16]),
-					listen(input2, "input", /*input2_input_handler*/ ctx[17]),
-					listen(input3, "input", /*input3_input_handler*/ ctx[18]),
-					listen(input4, "input", /*input4_input_handler*/ ctx[19]),
-					listen(textarea, "input", /*textarea_input_handler*/ ctx[20]),
-					listen(input5, "input", /*input5_input_handler*/ ctx[21]),
-					listen(button0, "click", /*addCreator*/ ctx[8]),
-					listen(button1, "click", /*close*/ ctx[7]),
-					listen(form_1, "submit", prevent_default(/*onSave*/ ctx[11]))
+					listen(input0, "input", /*input0_input_handler*/ ctx[17]),
+					listen(input1, "input", /*input1_input_handler*/ ctx[18]),
+					listen(input2, "input", /*input2_input_handler*/ ctx[19]),
+					listen(input3, "input", /*input3_input_handler*/ ctx[20]),
+					listen(input4, "input", /*input4_input_handler*/ ctx[21]),
+					listen(textarea, "input", /*textarea_input_handler*/ ctx[22]),
+					listen(input5, "input", /*input5_input_handler*/ ctx[23]),
+					listen(button0, "click", /*addCreator*/ ctx[9]),
+					listen(button1, "click", /*close*/ ctx[8]),
+					listen(form_1, "submit", prevent_default(/*onSave*/ ctx[12]))
 				];
 
 				mounted = true;
@@ -46368,29 +48063,57 @@ function create_else_block(ctx) {
 				set_input_value(input0, /*form*/ ctx[2].title);
 			}
 
+			const overridehint0_changes = {};
+			if (dirty[0] & /*overrides*/ 64) overridehint0_changes.by = /*overrides*/ ctx[6]["title"];
+			overridehint0.$set(overridehint0_changes);
+
 			if (dirty[0] & /*form*/ 4 && input1.value !== /*form*/ ctx[2].acronym) {
 				set_input_value(input1, /*form*/ ctx[2].acronym);
 			}
+
+			const overridehint1_changes = {};
+			if (dirty[0] & /*overrides*/ 64) overridehint1_changes.by = /*overrides*/ ctx[6]["_longform.acronym"];
+			overridehint1.$set(overridehint1_changes);
 
 			if (dirty[0] & /*form*/ 4) {
 				set_input_value(input2, /*form*/ ctx[2].publication_date);
 			}
 
+			const overridehint2_changes = {};
+			if (dirty[0] & /*overrides*/ 64) overridehint2_changes.by = /*overrides*/ ctx[6]["publication_date"];
+			overridehint2.$set(overridehint2_changes);
+
 			if (dirty[0] & /*form*/ 4 && input3.value !== /*form*/ ctx[2].version) {
 				set_input_value(input3, /*form*/ ctx[2].version);
 			}
+
+			const overridehint3_changes = {};
+			if (dirty[0] & /*overrides*/ 64) overridehint3_changes.by = /*overrides*/ ctx[6]["version"];
+			overridehint3.$set(overridehint3_changes);
 
 			if (dirty[0] & /*form*/ 4 && input4.value !== /*form*/ ctx[2].journal_title) {
 				set_input_value(input4, /*form*/ ctx[2].journal_title);
 			}
 
+			const overridehint4_changes = {};
+			if (dirty[0] & /*overrides*/ 64) overridehint4_changes.by = /*overrides*/ ctx[6]["journal_title"];
+			overridehint4.$set(overridehint4_changes);
+
 			if (dirty[0] & /*form*/ 4) {
 				set_input_value(textarea, /*form*/ ctx[2].description);
 			}
 
+			const overridehint5_changes = {};
+			if (dirty[0] & /*overrides*/ 64) overridehint5_changes.by = /*overrides*/ ctx[6]["description"];
+			overridehint5.$set(overridehint5_changes);
+
 			if (dirty[0] & /*form*/ 4 && input5.value !== /*form*/ ctx[2].keywords) {
 				set_input_value(input5, /*form*/ ctx[2].keywords);
 			}
+
+			const overridehint6_changes = {};
+			if (dirty[0] & /*overrides*/ 64) overridehint6_changes.by = /*overrides*/ ctx[6]["keywords"];
+			overridehint6.$set(overridehint6_changes);
 
 			if (!/*creatorsOk*/ ctx[3]) {
 				if (if_block) ; else {
@@ -46403,30 +48126,64 @@ function create_else_block(ctx) {
 				if_block = null;
 			}
 
-			if (dirty[0] & /*removeCreator, form, moveCreator*/ 1540) {
+			const overridehint7_changes = {};
+			if (dirty[0] & /*overrides*/ 64) overridehint7_changes.by = /*overrides*/ ctx[6]["creators"];
+			overridehint7.$set(overridehint7_changes);
+			const overridehint8_changes = {};
+			if (dirty[0] & /*overrides*/ 64) overridehint8_changes.by = /*overrides*/ ctx[6]["_longform.corresponding"];
+			overridehint8.$set(overridehint8_changes);
+
+			if (dirty[0] & /*removeCreator, form, moveCreator*/ 3076) {
 				each_value = /*form*/ ctx[2].creators;
 				each_blocks = update_keyed_each(each_blocks, dirty, get_key, 1, ctx, each_value, each_1_lookup, div3, destroy_block, create_each_block, null, get_each_context);
 			}
 
-			if (!current || dirty[0] & /*filePath*/ 16) set_data(t39, /*filePath*/ ctx[4]);
+			if (!current || dirty[0] & /*filePath*/ 16) set_data(t48, /*filePath*/ ctx[4]);
 
-			if (!current || dirty[0] & /*canSave*/ 64 && button2_disabled_value !== (button2_disabled_value = !/*canSave*/ ctx[6])) {
+			if (!current || dirty[0] & /*canSave*/ 128 && button2_disabled_value !== (button2_disabled_value = !/*canSave*/ ctx[7])) {
 				button2.disabled = button2_disabled_value;
 			}
 		},
 		i(local) {
 			if (current) return;
+			transition_in(overridehint0.$$.fragment, local);
+			transition_in(overridehint1.$$.fragment, local);
+			transition_in(overridehint2.$$.fragment, local);
+			transition_in(overridehint3.$$.fragment, local);
+			transition_in(overridehint4.$$.fragment, local);
+			transition_in(overridehint5.$$.fragment, local);
+			transition_in(overridehint6.$$.fragment, local);
 			transition_in(icon.$$.fragment, local);
+			transition_in(overridehint7.$$.fragment, local);
+			transition_in(overridehint8.$$.fragment, local);
 			current = true;
 		},
 		o(local) {
+			transition_out(overridehint0.$$.fragment, local);
+			transition_out(overridehint1.$$.fragment, local);
+			transition_out(overridehint2.$$.fragment, local);
+			transition_out(overridehint3.$$.fragment, local);
+			transition_out(overridehint4.$$.fragment, local);
+			transition_out(overridehint5.$$.fragment, local);
+			transition_out(overridehint6.$$.fragment, local);
 			transition_out(icon.$$.fragment, local);
+			transition_out(overridehint7.$$.fragment, local);
+			transition_out(overridehint8.$$.fragment, local);
 			current = false;
 		},
 		d(detaching) {
 			if (detaching) detach(form_1);
+			destroy_component(overridehint0);
+			destroy_component(overridehint1);
+			destroy_component(overridehint2);
+			destroy_component(overridehint3);
+			destroy_component(overridehint4);
+			destroy_component(overridehint5);
+			destroy_component(overridehint6);
 			if (if_block) if_block.d();
 			destroy_component(icon);
+			destroy_component(overridehint7);
+			destroy_component(overridehint8);
 
 			for (let i = 0; i < each_blocks.length; i += 1) {
 				each_blocks[i].d();
@@ -46438,7 +48195,7 @@ function create_else_block(ctx) {
 	};
 }
 
-// (215:24) 
+// (240:24) 
 function create_if_block_1(ctx) {
 	let div2;
 	let div0;
@@ -46526,8 +48283,8 @@ function create_if_block_1(ctx) {
 
 			if (!mounted) {
 				dispose = [
-					listen(button0, "click", /*close*/ ctx[7]),
-					listen(button1, "click", /*onCreateFile*/ ctx[12])
+					listen(button0, "click", /*close*/ ctx[8]),
+					listen(button1, "click", /*onCreateFile*/ ctx[13])
 				];
 
 				mounted = true;
@@ -46554,7 +48311,7 @@ function create_if_block_1(ctx) {
 	};
 }
 
-// (213:2) {#if loading}
+// (238:2) {#if loading}
 function create_if_block(ctx) {
 	let p;
 
@@ -46576,7 +48333,7 @@ function create_if_block(ctx) {
 	};
 }
 
-// (290:12) {#if !creatorsOk}
+// (322:12) {#if !creatorsOk}
 function create_if_block_2(ctx) {
 	let span;
 
@@ -46595,7 +48352,7 @@ function create_if_block_2(ctx) {
 	};
 }
 
-// (304:10) {#each form.creators as creator, i (i)}
+// (338:10) {#each form.creators as creator, i (i)}
 function create_each_block(key_1, ctx) {
 	let div3;
 	let div1;
@@ -46627,35 +48384,35 @@ function create_each_block(key_1, ctx) {
 	let dispose;
 
 	function input0_input_handler_1() {
-		/*input0_input_handler_1*/ ctx[22].call(input0, /*each_value*/ ctx[36], /*i*/ ctx[37]);
+		/*input0_input_handler_1*/ ctx[24].call(input0, /*each_value*/ ctx[39], /*i*/ ctx[40]);
 	}
 
 	function input1_input_handler_1() {
-		/*input1_input_handler_1*/ ctx[23].call(input1, /*each_value*/ ctx[36], /*i*/ ctx[37]);
+		/*input1_input_handler_1*/ ctx[25].call(input1, /*each_value*/ ctx[39], /*i*/ ctx[40]);
 	}
 
 	function input2_input_handler_1() {
-		/*input2_input_handler_1*/ ctx[24].call(input2, /*each_value*/ ctx[36], /*i*/ ctx[37]);
+		/*input2_input_handler_1*/ ctx[26].call(input2, /*each_value*/ ctx[39], /*i*/ ctx[40]);
 	}
 
 	function input3_input_handler_1() {
-		/*input3_input_handler_1*/ ctx[25].call(input3, /*each_value*/ ctx[36], /*i*/ ctx[37]);
+		/*input3_input_handler_1*/ ctx[27].call(input3, /*each_value*/ ctx[39], /*i*/ ctx[40]);
 	}
 
 	function input4_change_handler() {
-		/*input4_change_handler*/ ctx[26].call(input4, /*each_value*/ ctx[36], /*i*/ ctx[37]);
+		/*input4_change_handler*/ ctx[28].call(input4, /*each_value*/ ctx[39], /*i*/ ctx[40]);
 	}
 
 	function click_handler() {
-		return /*click_handler*/ ctx[27](/*i*/ ctx[37]);
+		return /*click_handler*/ ctx[29](/*i*/ ctx[40]);
 	}
 
 	function click_handler_1() {
-		return /*click_handler_1*/ ctx[28](/*i*/ ctx[37]);
+		return /*click_handler_1*/ ctx[30](/*i*/ ctx[40]);
 	}
 
 	function click_handler_2() {
-		return /*click_handler_2*/ ctx[29](/*i*/ ctx[37]);
+		return /*click_handler_2*/ ctx[31](/*i*/ ctx[40]);
 	}
 
 	return {
@@ -46706,11 +48463,11 @@ function create_each_block(key_1, ctx) {
 			attr(div1, "class", "creator-main svelte-1blte8z");
 			attr(button0, "type", "button");
 			attr(button0, "class", "ghost svelte-1blte8z");
-			button0.disabled = button0_disabled_value = /*i*/ ctx[37] === 0;
+			button0.disabled = button0_disabled_value = /*i*/ ctx[40] === 0;
 			attr(button0, "title", "Move up");
 			attr(button1, "type", "button");
 			attr(button1, "class", "ghost svelte-1blte8z");
-			button1.disabled = button1_disabled_value = /*i*/ ctx[37] === /*form*/ ctx[2].creators.length - 1;
+			button1.disabled = button1_disabled_value = /*i*/ ctx[40] === /*form*/ ctx[2].creators.length - 1;
 			attr(button1, "title", "Move down");
 			attr(button2, "type", "button");
 			attr(button2, "class", "ghost danger svelte-1blte8z");
@@ -46724,20 +48481,20 @@ function create_each_block(key_1, ctx) {
 			append(div3, div1);
 			append(div1, div0);
 			append(div0, input0);
-			set_input_value(input0, /*creator*/ ctx[35].name);
+			set_input_value(input0, /*creator*/ ctx[38].name);
 			append(div0, t0);
 			append(div0, input1);
-			set_input_value(input1, /*creator*/ ctx[35].affiliation);
+			set_input_value(input1, /*creator*/ ctx[38].affiliation);
 			append(div0, t1);
 			append(div0, input2);
-			set_input_value(input2, /*creator*/ ctx[35].orcid);
+			set_input_value(input2, /*creator*/ ctx[38].orcid);
 			append(div0, t2);
 			append(div0, input3);
-			set_input_value(input3, /*creator*/ ctx[35].email);
+			set_input_value(input3, /*creator*/ ctx[38].email);
 			append(div1, t3);
 			append(div1, label);
 			append(label, input4);
-			input4.checked = /*creator*/ ctx[35].corresponding;
+			input4.checked = /*creator*/ ctx[38].corresponding;
 			append(label, t4);
 			append(div3, t5);
 			append(div3, div2);
@@ -46768,31 +48525,31 @@ function create_each_block(key_1, ctx) {
 		p(new_ctx, dirty) {
 			ctx = new_ctx;
 
-			if (dirty[0] & /*form*/ 4 && input0.value !== /*creator*/ ctx[35].name) {
-				set_input_value(input0, /*creator*/ ctx[35].name);
+			if (dirty[0] & /*form*/ 4 && input0.value !== /*creator*/ ctx[38].name) {
+				set_input_value(input0, /*creator*/ ctx[38].name);
 			}
 
-			if (dirty[0] & /*form*/ 4 && input1.value !== /*creator*/ ctx[35].affiliation) {
-				set_input_value(input1, /*creator*/ ctx[35].affiliation);
+			if (dirty[0] & /*form*/ 4 && input1.value !== /*creator*/ ctx[38].affiliation) {
+				set_input_value(input1, /*creator*/ ctx[38].affiliation);
 			}
 
-			if (dirty[0] & /*form*/ 4 && input2.value !== /*creator*/ ctx[35].orcid) {
-				set_input_value(input2, /*creator*/ ctx[35].orcid);
+			if (dirty[0] & /*form*/ 4 && input2.value !== /*creator*/ ctx[38].orcid) {
+				set_input_value(input2, /*creator*/ ctx[38].orcid);
 			}
 
-			if (dirty[0] & /*form*/ 4 && input3.value !== /*creator*/ ctx[35].email) {
-				set_input_value(input3, /*creator*/ ctx[35].email);
+			if (dirty[0] & /*form*/ 4 && input3.value !== /*creator*/ ctx[38].email) {
+				set_input_value(input3, /*creator*/ ctx[38].email);
 			}
 
 			if (dirty[0] & /*form*/ 4) {
-				input4.checked = /*creator*/ ctx[35].corresponding;
+				input4.checked = /*creator*/ ctx[38].corresponding;
 			}
 
-			if (dirty[0] & /*form*/ 4 && button0_disabled_value !== (button0_disabled_value = /*i*/ ctx[37] === 0)) {
+			if (dirty[0] & /*form*/ 4 && button0_disabled_value !== (button0_disabled_value = /*i*/ ctx[40] === 0)) {
 				button0.disabled = button0_disabled_value;
 			}
 
-			if (dirty[0] & /*form*/ 4 && button1_disabled_value !== (button1_disabled_value = /*i*/ ctx[37] === /*form*/ ctx[2].creators.length - 1)) {
+			if (dirty[0] & /*form*/ 4 && button1_disabled_value !== (button1_disabled_value = /*i*/ ctx[40] === /*form*/ ctx[2].creators.length - 1)) {
 				button1.disabled = button1_disabled_value;
 			}
 		},
@@ -46885,6 +48642,7 @@ function instance($$self, $$props, $$invalidate) {
 	let canSave;
 	let { projectPath } = $$props;
 	let { projectTitle } = $$props;
+	let { startDir = projectPath } = $$props;
 	const app = useApp();
 	const close = getContext("close");
 
@@ -46895,6 +48653,26 @@ function instance($$self, $$props, $$invalidate) {
 	let fileExists = false;
 	let loading = true;
 	let form = blankForm();
+
+	// Fields a nearer metadata.json (e.g. supplementary/) sets for the selected
+	// draft: editing them here does not reach that draft's export (#47).
+	// Keyed like MergedMetadata.origin → the overriding file.
+	let overrides = {};
+
+	function loadOverrides() {
+		return __awaiter(this, void 0, void 0, function* () {
+			// The root's own file (or its source/ copy) is what this panel edits.
+			const rootFiles = new Set(folderResourcePaths(projectPath, "metadata.json"));
+
+			try {
+				const layers = yield readMetadataLayers(app.vault, startDir, projectPath);
+				$$invalidate(6, overrides = mergeMetadataLayers(layers.filter(l => !rootFiles.has(l.path))).origin);
+			} catch(_a) {
+				// An unreadable override is the compile step's error to report.
+				$$invalidate(6, overrides = {});
+			}
+		});
+	}
 
 	function blankForm() {
 		return {
@@ -46948,6 +48726,7 @@ function instance($$self, $$props, $$invalidate) {
 			}
 		}
 
+		if (startDir !== projectPath) yield loadOverrides();
 		$$invalidate(1, loading = false);
 	}));
 
@@ -47218,20 +48997,21 @@ function instance($$self, $$props, $$invalidate) {
 
 	$$self.$$set = $$props => {
 		if ('projectPath' in $$props) $$invalidate(0, projectPath = $$props.projectPath);
-		if ('projectTitle' in $$props) $$invalidate(13, projectTitle = $$props.projectTitle);
+		if ('projectTitle' in $$props) $$invalidate(14, projectTitle = $$props.projectTitle);
+		if ('startDir' in $$props) $$invalidate(15, startDir = $$props.startDir);
 	};
 
 	$$self.$$.update = () => {
 		if ($$self.$$.dirty[0] & /*form*/ 4) {
-			$$invalidate(14, titleOk = form.title.trim().length > 0);
+			$$invalidate(16, titleOk = form.title.trim().length > 0);
 		}
 
 		if ($$self.$$.dirty[0] & /*form*/ 4) {
 			$$invalidate(3, creatorsOk = form.creators.some(c => c.name.trim().length > 0));
 		}
 
-		if ($$self.$$.dirty[0] & /*loading, titleOk, creatorsOk*/ 16394) {
-			$$invalidate(6, canSave = !loading && titleOk && creatorsOk);
+		if ($$self.$$.dirty[0] & /*loading, titleOk, creatorsOk*/ 65546) {
+			$$invalidate(7, canSave = !loading && titleOk && creatorsOk);
 		}
 	};
 
@@ -47242,6 +49022,7 @@ function instance($$self, $$props, $$invalidate) {
 		creatorsOk,
 		filePath,
 		fileExists,
+		overrides,
 		canSave,
 		close,
 		addCreator,
@@ -47250,6 +49031,7 @@ function instance($$self, $$props, $$invalidate) {
 		onSave,
 		onCreateFile,
 		projectTitle,
+		startDir,
 		titleOk,
 		input0_input_handler,
 		input1_input_handler,
@@ -47272,16 +49054,35 @@ function instance($$self, $$props, $$invalidate) {
 class MetadataModal$1 extends SvelteComponent {
 	constructor(options) {
 		super();
-		init(this, options, instance, create_fragment, safe_not_equal, { projectPath: 0, projectTitle: 13 }, add_css, [-1, -1]);
+
+		init(
+			this,
+			options,
+			instance,
+			create_fragment,
+			safe_not_equal,
+			{
+				projectPath: 0,
+				projectTitle: 14,
+				startDir: 15
+			},
+			add_css,
+			[-1, -1]
+		);
 	}
 }
 
 class MetadataModal extends obsidian.Modal {
-    constructor(app, projectPath, projectTitle) {
+    /**
+     * @param startDir Where the selected draft's metadata walk starts; nearer
+     *   files between it and `projectPath` are shown as overrides.
+     */
+    constructor(app, projectPath, projectTitle, startDir = projectPath) {
         super(app);
         this.component = null;
         this.projectPath = projectPath;
         this.projectTitle = projectTitle;
+        this.startDir = startDir;
     }
     onOpen() {
         const { contentEl, titleEl, modalEl } = this;
@@ -47298,6 +49099,7 @@ class MetadataModal extends obsidian.Modal {
             props: {
                 projectPath: this.projectPath,
                 projectTitle: this.projectTitle,
+                startDir: this.startDir,
             },
         });
     }
@@ -47525,7 +49327,7 @@ class ExplorerPane extends obsidian.ItemView {
                 if (!draft)
                     return;
                 const projectPath = projectRootPath((_a = get_store_value(selectedProject)) !== null && _a !== void 0 ? _a : [draft]);
-                new MetadataModal(this.app, projectPath, draft.title).open();
+                new MetadataModal(this.app, projectPath, draft.title, metadataStartDir(draft, this.app.vault)).open();
             });
             this.explorerView = new ExplorerView({
                 target: this.contentEl,
@@ -48426,6 +50228,14 @@ class LongformSettingsTab extends obsidian.PluginSettingTab {
                 .setValue((_a = settings.pandocExtraBinFolders) !== null && _a !== void 0 ? _a : "")
                 .onChange((v) => {
                 pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocExtraBinFolders: v })));
+            });
+        });
+        new obsidian.Setting(containerEl)
+            .setName(translate("settings.adaptFonts.name"))
+            .setDesc(translate("settings.adaptFonts.desc"))
+            .addToggle((cb) => {
+            cb.setValue(settings.pandocAdaptFontsToOS).onChange((v) => {
+                pluginSettings.update((s) => (Object.assign(Object.assign({}, s), { pandocAdaptFontsToOS: v })));
             });
         });
         new obsidian.Setting(containerEl)
@@ -50008,7 +51818,7 @@ longform:
   ignoredFiles: []
 ${projectLine(ctx)}---
 
-Supplementary draft of **${title}**. Its own \`metadata.json\` in this folder (found before the shared one at the project root) adds \`supplementary: true\`, so figures and tables are numbered S1, S2, …
+Supplementary draft of **${title}**. Its own \`metadata.json\` in this folder is layered over the shared one at the project root and only adds \`supplementary: true\`, so figures and tables are numbered S1, S2, …
 `;
 }
 /**
@@ -50049,23 +51859,16 @@ We confirm that this manuscript is original, has not been published elsewhere, a
 Thank you for your consideration; we look forward to your response.
 `;
 }
+/**
+ * Only what the Supplementary changes: it is layered over the project root's
+ * metadata.json, so authors, journal and the rest stay in one place (#47).
+ */
 function supplementaryMetadata(ctx) {
     return json({
         title: `${ctx.title} — Supplementary Information`,
-        publication_date: "",
-        upload_type: "publication",
-        publication_type: "article",
-        description: "Supplementary information for the paper. Shares the main manuscript's metadata but adds supplementary: true so figures and tables receive an S prefix.",
-        creators: [leadCreator(ctx)],
-        keywords: ["keyword-one", "keyword-two"],
-        journal_title: "Target Journal",
-        version: "v1.0",
+        description: "Supplementary information for the paper. Everything else comes from the project's root metadata.json; this file only adds supplementary: true so figures and tables receive an S prefix.",
         _longform: {
-            acronym: ctx.acronym,
-            csl: "nature",
-            template: "paperbell",
-            corresponding: [ctx.author],
-            extra_yaml: "supplementary: true\nnumbersections: true\n",
+            extra_yaml: "supplementary: true\n",
         },
     });
 }
@@ -50327,7 +52130,7 @@ const TREE_ANNOTATIONS = {
     "Response Letter (Index).md": "draft index (sceneFolder: response)",
     "Cover Letter.md": "single-file draft; own to/date/manuscript frontmatter",
     "supplementary/Supplementary (Index).md": "draft index (same title → same project)",
-    "supplementary/metadata.json": "nearest-wins override adding supplementary: true",
+    "supplementary/metadata.json": "layered over the root metadata.json; adds supplementary: true",
 };
 /**
  * Render an ASCII directory tree from the paths actually emitted.
@@ -50442,7 +52245,7 @@ function scaffoldContext(opts) {
  */
 function buildPaperbellScaffold(opts) {
     // The Main Manuscript is not optional. It anchors the project root that every
-    // nearest-wins metadata.json lookup is bounded by; a project whose only draft
+    // layered metadata.json lookup is bounded by; a project whose only draft
     // sat in supplementary/ would search from there and miss the shared files.
     if (!opts.parts.includes("main")) {
         throw new Error("A paper project must include the Main Manuscript.");
@@ -50683,7 +52486,7 @@ class NewPaperModal extends obsidian.Modal {
                         this.parts.delete(part.id);
                 });
                 // The Main Manuscript is not optional: it anchors the project root that
-                // every nearest-wins metadata.json lookup is bounded by, and a project
+                // every layered metadata.json lookup is bounded by, and a project
                 // whose only draft sits in supplementary/ would search from there.
                 if (part.id === "main") {
                     toggle.setDisabled(true);
@@ -51413,11 +53216,6 @@ function addComponents(plugin, title, plan, selected) {
             new obsidian.Notice(translate("components.added", {
                 names: selected.map((id) => paperPart(id).draftTitle).join(", "),
             }));
-            // Known gap: in project form the compile steps resolve metadata.json from
-            // the index's own folder, so a Supplementary's nearer override is not seen.
-            if (form === "project" && selected.includes("supplementary")) {
-                new obsidian.Notice(translate("components.siProjectFormWarning"), 12000);
-            }
         }
         catch (error) {
             if (error instanceof ScaffoldConflictError) {
@@ -52333,10 +54131,10 @@ function startLocaleSync() {
 }
 
 /**
- * Locate and read the `metadata.json` that backs the Longform project owning
- * `sourcePath`, mirroring how the compile steps resolve project resources: from
- * the draft's own folder up to the project root (lowest common ancestor of the
- * project's drafts), checking each level's `source/` subfolder too.
+ * Read the layered `metadata.json` behind the Longform project owning
+ * `sourcePath`, exactly as the compile steps do: every file from the project
+ * root (lowest common ancestor of the project's drafts) down to the draft's
+ * start folder, nearer files overriding farther ones key by key.
  *
  * Returns `null` when the note is not part of any Longform draft or no metadata
  * file exists — so live rendering only ever touches project notes.
@@ -52350,32 +54148,26 @@ function resolveProjectMetadataFile(app, sourcePath) {
             return null;
         const projectDrafts = (_a = get_store_value(projects)[draft.title]) !== null && _a !== void 0 ? _a : [draft];
         const root = projectRootPath(projectDrafts);
-        // Start the nearest-wins walk from the draft's own folder. For a project
-        // asset (all assets share one index at the project root) start instead from
-        // its scene folder, so a nearer `metadata.json` (e.g. supplementary/) still
-        // wins. Legacy drafts keep their own index folder — unchanged behavior.
-        const startDir = draft.format === "scenes" && draft.indexPath
-            ? sceneFolderPath(draft, app.vault)
-            : draftIndexFolder(draft);
-        const candidatePaths = projectResourceCandidatePaths(startDir, root, "metadata.json");
-        let file = null;
-        for (const path of candidatePaths) {
-            const f = app.vault.getAbstractFileByPath(path);
-            if (f instanceof obsidian.TFile) {
-                file = f;
-                break;
-            }
-        }
-        if (!file)
-            return null;
-        let data = null;
+        const startDir = metadataStartDir(draft, app.vault);
+        let layers;
         try {
-            data = JSON.parse(yield app.vault.cachedRead(file));
+            layers = yield readMetadataLayers(app.vault, startDir, root);
         }
-        catch (_b) {
-            data = null;
+        catch (e) {
+            if (!(e instanceof MetadataParseError))
+                throw e;
+            const file = app.vault.getAbstractFileByPath(e.path);
+            return file instanceof obsidian.TFile
+                ? { defaultFile: file, data: null, origin: {} }
+                : null;
         }
-        return { file, data };
+        if (layers.length === 0)
+            return null;
+        const rootMost = app.vault.getAbstractFileByPath(layers[0].path);
+        if (!(rootMost instanceof obsidian.TFile))
+            return null;
+        const { merged, origin } = mergeMetadataLayers(layers);
+        return { defaultFile: rootMost, data: merged, origin };
     });
 }
 
@@ -52516,7 +54308,7 @@ function makeVariableSpan(app, metadataFilePath, path, value) {
     return span;
 }
 /** Replace every `{{path}}` in a text node with a rendered variable span. */
-function renderTextNode(textNode, regex, data, metadataFilePath, app) {
+function renderTextNode(textNode, regex, data, fileFor, app) {
     var _a;
     const text = (_a = textNode.nodeValue) !== null && _a !== void 0 ? _a : "";
     regex.lastIndex = 0;
@@ -52532,7 +54324,7 @@ function renderTextNode(textNode, regex, data, metadataFilePath, app) {
         }
         const path = match[1].trim();
         const value = getByPath(data, path);
-        frag.appendChild(makeVariableSpan(app, metadataFilePath, path, value));
+        frag.appendChild(makeVariableSpan(app, fileFor(path), path, value));
         lastIndex = start + match[0].length;
     }
     if (!matched)
@@ -52562,7 +54354,9 @@ function registerVariablePostProcessor(plugin) {
             const resolved = yield resolveProjectMetadataFile(plugin.app, ctx.sourcePath);
             if (!resolved || !resolved.data)
                 return;
-            const { file, data } = resolved;
+            const { defaultFile, data, origin } = resolved;
+            // Edit a value in the layer that defines it; new keys go to the root.
+            const fileFor = (varPath) => originForPath(origin, varPath, defaultFile.path);
             const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
             const textNodes = [];
             let node;
@@ -52576,7 +54370,7 @@ function registerVariablePostProcessor(plugin) {
             }
             const regex = buildPlaceholderRegex("{{", "}}");
             for (const textNode of textNodes) {
-                renderTextNode(textNode, regex, data, file.path, plugin.app);
+                renderTextNode(textNode, regex, data, fileFor, plugin.app);
             }
         }
         catch (e) {
@@ -52632,14 +54426,7 @@ class LongformPlugin extends obsidian.Plugin {
             }));
             // Settings
             this.unsubscribeSettings = pluginSettings.subscribe((value) => __awaiter(this, void 0, void 0, function* () {
-                let shouldSave = false;
-                const changeInKeys = (obj1, obj2, keys) => {
-                    return !!keys.find((k) => obj1[k] !== obj2[k]);
-                };
-                if (this.cachedSettings &&
-                    changeInKeys(this.cachedSettings, value, PASSTHROUGH_SAVE_SETTINGS_PATHS)) {
-                    shouldSave = true;
-                }
+                const shouldSave = settingsNeedSave(this.cachedSettings, value);
                 this.cachedSettings = value;
                 if (shouldSave) {
                     yield this.saveSettings();

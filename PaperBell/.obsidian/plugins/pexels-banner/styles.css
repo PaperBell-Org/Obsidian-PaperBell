@@ -42,28 +42,48 @@
 }
 
 .pixel-banner-image {
-	position: absolute !important;
+	position: absolute;
 	top: 0;
 	left: var(--pixel-banner-banner-gap, 0);
 	right: var(--pixel-banner-banner-gap, 0);
 	background-size: cover; 
-	background-position: var(--pixel-banner-x-position, 50%) var(--pixel-banner-y-position, 50%) !important;
+	background-position: var(--pixel-banner-x-position, 50%) var(--pixel-banner-y-position, 50%);
 	overflow: hidden;  
 	mask-image: linear-gradient(to bottom, black calc(100% + var(--pixel-banner-fade, -75%)), transparent);
 	-webkit-mask-image: linear-gradient(to bottom, black calc(100% + var(--pixel-banner-fade, -75%)), transparent);
 	height: var(--pixel-banner-height, 350px);
-    border-radius: var(--pixel-banner-radius, 17px) !important;
+    border-radius: var(--pixel-banner-radius, 17px);
 	pointer-events: none;
 	animation: pixel-banner-fade-in var(--pixel-banner-fade-in-animation-duration, 300ms) ease-in-out;
 	will-change: opacity;
 	transform: translateZ(0);
 	background-repeat: no-repeat;
     z-index: -1;
-    width: unset !important;
-    max-width: var(--pixel-banner-max-width, unset) !important;
+    width: unset;
+    max-width: var(--pixel-banner-max-width, unset);
     margin: var(--pixel-banner-alignment, 0 auto);
     /* add transition to banner image background position */
     transition: background-position 0.5s ease;
+}
+
+/* the text column width for banner-max-width: readable and Match readable line length (issue #267). */
+/* The variable only exists while Obsidian's Readable line length is on, so readable falls back to  */
+/* none (full width) otherwise. It inherits, reaching the banner and its --pixel-banner-max-width    */
+.markdown-preview-view.is-readable-line-width,
+.markdown-source-view.is-readable-line-width {
+    --pixel-banner-readable-width: var(--file-line-width);
+}
+
+/* jump to a new focal point when Animate banner position changes is off (issue #226) */
+.pixel-banner-image.pixel-banner-no-position-transition {
+    transition: none;
+}
+
+/* never slide when the system asks for reduced motion (issue #226) */
+@media (prefers-reduced-motion: reduce) {
+    .pixel-banner-image {
+        transition: none;
+    }
 }
 
 .pixel-banner-video {
@@ -71,12 +91,15 @@
     object-position: var(--pixel-banner-x-position, 50%) var(--pixel-banner-y-position, 50%) !important;
 }
 
-.markdown-embed-content .markdown-preview-view {
-    min-height: var(--pixel-banner-embed-min-height, unset) !important;
+/* only embeds that show a banner: the variable also sits on the host note's view */
+/* and inherits into every embed, padding block and heading embeds (issue #331)   */
+.internal-embed.pixel-banner > .markdown-embed-content > .markdown-preview-view,
+.internal-embed.pixel-banner-icon-only > .markdown-embed-content > .markdown-preview-view {
+    min-height: var(--pixel-banner-embed-min-height, unset);
 }
 .markdown-embed-content .pixel-banner-image {
-    position: absolute !important;
-	left: 0 !important;
+    position: absolute;
+	left: 0;
     z-index: unset !important;
 }
 .markdown-embed-content .pixel-banner-image ~ div {
@@ -103,33 +126,62 @@
     isolation: isolate;
 }
 
+/* the banner sits at z-index -1, under the layers between it and .view-content.  */
+/* Obsidian leaves them transparent, but some themes paint them with              */
+/* --background-primary, which hides the banner (issue #311). Keep them clear in  */
+/* banner notes; .view-content still paints the note background below the banner. */
+.view-content.pixel-banner > .markdown-source-view,
+.view-content.pixel-banner > .markdown-source-view > .cm-editor,
+.view-content.pixel-banner > .markdown-source-view > .cm-editor > .cm-scroller,
+.view-content.pixel-banner > .markdown-reading-view,
+.view-content.pixel-banner > .markdown-reading-view > .markdown-preview-view {
+    background-color: transparent;
+}
+
+/* phone: Obsidian pads the scroller by --view-top-spacing-markdown so content */
+/* clears the floating view header, but absolutely positioned banner pieces    */
+/* ignore that padding and end up under the header (issue #335). Shift them   */
+/* by the same amount; `translate` composes with any transform or inline top.  */
+.is-phone .mod-root .workspace-leaf-content .view-content .markdown-reading-view > .markdown-preview-view > .markdown-preview-sizer > :is(.pixel-banner-image, .banner-icon-overlay, .select-image-icon, .pin-icon, .refresh-icon, .view-image-icon),
+.is-phone .mod-root .workspace-leaf-content .view-content .markdown-source-view > .cm-editor > .cm-scroller > .cm-sizer > :is(.pixel-banner-image, .banner-icon-overlay, .select-image-icon, .pin-icon, .refresh-icon, .view-image-icon) {
+    translate: 0 var(--view-top-spacing-markdown, 0px);
+}
+
+/* icon-only header (issues #322, #238): a note with an icon and no banner keeps */
+/* its content below the icon. Child combinators so embedded notes don't match.  */
+.view-content.pixel-banner-icon-only > .markdown-reading-view > .markdown-preview-view > .markdown-preview-sizer,
+.view-content.pixel-banner-icon-only > .markdown-source-view > .cm-editor > .cm-scroller > .cm-sizer {
+    padding-top: var(--pixel-banner-content-start);
+}
+
 
 /* ----------------------------------------------- */
 /* -- Specific styles for hover popover banners -- */
 /* ----------------------------------------------- */
 .popover.hover-popover {
-    min-height: 200px !important;
+    min-height: 200px;
 }
+/* no forced background-repeat: it overrode the Image Repeat setting and tiled */
+/* "contain" banners in hover popovers and Hover Editor (issue #312)            */
 .popover.hover-popover .pixel-banner-image {
-    background-repeat: repeat !important;
-    min-height: 100px !important;
+    min-height: 100px;
 }
 .pixel-banner-image + .markdown-preview-sizer.markdown-preview-section {
-    margin-top: 100px !important;
+    margin-top: 100px;
 }
 .hover-popover .markdown-preview-view.pixel-banner {
     position: relative;
     isolation: isolate;
 }
 .hover-popover .pixel-banner-image {
-    position: absolute !important;
+    position: absolute;
     top: 0;
     left: 0;
     right: 0;
     z-index: 0;
-    width: 100% !important;
+    width: 100%;
     max-width: 100% !important;
-    border-radius: var(--pixel-banner-radius, 17px) !important;
+    border-radius: var(--pixel-banner-radius, 17px);
 }
 .hover-popover .markdown-preview-view .markdown-preview-sizer {
     position: relative;
@@ -166,18 +218,15 @@
 /* *** NOTE: this is now handled in bannerManager.js *** */
 /* ***       for faster rendering!                   *** */
 /* ----------------------------------------------------- */
-/* .view-content.pixel-banner > .markdown-source-view .cm-sizer,
-.view-content.pixel-banner > .markdown-reading-view .markdown-preview-sizer {
-    padding-top: var(--pixel-banner-content-start, 355px) !important;
-    padding-bottom: 0 !important;
-} */
 /* -- fix for embedded notes -- */
 .internal-embed > .markdown-embed-content .cm-sizer:first-of-type,
 .internal-embed > .markdown-embed-content .markdown-preview-sizer:first-of-type {
     padding-top: unset !important;
 }
 .internal-embed > .markdown-embed-content .cm-sizer:first-of-type > .pixel-banner-image ~ .markdown-preview-pusher,
-.internal-embed > .markdown-embed-content .markdown-preview-sizer:first-of-type > .pixel-banner-image ~ .markdown-preview-pusher {
+.internal-embed > .markdown-embed-content .markdown-preview-sizer:first-of-type > .pixel-banner-image ~ .markdown-preview-pusher,
+.internal-embed.pixel-banner-icon-only > .markdown-embed-content .cm-sizer:first-of-type > .banner-icon-overlay ~ .markdown-preview-pusher,
+.internal-embed.pixel-banner-icon-only > .markdown-embed-content .markdown-preview-sizer:first-of-type > .banner-icon-overlay ~ .markdown-preview-pusher {
     height: var(--pixel-banner-content-start, 0.1px) !important;
 }
 
@@ -195,7 +244,6 @@
     flex-direction: column;
     overflow: hidden;
     padding: 20px;
-    max-width: 800px;
 }
 
 .pixel-banner-header {
@@ -212,12 +260,21 @@
     color: var(--text-accent);
 }
 
+/* Readable-width cap belongs here, not on .pixel-banner-settings:
+   the Obsidian 1.13+ settings window centers the settings pane with
+   "padding-inline: max(32px, (100% - 700px) / 2)" on .vertical-tab-content,
+   which is the same element .pixel-banner-settings is applied to - capping the
+   pane there squeezed the whole settings UI into a few dozen pixels on wide
+   windows (see #337). */
 .pixel-banner-main-content {
     flex: 1;
     display: flex;
     flex-direction: column;
     gap: 10px;
     overflow: hidden;
+    width: 100%;
+    max-width: 800px;
+    margin-inline: auto;
 }
 
 .pixel-banner-settings-tabs {
@@ -487,6 +544,11 @@
     opacity: 0.75;
 }
 
+/* a setting another one overrides, such as Banner Max Width while Match readable line length is on */
+.pixel-banner-setting-inactive {
+    opacity: 0.5;
+}
+
 .pixel-banner-twinkle-animation {
     animation: pixel-banner-twinkle 2s infinite;
     display: inline-block;
@@ -640,13 +702,14 @@
 /* -- banner icon overlay -- */
 /* ------------------------- */
 .banner-icon-overlay {
-    --pixel-banner-icon-translate-x: calc(var(--pixel-banner-icon-x) * -1);
-    transform: translate(var(--pixel-banner-icon-translate-x), -15%) rotate(var(--pixel-banner-icon-rotate, 0deg));
-    transform-origin: center !important;
+    --pixel-banner-icon-translate-x: calc(var(--pixel-banner-icon-x, 25%) * -1);
+    transform: translate(var(--pixel-banner-icon-translate-x), var(--pixel-banner-icon-translate-y, -15%)) rotate(var(--pixel-banner-icon-rotate, 0deg));
+    transform-origin: center;
     position: absolute !important;
-    top: var(--pixel-banner-icon-start);
+    top: var(--pixel-banner-icon-start, 0px);
     left: var(--pixel-banner-icon-x, 25%);
-    margin-top: calc(var(--pixel-banner-icon-vertical-offset, 0) * 1px);
+    /* the variable already carries px */
+    margin-top: var(--pixel-banner-icon-vertical-offset, 0px);
     padding-top: var(--pixel-banner-icon-padding-y, 0) !important;
     padding-right: var(--pixel-banner-icon-padding-x, 0) !important;
     padding-bottom: var(--pixel-banner-icon-padding-y, 0) !important;
@@ -658,10 +721,9 @@
     background: var(--pixel-banner-icon-background-color, unset);
     border-radius: var(--pixel-banner-icon-border-radius, 17px);
     white-space: nowrap;
-    text-wrap: pretty;
     word-break: break-word;
     width: max-content !important;
-    max-width: var(--pixel-banner-width) !important;
+    max-width: var(--pixel-banner-width, 100%) !important;
     pointer-events: none;
     display: flex !important;
     align-items: center;
@@ -680,6 +742,54 @@
     line-height: var(--pixel-banner-icon-size, 1);
 }
 
+
+
+/* ----------------------- */
+/* -- PDF export banner -- */
+/* ----------------------- */
+/* Export to PDF renders into .print; printBanner.js puts an <img> there in normal
+   flow, styled from the same --pixel-banner-* variables as the pane (issue #323) */
+.print .pixel-banner-print {
+    position: relative;
+    display: block;
+    width: 100%;
+    margin: 0 0 1em 0;
+    break-inside: avoid;
+}
+/* height is capped at about 40% of the page */
+.print .pixel-banner-print .pixel-banner-print-image {
+    display: block;
+    width: 100%;
+    height: min(var(--pixel-banner-height, 350px), 40vh);
+    object-fit: cover;
+    object-position: var(--pixel-banner-x-position, 50%) var(--pixel-banner-y-position, 50%);
+    border-radius: var(--pixel-banner-radius, 17px);
+    mask-image: linear-gradient(to bottom, black calc(100% + var(--pixel-banner-fade, -75%)), transparent);
+    -webkit-mask-image: linear-gradient(to bottom, black calc(100% + var(--pixel-banner-fade, -75%)), transparent);
+}
+.print .pixel-banner-print .pixel-banner-print-image.pixel-banner-print-contain {
+    object-fit: contain;
+}
+/* the icon (cloned from the pane) straddles the bottom edge of the capped banner */
+.print .pixel-banner-print .banner-icon-overlay {
+    top: calc(min(var(--pixel-banner-height, 350px), 40vh) - (var(--pixel-banner-icon-size, 70px) / 2));
+}
+.print .pixel-banner-print.has-icon {
+    padding-bottom: calc(var(--pixel-banner-icon-size, 70px) / 2);
+}
+/* icon-only note: no banner, so the icon sits in normal flow and the wrapper takes its  */
+/* height. left and the transform stay, so the x position matches the pane              */
+.print .pixel-banner-print.pixel-banner-print-icon-only .banner-icon-overlay {
+    position: relative !important;
+    top: 0;
+}
+/* title color, only when the PDF has a banner: the file name title that "Include
+   file name as title" adds, the PDF's counterpart of the pane's inline title. It
+   is a bare h1 directly in the container, after the banner; body headings sit in
+   section divs, so they keep their color */
+.print .markdown-preview-view > .pixel-banner-print ~ h1 {
+    color: var(--pixel-banner-title-color, inherit);
+}
 
 /* ----------------------------------- */
 /* -- various plugin conflict fixes -- */
@@ -712,32 +822,473 @@
 }
 
 
+/* ========================== */
+/* == Confetti Modal Styles == */
+/* ========================== */
+/* Scoped under .confetti-modal, the modal's content root */
+.confetti-modal {
+    max-width: 600px;
+    padding: 16px;
+}
+
+.confetti-modal .confetti-modal-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 20px;
+    border-bottom: 1px solid var(--background-modifier-border);
+    padding-bottom: 10px;
+}
+
+.confetti-modal .confetti-modal-title {
+    margin: 0;
+}
+
+.confetti-modal .modified-indicator {
+    color: var(--text-warning);
+    font-size: 0.9em;
+}
+
+.confetti-modal .section-header {
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-weight: bold;
+    color: var(--text-muted);
+}
+
+.confetti-modal .confetti-section {
+    margin-bottom: 15px;
+}
+
+.confetti-modal .is-hidden {
+    display: none;
+}
+
+/* Why the live preview is not shown (reduced motion, Disable on Mobile) */
+.confetti-modal .confetti-preview-notice {
+    margin-bottom: 15px;
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+}
+
+/* Live preview layer: a child of the modal container, fixed over the
+   modal's bounds (CSS variables set from JS) so it doesn't scroll with the content */
+.pixel-banner-confetti-preview-layer {
+    position: fixed;
+    top: var(--confetti-preview-top, 0);
+    left: var(--confetti-preview-left, 0);
+    width: var(--confetti-preview-width, 0);
+    height: var(--confetti-preview-height, 0);
+    pointer-events: none;
+    overflow: hidden;
+    z-index: 1;
+}
+
+/* Keeps Shape and 3D Wobble from collapsing after the sections are hidden and shown */
+.confetti-modal .confetti-select {
+    min-width: 160px;
+}
+
+/* Number boxes beside the sliders */
+.confetti-modal input.confetti-number-input {
+    width: 70px;
+}
+
+/* A setting that does not apply right now (Interval while Continuous is off) */
+.confetti-modal .confetti-setting-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.confetti-modal .color-swatches {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.confetti-modal .color-swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 2px solid var(--background-modifier-border);
+    background-color: var(--confetti-swatch-color, transparent);
+    position: relative;
+    transition: transform 0.1s ease;
+}
+
+.confetti-modal .color-swatch:hover {
+    transform: scale(1.1);
+}
+
+.confetti-modal .color-swatch:hover .remove-color,
+.confetti-modal .color-swatch:focus-within .remove-color {
+    display: flex;
+}
+
+/* Touch screens have no hover: always show remove */
+@media (hover: none) {
+    .confetti-modal .color-swatch .remove-color {
+        display: flex;
+    }
+}
+
+.confetti-modal .color-input-hidden {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: none;
+    cursor: pointer;
+}
+
+.confetti-modal .color-swatch:focus-within {
+    outline: 2px solid var(--interactive-accent);
+    outline-offset: 1px;
+}
+
+.confetti-modal .remove-color {
+    display: none;
+    padding: 0;
+    box-shadow: none;
+    line-height: 1;
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    width: 18px;
+    height: 18px;
+    background-color: var(--text-error);
+    color: white;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: bold;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    z-index: 10;
+}
+
+.confetti-modal .add-color {
+    padding: 0;
+    box-shadow: none;
+    background-color: transparent;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 2px dashed var(--background-modifier-border);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    font-size: 20px;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+}
+
+.confetti-modal .add-color:hover {
+    border-color: var(--interactive-accent);
+    color: var(--interactive-accent);
+    transform: scale(1.1);
+}
+
+.confetti-modal .confetti-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+    padding-top: 15px;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.confetti-modal .confetti-reset-button {
+    background-color: var(--background-modifier-border);
+    color: var(--text-normal);
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    margin-right: auto;
+}
+
+.confetti-modal .confetti-reset-button:hover {
+    background-color: var(--background-modifier-border-hover);
+}
+
+.confetti-modal .confetti-cancel-button {
+    background-color: var(--background-modifier-border);
+    color: var(--text-normal);
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+}
+
+.confetti-modal .confetti-cancel-button:hover {
+    background-color: var(--background-modifier-border-hover);
+}
+
+.confetti-modal .confetti-apply-button {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+    padding: 8px 16px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.confetti-modal .confetti-apply-button:hover {
+    background-color: var(--interactive-accent-hover);
+}
+
+/* Range slider styles */
+.confetti-modal .range-slider-container {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+/* The track takes its own full-width row under the label */
+.confetti-modal .confetti-range-setting {
+    flex-wrap: wrap;
+}
+
+.confetti-modal .range-slider-row {
+    flex-basis: 100%;
+    min-width: 150px;
+    padding: 10px 8px 4px;
+}
+
+.confetti-modal .range-slider-track {
+    position: relative;
+    width: 100%;
+    height: 6px;
+    background-color: var(--background-modifier-border);
+    border-radius: 3px;
+    touch-action: none;
+}
+
+.confetti-modal .range-slider-fill {
+    position: absolute;
+    left: var(--confetti-fill-left, 0);
+    width: var(--confetti-fill-width, 0);
+    height: 100%;
+    background-color: var(--interactive-accent);
+    border-radius: 3px;
+}
+
+.confetti-modal .range-thumb {
+    position: absolute;
+    top: 50%;
+    left: var(--confetti-thumb-left, 0);
+    width: 16px;
+    height: 16px;
+    background-color: var(--interactive-accent);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    cursor: grab;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    transition: transform 0.1s ease;
+    touch-action: none;
+}
+
+.confetti-modal .range-thumb:hover {
+    transform: translate(-50%, -50%) scale(1.2);
+}
+
+.confetti-modal .range-thumb:focus-visible {
+    outline: 2px solid var(--text-normal);
+    outline-offset: 2px;
+}
+
+.confetti-modal .range-thumb:active {
+    cursor: grabbing;
+}
+
+.confetti-modal .range-input {
+    text-align: center;
+}
+
+/* Mobile responsive */
+@media screen and (max-width: 640px) {
+    .confetti-modal .confetti-actions {
+        flex-direction: column;
+    }
+    .confetti-modal .confetti-reset-button {
+        margin-right: 0;
+    }
+    .confetti-modal .confetti-actions button {
+        width: 100%;
+    }
+}
+
+/* Target Position modal: the confetti row */
+.confetti-effect-section {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    margin-top: 20px;
+    padding: 15px;
+    border-radius: 5px;
+    background-color: var(--background-secondary);
+    align-items: center;
+}
+
+.confetti-effect-section .confetti-effect-title {
+    color: var(--text-muted);
+    font-size: 0.9em;
+    min-width: 120px;
+}
+
+.confetti-effect-section .confetti-status {
+    font-size: 0.85em;
+    flex: 1;
+}
+
+.confetti-status-active {
+    color: var(--text-success);
+}
+
+.confetti-status-none {
+    color: var(--text-muted);
+}
+
+/* A banner-confetti value whose preset doesn't resolve */
+.confetti-status-unknown {
+    color: var(--text-warning);
+}
+
+.confetti-effect-section .confetti-settings-button {
+    text-transform: uppercase;
+    font-size: 0.8em;
+}
+
+
 /* ========================= */
 /* == misc helper classes == */
 /* ========================= */
-.display-none { display: none !important; }
+/* Only the helpers in use stay. They are scoped (specificity 0,2,0 and up) so they beat Obsidian core rules with no important flag. */
+.modal .margin-top-0 { margin-top: 0px; }
+.modal .margin-left-5 { margin-left: 5px; }
+.vertical-tab-content .margin-top-0 { margin-top: 0px; }
+.vertical-tab-content .margin-bottom-0 { margin-bottom: 0px; }
 
-.margin-top-0 { margin-top: 0px !important; }
-.margin-top-5 { margin-top: 5px !important; }
-.margin-top-10 { margin-top: 10px !important; }
-.margin-top-20 { margin-top: 20px !important; }
-.margin-top-40 { margin-top: 40px !important; }
-.margin-right-0 { margin-right: 0px !important; }
-.margin-right-5 { margin-right: 5px !important; }
-.margin-right-10 { margin-right: 10px !important; }
-.margin-right-20 { margin-right: 20px !important; }
-.margin-right-40 { margin-right: 40px !important; }
-.margin-left-0 { margin-left: 0px !important; }
-.margin-left-5 { margin-left: 5px !important; }
-.margin-left-10 { margin-left: 10px !important; }
-.margin-left-20 { margin-left: 20px !important; }
-.margin-left-40 { margin-left: 40px !important; }
-.margin-bottom-0 { margin-bottom: 0px !important; }
-.margin-bottom-5 { margin-bottom: 5px !important; }
-.margin-bottom-10 { margin-bottom: 10px !important; }
-.margin-bottom-20 { margin-bottom: 20px !important; }
-.margin-bottom-40 { margin-bottom: 40px !important; }
+.modal button.cursor-pointer { cursor: pointer; }
 
-.width-100 { width: 100% !important; }
+/* =============================== */
+/* == Confetti Canvas Styles == */
+/* =============================== */
+.pixel-banner-confetti-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    /* The canvas sits inside the leaf's own stacking context, so 100 only
+       orders it within the pane: it stays above the note content, and modals
+       and the command palette (z-index 50, outside that context) still cover
+       it. Override via a CSS snippet if needed. */
+    z-index: 100;
+}
 
-.cursor-pointer { cursor: pointer !important; }
+/* A pane container that is drawing confetti; added while an effect runs and
+   removed when the last one in that container stops */
+.pixel-banner-confetti-host {
+    position: relative;
+}
+
+/* ----------------------- */
+/* -- Image View Modal  -- */
+/* ----------------------- */
+/* No positioning here: Obsidian's .modal-container centers the modal. It used to
+   be pinned with position: absolute, inline left/top and a translate(-50%, -50%)
+   transform, which ended up off center whenever the transform was lost (issue #328) */
+.modal.pixel-banner-image-viewer {
+    width: 100%;
+    max-width: var(--dialog-max-width, 80vw);
+    max-height: var(--dialog-max-height, 90vh);
+    height: auto;
+}
+
+.pixel-banner-image-view-modal {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.pixel-banner-image-view-modal button {
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.pixel-banner-image-view-modal .image-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.pixel-banner-image-view-modal .image-container img,
+.pixel-banner-image-view-modal .image-container video {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    max-width: 100%;
+    /* leave room for the modal padding and header, the path row and the Close
+       button (about 184px on desktop; phones have a taller modal header) */
+    max-height: calc(var(--dialog-max-height, 90vh) - 220px);
+    object-fit: contain;
+}
+
+.pixel-banner-image-view-modal img {
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.pixel-banner-image-view-modal .path-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    margin-bottom: 10px;
+}
+
+.pixel-banner-image-view-modal .banner-path {
+    flex-grow: 1;
+    margin-right: 10px;
+    font-family: var(--font-monospace);
+    font-size: 0.9em;
+    overflow-x: auto;
+    padding: 4px;
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+    word-break: break-word;
+}
+
+.pixel-banner-image-view-modal .close-button {
+    margin-top: 10px;
+    width: 150px;
+}
+
+/* Position, Size & Style on a note with no banner: the controls built with an inline display
+   (flex) are hidden, which only !important can beat */
+.pixel-banner-target-icon-only .pixel-banner-banner-only {
+    display: none !important;
+}
+
+/* The Content Start slider is sized by the banner preview beside it (flex: 1). With the preview
+   hidden it collapses to nothing and cannot be dragged, so give it a height of its own */
+.pixel-banner-target-icon-only .content-start-position-slider {
+    min-height: 220px;
+}

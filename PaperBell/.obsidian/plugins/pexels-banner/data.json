@@ -103,6 +103,9 @@
   "customFlagColorField": [
     "pixel-banner-flag-color"
   ],
+  "customBannerConfettiField": [
+    "banner-confetti"
+  ],
   "folderImages": [
     {
       "folder": "00 - Obsidian/img",
@@ -126,15 +129,18 @@
   "imageRepeat": false,
   "bannerHeight": 350,
   "bannerMaxWidth": 2560,
+  "bannerMaxWidthReadable": false,
+  "bannerPositionTransition": true,
   "fade": -70,
   "bannerFadeInAnimationDuration": 300,
   "borderRadius": 17,
   "showPinIcon": false,
   "pinnedImageFolder": "pixel-banner-images",
   "pinnedImageFilename": "pixel-banner-image",
+  "useNoteFilenameForBanner": false,
   "imagePropertyFormat": "![[image]]",
   "showReleaseNotes": true,
-  "lastVersion": "3.6.18",
+  "lastVersion": "3.7.4",
   "showRefreshIcon": false,
   "showViewImageIcon": false,
   "hidePixelBannerFields": true,
@@ -144,6 +150,8 @@
   "hideEmbeddedNoteTitles": false,
   "hideEmbeddedNoteBanners": false,
   "showBannerInPopoverPreviews": true,
+  "popoverBannerMaxHeight": 150,
+  "includeBannerInPdfExport": true,
   "showSelectImageIcon": true,
   "selectImageIconOpacity": 40,
   "selectImageIconFlag": "red",
@@ -166,6 +174,7 @@
   "bannerIconImageAlignment": "left",
   "openTargetingModalAfterSelectingBannerOrIcon": true,
   "enableDailyGame": false,
+  "confettiDisableOnMobile": false,
   "customBannerIconVeritalOffsetField": [
     "icon-y"
   ],

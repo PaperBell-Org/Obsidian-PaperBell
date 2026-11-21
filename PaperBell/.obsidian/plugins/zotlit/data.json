@@ -1,8 +1,8 @@
 {
-  "__VERSION__": 10,
+  "__VERSION__": 11,
   "citation.show-citekey-in-suggester": true,
   "template.folder": "00 - Obsidian/模板",
-  "release.previous-version": "2.2.0-beta.3",
+  "release.previous-version": "2.3.0-beta.0",
   "release.migration-pending": true,
   "citation.open-as-links": true,
   "zotero.library-scope": {
@@ -21,5 +21,6 @@
       "note.import-colored-highlights": false,
       "note.import-annotations-as-template": false
     }
-  }
+  },
+  "release.update-pending": true
 }

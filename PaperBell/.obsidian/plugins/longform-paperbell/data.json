@@ -29,6 +29,7 @@
   "pandocGlobalBibliography": "",
   "pandocSetupDismissed": true,
   "pandocMarketIndexUrl": "",
+  "pandocAdaptFontsToOS": true,
   "workflows": {
     "PaperBell Manuscript": {
       "name": "PaperBell Manuscript",
@@ -155,7 +156,8 @@
         {
           "id": "harvest-manuscript-lines",
           "optionValues": {
-            "enabled": true
+            "enabled": true,
+            "template": ""
           }
         }
       ]

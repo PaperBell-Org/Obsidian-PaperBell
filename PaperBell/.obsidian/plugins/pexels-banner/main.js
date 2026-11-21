@@ -8,8 +8,13 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __esm = (fn, res) => function __init() {
-  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+var __esm = (fn, res, err) => function __init() {
+  if (err) throw err[0];
+  try {
+    return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+  } catch (e) {
+    throw err = [e], e;
+  }
 };
 var __export = (target, all) => {
   for (var name in all)
@@ -70,6 +75,54 @@ var init_semver = __esm({
         return ver1.patch > ver2.patch;
       }
     };
+  }
+});
+
+// src/utils/openSettings.js
+function getSettingsDocument(app) {
+  var _a, _b, _c;
+  return (_c = (_b = (_a = app.setting) == null ? void 0 : _a.win) == null ? void 0 : _b.document) != null ? _c : document;
+}
+function clickByText(doc, selector, text) {
+  for (const el of doc.querySelectorAll(selector)) {
+    if (el.textContent.includes(text)) {
+      el.click();
+      return true;
+    }
+  }
+  return false;
+}
+async function openSettingsTab(app, tabId, sidebarText) {
+  await app.setting.open();
+  if (typeof app.setting.openTabById === "function" && app.setting.openTabById(tabId)) {
+    await wait(300);
+    return;
+  }
+  await wait(300);
+  clickByText(getSettingsDocument(app), ".vertical-tab-header-group .vertical-tab-nav-item", sidebarText);
+}
+async function openPluginSettings(app, { plusTab = false } = {}) {
+  await openSettingsTab(app, PLUGIN_ID, "Pixel Banner");
+  if (plusTab) {
+    clickByText(
+      getSettingsDocument(app),
+      ".pixel-banner-settings-tabs > button.pixel-banner-settings-tab",
+      "Plus"
+    );
+  }
+}
+async function openCommunityPluginsSettings(app, { checkForUpdates = false } = {}) {
+  await openSettingsTab(app, "community-plugins", "Community plugins");
+  if (checkForUpdates) {
+    await wait(500);
+    clickByText(getSettingsDocument(app), "button", "Check for updates");
+  }
+}
+var PLUGIN_ID, wait;
+var init_openSettings = __esm({
+  "src/utils/openSettings.js"() {
+    PLUGIN_ID = "pexels-banner";
+    wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   }
 });
 
@@ -292,8 +345,7 @@ var init_imageViewModal = __esm({
         this.bannerPath = bannerPath;
       }
       onOpen() {
-        this.modalEl.addClass("pixel-banner-image-modal");
-        this.addStyles();
+        this.modalEl.addClass("pixel-banner-image-viewer");
         const { contentEl } = this;
         contentEl.empty();
         contentEl.addClass("pixel-banner-image-view-modal");
@@ -344,105 +396,10 @@ var init_imageViewModal = __esm({
         });
         closeButton.addEventListener("click", () => this.close());
         this.scope.register([], "Escape", () => this.close());
-        const modalEl = this.modalEl;
-        modalEl.style.position = "absolute";
-        modalEl.style.left = `${modalEl.getBoundingClientRect().left}px`;
-        modalEl.style.top = `${modalEl.getBoundingClientRect().top}px`;
-      }
-      addStyles() {
-        const styleEl = document.createElement("style");
-        styleEl.id = "pixel-banner-image-view-styles";
-        const existingStyle = document.getElementById(styleEl.id);
-        if (existingStyle) {
-          existingStyle.remove();
-        }
-        styleEl.textContent = `
-            .pixel-banner-image-modal {
-                max-width: 80vw;
-                max-height: 90vh;
-                width: 100%;
-                height: auto;
-                top: 50% !important;
-                left: 50% !important;
-                transform: translate(-50%, -50%);
-            }
-
-            .pixel-banner-image-view-modal {
-                display: flex;
-                flex-direction: column;
-                align-items: center;
-                justify-content: center;
-                padding: 20px;
-            }
-
-            .pixel-banner-image-view-modal img {
-                max-width: 100%;
-                max-height: 90vh;
-                object-fit: contain;
-                border-radius: 8px;
-                box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-            }
-
-            .pixel-banner-image-view-modal button {
-                padding: 8px 16px;
-                border-radius: 4px;
-                cursor: pointer;
-                transition: background-color 0.2s ease-in-out;
-            }
-
-            .pixel-banner-image-view-modal .image-container {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                margin-bottom: 10px;
-            }
-
-            .pixel-banner-image-view-modal .image-container img,
-            .pixel-banner-image-view-modal .image-container video {
-                display: flex;
-                justify-content: center;
-                align-items: center;
-                width: 100%;
-                height: 100%;
-                max-width: 100%;
-                max-height: 90vh;
-                object-fit: contain;
-            }
-
-            .pixel-banner-image-view-modal .path-container {
-                display: flex;
-                align-items: center;
-                justify-content: space-between;
-                margin-top: 10px;
-                margin-bottom: 10px;
-            }
-
-            .pixel-banner-image-view-modal .banner-path {
-                flex-grow: 1;
-                margin-right: 10px;
-                font-family: var(--font-monospace);
-                font-size: 0.9em;
-                overflow-x: auto;
-                padding: 4px;
-                background-color: var(--background-secondary);
-                border-radius: 4px;
-                word-break: break-word;
-            }
-
-            .pixel-banner-image-view-modal .close-button {
-                margin-top: 10px;
-                width: 150px;
-            }
-        `;
-        document.head.appendChild(styleEl);
       }
       onClose() {
         const { contentEl } = this;
         contentEl.empty();
-        const styleEl = document.getElementById("pixel-banner-image-view-styles");
-        if (styleEl) {
-          styleEl.remove();
-        }
       }
       isVideoUrl(url) {
         if (!url) return false;
@@ -727,11 +684,110 @@ var init_pinChoiceModal = __esm({
   }
 });
 
+// src/core/fieldRegistry.js
+function getEntry(id) {
+  const field = FIELDS_BY_ID.get(id);
+  if (!field) {
+    throw new Error(`Pixel Banner: unknown banner field "${id}"`);
+  }
+  return field;
+}
+function getFieldNames(plugin, id) {
+  var _a;
+  const configured = (_a = plugin == null ? void 0 : plugin.settings) == null ? void 0 : _a[getEntry(id).namesKey];
+  if (configured === null || configured === void 0) return [];
+  const entries = Array.isArray(configured) ? configured : [configured];
+  return entries.flatMap((name) => {
+    if (typeof name !== "string") return [];
+    return name.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
+  });
+}
+function getAllFieldNames(plugin, { excludeGroups = [] } = {}) {
+  const names = FIELDS.filter((field) => !excludeGroups.includes(field.group)).flatMap((field) => getFieldNames(plugin, field.id));
+  return [...new Set(names)];
+}
+function resolveField(plugin, id, frontmatter, folderSpecific = null) {
+  var _a;
+  const field = getEntry(id);
+  const fromFrontmatter = getFrontmatterValue(frontmatter, getFieldNames(plugin, id));
+  if (!isNotSet(fromFrontmatter)) return fromFrontmatter;
+  if (field.folderKey && folderSpecific && typeof folderSpecific === "object") {
+    const fromFolder = folderSpecific[field.folderKey];
+    if (!isNotSet(fromFolder)) return fromFolder;
+  }
+  if (field.settingKey) {
+    const fromSetting = (_a = plugin == null ? void 0 : plugin.settings) == null ? void 0 : _a[field.settingKey];
+    if (!isNotSet(fromSetting)) return fromSetting;
+  }
+  return field.default;
+}
+function writeField(frontmatter, plugin, id, value) {
+  if (!frontmatter || typeof frontmatter !== "object") return;
+  if (value === null || value === void 0) {
+    clearField(frontmatter, plugin, id);
+    return;
+  }
+  const names = getFieldNames(plugin, id);
+  if (names.length === 0) return;
+  const target = names.find((name) => Object.prototype.hasOwnProperty.call(frontmatter, name)) || names[0];
+  for (const name of names) {
+    if (name !== target) delete frontmatter[name];
+  }
+  frontmatter[target] = value;
+}
+function clearField(frontmatter, plugin, id) {
+  if (!frontmatter || typeof frontmatter !== "object") return;
+  for (const name of getFieldNames(plugin, id)) {
+    delete frontmatter[name];
+  }
+}
+var entry, FIELDS, FIELDS_BY_ID, isNotSet;
+var init_fieldRegistry = __esm({
+  "src/core/fieldRegistry.js"() {
+    init_frontmatterUtils();
+    entry = (fields) => Object.freeze(fields);
+    FIELDS = Object.freeze([
+      entry({ id: "banner", namesKey: "customBannerField", group: "banner" }),
+      entry({ id: "xPosition", namesKey: "customXPositionField", settingKey: "xPosition", folderKey: "xPosition", group: "banner" }),
+      entry({ id: "yPosition", namesKey: "customYPositionField", settingKey: "yPosition", folderKey: "yPosition", group: "banner" }),
+      entry({ id: "contentStart", namesKey: "customContentStartField", settingKey: "contentStartPosition", folderKey: "contentStartPosition", group: "banner" }),
+      entry({ id: "imageDisplay", namesKey: "customImageDisplayField", settingKey: "imageDisplay", folderKey: "imageDisplay", group: "banner" }),
+      entry({ id: "imageRepeat", namesKey: "customImageRepeatField", settingKey: "imageRepeat", folderKey: "imageRepeat", group: "banner" }),
+      entry({ id: "maxWidth", namesKey: "customBannerMaxWidthField", settingKey: "bannerMaxWidth", group: "banner" }),
+      entry({ id: "alignment", namesKey: "customBannerAlignmentField", default: "center", group: "banner" }),
+      entry({ id: "height", namesKey: "customBannerHeightField", settingKey: "bannerHeight", folderKey: "bannerHeight", group: "banner" }),
+      entry({ id: "fade", namesKey: "customFadeField", settingKey: "fade", folderKey: "fade", group: "banner" }),
+      entry({ id: "borderRadius", namesKey: "customBorderRadiusField", settingKey: "borderRadius", folderKey: "borderRadius", group: "banner" }),
+      entry({ id: "titleColor", namesKey: "customTitleColorField", settingKey: "titleColor", folderKey: "titleColor", group: "banner" }),
+      entry({ id: "shuffle", namesKey: "customBannerShuffleField", group: "banner" }),
+      entry({ id: "flagColor", namesKey: "customFlagColorField", settingKey: "selectImageIconFlag", group: "banner" }),
+      entry({ id: "icon", namesKey: "customBannerIconField", group: "icon" }),
+      entry({ id: "iconImage", namesKey: "customBannerIconImageField", group: "icon" }),
+      entry({ id: "iconSize", namesKey: "customBannerIconSizeField", settingKey: "bannerIconSize", folderKey: "bannerIconSize", group: "icon" }),
+      entry({ id: "iconImageSizeMultiplier", namesKey: "customBannerIconImageSizeMultiplierField", settingKey: "bannerIconImageSizeMultiplier", group: "icon" }),
+      entry({ id: "iconTextVerticalOffset", namesKey: "customBannerIconTextVerticalOffsetField", settingKey: "bannerIconTextVerticalOffset", group: "icon" }),
+      entry({ id: "iconRotate", namesKey: "customBannerIconRotateField", default: 0, group: "icon" }),
+      entry({ id: "iconXPosition", namesKey: "customBannerIconXPositionField", settingKey: "bannerIconXPosition", folderKey: "bannerIconXPosition", group: "icon" }),
+      entry({ id: "iconOpacity", namesKey: "customBannerIconOpacityField", settingKey: "bannerIconOpacity", folderKey: "bannerIconOpacity", group: "icon" }),
+      entry({ id: "iconColor", namesKey: "customBannerIconColorField", settingKey: "bannerIconColor", folderKey: "bannerIconColor", default: "var(--text-normal)", group: "icon" }),
+      entry({ id: "iconFontWeight", namesKey: "customBannerIconFontWeightField", settingKey: "bannerIconFontWeight", folderKey: "bannerIconFontWeight", group: "icon" }),
+      entry({ id: "iconBackgroundColor", namesKey: "customBannerIconBackgroundColorField", settingKey: "bannerIconBackgroundColor", folderKey: "bannerIconBackgroundColor", group: "icon" }),
+      entry({ id: "iconPaddingX", namesKey: "customBannerIconPaddingXField", settingKey: "bannerIconPaddingX", folderKey: "bannerIconPaddingX", group: "icon" }),
+      entry({ id: "iconPaddingY", namesKey: "customBannerIconPaddingYField", settingKey: "bannerIconPaddingY", folderKey: "bannerIconPaddingY", group: "icon" }),
+      entry({ id: "iconBorderRadius", namesKey: "customBannerIconBorderRadiusField", settingKey: "bannerIconBorderRadius", folderKey: "bannerIconBorderRadius", group: "icon" }),
+      entry({ id: "iconVerticalOffset", namesKey: "customBannerIconVerticalOffsetField", settingKey: "bannerIconVerticalOffset", folderKey: "bannerIconVerticalOffset", group: "icon" }),
+      entry({ id: "iconImageAlignment", namesKey: "customBannerIconImageAlignmentField", settingKey: "bannerIconImageAlignment", group: "icon" }),
+      entry({ id: "confetti", namesKey: "customBannerConfettiField", group: "confetti" })
+    ]);
+    FIELDS_BY_ID = new Map(FIELDS.map((field) => [field.id, field]));
+    isNotSet = (value) => value === null || value === void 0 || value === "";
+  }
+});
+
 // src/utils/frontmatterUtils.js
 var frontmatterUtils_exports = {};
 __export(frontmatterUtils_exports, {
   getFrontmatterValue: () => getFrontmatterValue,
-  getValueWithZeroCheck: () => getValueWithZeroCheck,
   updateNoteFrontmatter: () => updateNoteFrontmatter,
   updateNoteFrontmatterWithUrl: () => updateNoteFrontmatterWithUrl
 });
@@ -758,16 +814,15 @@ function getFrontmatterValue(frontmatter, fieldNames) {
   }
   return null;
 }
-function getValueWithZeroCheck(values) {
-  if (!Array.isArray(values)) {
-    console.warn("getValueWithZeroCheck expects an array of values");
-    return null;
+function writeBannerField(frontmatter, plugin, value, usedField) {
+  if (!usedField) {
+    writeField(frontmatter, plugin, "banner", value);
+    return;
   }
-  for (const value of values) {
-    if (value === 0) return 0;
-    if (value !== null && value !== void 0) return value;
+  for (const name of getFieldNames(plugin, "banner")) {
+    if (name !== usedField) delete frontmatter[name];
   }
-  return values[values.length - 1];
+  frontmatter[usedField] = value;
 }
 async function updateNoteFrontmatter(imagePath, plugin, usedField = null) {
   const activeFile = plugin.app.workspace.getActiveFile();
@@ -781,7 +836,6 @@ async function updateNoteFrontmatter(imagePath, plugin, usedField = null) {
       imageReference = matchingFiles.length === 1 ? imageFile.name : imageFile.path;
     }
   }
-  const bannerField = usedField || (Array.isArray(plugin.settings.customBannerField) && plugin.settings.customBannerField.length > 0 ? plugin.settings.customBannerField[0] : "banner");
   const format = plugin.settings.imagePropertyFormat;
   let bannerValue;
   if (format === "image") {
@@ -792,14 +846,7 @@ async function updateNoteFrontmatter(imagePath, plugin, usedField = null) {
     bannerValue = `![[${imageReference}]]`;
   }
   await plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-    if (Array.isArray(plugin.settings.customBannerField)) {
-      for (const field of plugin.settings.customBannerField) {
-        if (field !== bannerField && field in frontmatter) {
-          delete frontmatter[field];
-        }
-      }
-    }
-    frontmatter[bannerField] = bannerValue;
+    writeBannerField(frontmatter, plugin, bannerValue, usedField);
   });
   if (plugin.settings.useShortPath && imageReference === imagePath) {
     new import_obsidian12.Notice("Banner image pinned (full path used due to duplicate filenames)");
@@ -810,16 +857,8 @@ async function updateNoteFrontmatter(imagePath, plugin, usedField = null) {
 async function updateNoteFrontmatterWithUrl(imageUrl, plugin, usedField = null) {
   const activeFile = plugin.app.workspace.getActiveFile();
   if (!activeFile) return;
-  const bannerField = usedField || (Array.isArray(plugin.settings.customBannerField) && plugin.settings.customBannerField.length > 0 ? plugin.settings.customBannerField[0] : "banner");
   await plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-    if (Array.isArray(plugin.settings.customBannerField)) {
-      for (const field of plugin.settings.customBannerField) {
-        if (field !== bannerField && field in frontmatter) {
-          delete frontmatter[field];
-        }
-      }
-    }
-    frontmatter[bannerField] = imageUrl;
+    writeBannerField(frontmatter, plugin, imageUrl, usedField);
   });
   new import_obsidian12.Notice("Banner image URL pinned");
 }
@@ -827,11 +866,12 @@ var import_obsidian12;
 var init_frontmatterUtils = __esm({
   "src/utils/frontmatterUtils.js"() {
     import_obsidian12 = require("obsidian");
+    init_fieldRegistry();
   }
 });
 
 // src/utils/handlePinIconClick.js
-async function handlePinIconClick(imageUrl, plugin, usedField = null, suggestedFilename = null, showChoiceModal = true) {
+async function handlePinIconClick(imageUrl, plugin, usedField = null, suggestedFilename = null, showChoiceModal = true, noteFile = null) {
   let choice = "local";
   if (showChoiceModal) {
     choice = await new Promise((resolve) => {
@@ -850,11 +890,18 @@ async function handlePinIconClick(imageUrl, plugin, usedField = null, suggestedF
     return imageUrl;
   } else {
     const imageBlob = await fetchImage(imageUrl);
-    const { file, useAsBanner } = await saveImageLocally(imageBlob, plugin, suggestedFilename);
+    let finalSuggestedFilename = suggestedFilename;
+    if (plugin.settings.useNoteFilenameForBanner && noteFile) {
+      const noteBasename = noteFile.basename;
+      if (!/^Untitled( \d+)?$/.test(noteBasename)) {
+        finalSuggestedFilename = noteBasename;
+      }
+    }
+    const { file, useAsBanner } = await saveImageLocally(imageBlob, plugin, finalSuggestedFilename);
     const finalPath = await waitForFileRename(file, plugin);
     if (!finalPath) {
       console.error("\u274C Failed to resolve valid file path");
-      new Notice("Failed to save image - file not found");
+      new import_obsidian13.Notice("Failed to save image - file not found");
       return null;
     }
     if (useAsBanner) {
@@ -863,6 +910,10 @@ async function handlePinIconClick(imageUrl, plugin, usedField = null, suggestedF
     }
     return finalPath;
   }
+}
+function sanitizeImageFileName(name) {
+  const cleaned = String(name != null ? name : "").replace(/[\\/:*?"<>|#^[\]\x00-\x1f]/g, "").trim();
+  return cleaned || "banner";
 }
 async function fetchImage(url) {
   const response = await fetch(url);
@@ -895,8 +946,7 @@ async function saveImageLocally(arrayBuffer, plugin, suggestedFilename = null) {
   if (!userInput) {
     throw new Error("No filename provided");
   }
-  let baseName = userInput.name.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
-  if (!baseName) baseName = "banner";
+  let baseName = sanitizeImageFileName(userInput.name);
   if (!baseName.toLowerCase().endsWith(`.${format}`)) baseName += `.${format}`;
   let fileName = baseName;
   let counter = 1;
@@ -966,8 +1016,10 @@ async function waitForFileRename(file, plugin) {
     }, 100);
   });
 }
+var import_obsidian13;
 var init_handlePinIconClick = __esm({
   "src/utils/handlePinIconClick.js"() {
+    import_obsidian13 = require("obsidian");
     init_folderSelectionModal();
     init_saveImageModal();
     init_pinChoiceModal();
@@ -1027,16 +1079,18 @@ var init_downloadHistory = __esm({
 });
 
 // src/modal/modals/selectPixelBannerModal.js
-var import_obsidian13, SelectPixelBannerModal;
+var import_obsidian14, SelectPixelBannerModal;
 var init_selectPixelBannerModal = __esm({
   "src/modal/modals/selectPixelBannerModal.js"() {
-    import_obsidian13 = require("obsidian");
+    import_obsidian14 = require("obsidian");
     init_modals();
     init_flags();
     init_semver();
     init_fractionTextDisplay();
     init_constants();
-    SelectPixelBannerModal = class extends import_obsidian13.Modal {
+    init_fieldRegistry();
+    init_openSettings();
+    SelectPixelBannerModal = class extends import_obsidian14.Modal {
       constructor(app, plugin) {
         super(app);
         this.plugin = plugin;
@@ -1077,7 +1131,6 @@ var init_selectPixelBannerModal = __esm({
       }
       // Initialize the basic UI (non-API dependent)
       async initializeBasicUI() {
-        var _a;
         const { contentEl } = this;
         const titleContainer = contentEl.createEl("h2", {
           cls: "pixel-banner-selector-title",
@@ -1134,25 +1187,12 @@ var init_selectPixelBannerModal = __esm({
         settingsButton.addEventListener("click", () => {
           this.close();
           const openSettings = async () => {
-            await this.app.setting.open();
-            await new Promise((resolve) => setTimeout(resolve, 300));
-            const settingsTabs = document.querySelectorAll(".vertical-tab-header-group .vertical-tab-nav-item");
-            for (const tab of settingsTabs) {
-              if (tab.textContent.includes("Pixel Banner")) {
-                tab.click();
-                break;
-              }
-            }
+            await openPluginSettings(this.app);
           };
           openSettings();
         });
         const activeFile = this.app.workspace.getActiveFile();
-        const hasBanner = activeFile ? this.plugin.hasBannerFrontmatter(activeFile) || ((_a = this.plugin.app.metadataCache.getFileCache(activeFile)) == null ? void 0 : _a.frontmatter) && this.plugin.settings.customBannerShuffleField.some(
-          (field) => {
-            var _a2, _b;
-            return (_b = (_a2 = this.plugin.app.metadataCache.getFileCache(activeFile)) == null ? void 0 : _a2.frontmatter) == null ? void 0 : _b[field];
-          }
-        ) : false;
+        const hasBannerOrIcon2 = activeFile ? !!this.plugin.hasBannerOrIcon(activeFile) : false;
         const mainContainer = contentEl.createDiv({ cls: "pixel-banner-main-container" });
         const bannerSourceSection = mainContainer.createDiv({ cls: "pixel-banner-section" });
         bannerSourceSection.createEl("h3", {
@@ -1185,7 +1225,6 @@ var init_selectPixelBannerModal = __esm({
               const activeFile2 = this.app.workspace.getActiveFile();
               if (activeFile2) {
                 await this.plugin.app.fileManager.processFrontMatter(activeFile2, (frontmatter) => {
-                  const bannerField = this.plugin.settings.customBannerField[0];
                   const format = this.plugin.settings.imagePropertyFormat;
                   let bannerValue;
                   if (format === "image") {
@@ -1195,7 +1234,7 @@ var init_selectPixelBannerModal = __esm({
                   } else {
                     bannerValue = `![[${file.path}]]`;
                   }
-                  frontmatter[bannerField] = bannerValue;
+                  writeField(frontmatter, this.plugin, "banner", bannerValue);
                 });
                 if (this.plugin.settings.openTargetingModalAfterSelectingBannerOrIcon) {
                   new TargetPositionModal(this.app, this.plugin).open();
@@ -1312,11 +1351,6 @@ var init_selectPixelBannerModal = __esm({
           text: "Icon Image",
           cls: "pixel-banner-button-text"
         });
-        if (!hasBanner) {
-          bannerIconImageButton.disabled = true;
-          bannerIconImageButton.classList.add("pixel-banner-button-disabled");
-          bannerIconImageButton.title = "You need to add a banner first";
-        }
         bannerIconImageButton.addEventListener("click", () => {
           this.close();
           const onChooseBannerIconImage = async (filePath) => {
@@ -1334,8 +1368,7 @@ var init_selectPixelBannerModal = __esm({
             const file = this.app.vault.getAbstractFileByPath(pathString);
             if (typeof pathString === "string" && (pathString.startsWith("http://") || pathString.startsWith("https://"))) {
               this.app.fileManager.processFrontMatter(activeFile2, (fm) => {
-                const iconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
-                fm[iconImageField] = pathString;
+                writeField(fm, this.plugin, "iconImage", pathString);
               });
               new TargetPositionModal(this.app, this.plugin).open();
               return;
@@ -1355,7 +1388,6 @@ var init_selectPixelBannerModal = __esm({
               }
             }
             this.app.fileManager.processFrontMatter(activeFile2, (fm) => {
-              const iconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
               const format = this.plugin.settings.imagePropertyFormat;
               let iconValue;
               if (format === "image") {
@@ -1365,7 +1397,7 @@ var init_selectPixelBannerModal = __esm({
               } else {
                 iconValue = `![[${pathString}]]`;
               }
-              fm[iconImageField] = iconValue;
+              writeField(fm, this.plugin, "iconImage", iconValue);
             });
             new TargetPositionModal(this.app, this.plugin).open();
           };
@@ -1385,13 +1417,7 @@ var init_selectPixelBannerModal = __esm({
           text: "Icon Emoji & Text",
           cls: "pixel-banner-button-text"
         });
-        if (!hasBanner) {
-          bannerIconButton.disabled = true;
-          bannerIconButton.classList.add("pixel-banner-button-disabled");
-          bannerIconButton.title = "You need to add a banner first";
-        }
         bannerIconButton.addEventListener("click", () => {
-          if (!hasBanner) return;
           this.close();
           new EmojiSelectionModal(
             this.app,
@@ -1400,11 +1426,10 @@ var init_selectPixelBannerModal = __esm({
               const activeFile2 = this.app.workspace.getActiveFile();
               if (activeFile2) {
                 await this.plugin.app.fileManager.processFrontMatter(activeFile2, (frontmatter) => {
-                  const iconField = this.plugin.settings.customBannerIconField[0];
                   if (emoji) {
-                    frontmatter[iconField] = emoji;
+                    writeField(frontmatter, this.plugin, "icon", emoji);
                   } else {
-                    delete frontmatter[iconField];
+                    clearField(frontmatter, this.plugin, "icon");
                   }
                 });
               }
@@ -1420,24 +1445,24 @@ var init_selectPixelBannerModal = __esm({
           text: "Position, Size, & Style",
           cls: "pixel-banner-button-text"
         });
-        if (!hasBanner) {
+        if (!hasBannerOrIcon2) {
           targetingIconButton.disabled = true;
           targetingIconButton.classList.add("pixel-banner-button-disabled");
-          targetingIconButton.title = "You need to add a banner first";
+          targetingIconButton.title = "Add a banner or an icon first";
         }
         targetingIconButton.addEventListener("click", () => {
           this.close();
           new TargetPositionModal(this.app, this.plugin).open();
         });
         setTimeout(() => {
-          if (hasBanner && targetingIconButton) {
+          if (hasBannerOrIcon2 && targetingIconButton) {
             targetingIconButton.focus();
           }
         }, 1e3);
-        if (!hasBanner) {
+        if (!hasBannerOrIcon2) {
           const noBannerMessage = customizationSection.createDiv({ cls: "pixel-banner-no-banner-message" });
           noBannerMessage.createEl("p", {
-            text: "Add a banner first to enable customization options.",
+            text: "Add a banner or an icon to adjust position, size and style.",
             cls: "pixel-banner-message-text"
           });
         }
@@ -1500,7 +1525,7 @@ var init_selectPixelBannerModal = __esm({
                 `
           }
         });
-        new import_obsidian13.Setting(toggleSettingContainer).addToggle(
+        new import_obsidian14.Setting(toggleSettingContainer).addToggle(
           (toggle) => toggle.setValue(this.plugin.settings.pixelBannerPlusEnabled).onChange(async (value) => {
             this.plugin.pixelBannerPlusEnabled = value;
             this.plugin.settings.pixelBannerPlusEnabled = value;
@@ -1612,22 +1637,7 @@ var init_selectPixelBannerModal = __esm({
               });
               const openPlusSettings = async () => {
                 this.close();
-                await this.app.setting.open();
-                await new Promise((resolve) => setTimeout(resolve, 300));
-                const settingsTabs = document.querySelectorAll(".vertical-tab-header-group .vertical-tab-nav-item");
-                for (const tab of settingsTabs) {
-                  if (tab.textContent.includes("Pixel Banner")) {
-                    tab.click();
-                    break;
-                  }
-                }
-                const pixelBannerSettingsTabs = document.querySelectorAll(".pixel-banner-settings-tabs > button.pixel-banner-settings-tab");
-                for (const tab of pixelBannerSettingsTabs) {
-                  if (tab.textContent.includes("Plus")) {
-                    tab.click();
-                    break;
-                  }
-                }
+                await openPluginSettings(this.app, { plusTab: true });
               };
               const accountTitle = accountSection.querySelector(".pixel-banner-section-title");
               if (accountTitle) accountTitle.addEventListener("click", openPlusSettings);
@@ -1905,23 +1915,7 @@ var init_selectPixelBannerModal = __esm({
               if (isCloudVersionGreater) {
                 const openCommunityPlugins = async () => {
                   this.close();
-                  await this.app.setting.open();
-                  await new Promise((resolve) => setTimeout(resolve, 300));
-                  const settingsTabs = document.querySelectorAll(".vertical-tab-header-group .vertical-tab-nav-item");
-                  for (const tab of settingsTabs) {
-                    if (tab.textContent.includes("Community plugins")) {
-                      tab.click();
-                      break;
-                    }
-                  }
-                  await new Promise((resolve) => setTimeout(resolve, 500));
-                  const allTheButtons = document.querySelectorAll("button.mod-cta");
-                  for (const button of allTheButtons) {
-                    if (button.textContent.includes("Check for updates")) {
-                      button.click();
-                      break;
-                    }
-                  }
+                  await openCommunityPluginsSettings(this.app, { checkForUpdates: true });
                 };
                 versionInfo.addEventListener("click", openCommunityPlugins);
               }
@@ -2214,17 +2208,18 @@ var init_selectPixelBannerModal = __esm({
 });
 
 // src/modal/modals/generateAIBannerModal.js
-var import_obsidian14, GenerateAIBannerModal;
+var import_obsidian15, GenerateAIBannerModal;
 var init_generateAIBannerModal = __esm({
   "src/modal/modals/generateAIBannerModal.js"() {
-    import_obsidian14 = require("obsidian");
+    import_obsidian15 = require("obsidian");
     init_constants();
     init_handlePinIconClick();
+    init_fieldRegistry();
     init_fractionTextDisplay();
     init_downloadHistory();
     init_modals();
     init_selectPixelBannerModal();
-    GenerateAIBannerModal = class extends import_obsidian14.Modal {
+    GenerateAIBannerModal = class extends import_obsidian15.Modal {
       constructor(app, plugin) {
         super(app);
         this.plugin = plugin;
@@ -2380,7 +2375,7 @@ var init_generateAIBannerModal = __esm({
       async fetchAvailableModels() {
         try {
           const modelUrl = new URL(PIXEL_BANNER_PLUS.ENDPOINTS.TEXT_TO_IMAGE_MODELS, PIXEL_BANNER_PLUS.API_URL).toString();
-          const response = await (0, import_obsidian14.requestUrl)({
+          const response = await (0, import_obsidian15.requestUrl)({
             url: modelUrl,
             method: "GET",
             headers: {
@@ -2862,11 +2857,11 @@ var init_generateAIBannerModal = __esm({
       async generateImage() {
         if (!this.imageContainer) return;
         if (!this.prompt) {
-          new import_obsidian14.Notice("Please enter a prompt");
+          new import_obsidian15.Notice("Please enter a prompt");
           return;
         }
         if (!this.selectedModelId && Object.keys(this.availableModels).length > 0) {
-          new import_obsidian14.Notice("Please select an AI model");
+          new import_obsidian15.Notice("Please select an AI model");
           return;
         }
         const existingImage = this.imageContainer.querySelector(".pixel-banner-generated-image");
@@ -2915,7 +2910,7 @@ var init_generateAIBannerModal = __esm({
           if (modelData.appendToPrompt) {
             requestBody.prompt += " " + modelData.appendToPrompt;
           }
-          const response = await (0, import_obsidian14.requestUrl)({
+          const response = await (0, import_obsidian15.requestUrl)({
             url: generateUrl,
             method: "POST",
             headers: {
@@ -2959,13 +2954,12 @@ var init_generateAIBannerModal = __esm({
               const imageUrl = `data:image/jpeg;base64,${response.json.image}`;
               let filename = ((_a = this.prompt) == null ? void 0 : _a.toLowerCase().replace(/[^a-zA-Z0-9-_ ]/g, "").trim()) || "banner";
               filename = filename.replace(/\s+/g, "-").substring(0, 47);
-              const savedPath = await handlePinIconClick(imageUrl, this.plugin, null, filename, false);
+              const activeFile = this.plugin.app.workspace.getActiveFile();
+              const savedPath = await handlePinIconClick(imageUrl, this.plugin, null, filename, false, activeFile);
               this.downloadHistory.addImage(response.json.imageId);
               this.close();
-              const activeFile = this.plugin.app.workspace.getActiveFile();
               if (!activeFile || !savedPath) return;
               await this.plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-                const bannerField = this.plugin.settings.customBannerField[0];
                 const format = this.plugin.settings.imagePropertyFormat;
                 let bannerValue;
                 if (format === "image") {
@@ -2975,7 +2969,7 @@ var init_generateAIBannerModal = __esm({
                 } else {
                   bannerValue = `![[${savedPath}]]`;
                 }
-                frontmatter[bannerField] = bannerValue;
+                writeField(frontmatter, this.plugin, "banner", bannerValue);
               });
               if (this.plugin.settings.openTargetingModalAfterSelectingBannerOrIcon) {
                 new TargetPositionModal(this.app, this.plugin).open();
@@ -3000,7 +2994,7 @@ var init_generateAIBannerModal = __esm({
         const imageId = img.getAttribute("imageid");
         if (this.downloadHistory.hasImage(imageId)) {
           return new Promise((resolve) => {
-            const modal = new import_obsidian14.Modal(this.app);
+            const modal = new import_obsidian15.Modal(this.app);
             modal.contentEl.createEl("h2", { text: "Image Already Downloaded" });
             modal.contentEl.createEl("p", { text: "You have already downloaded this image. Do you want to download it again?" });
             const buttonContainer = modal.contentEl.createDiv();
@@ -3031,7 +3025,7 @@ var init_generateAIBannerModal = __esm({
             imgDescription = imgDescription.substring(0, 47);
             imgDescription = imgDescription + "...";
           }
-          const modal = new import_obsidian14.Modal(this.app);
+          const modal = new import_obsidian15.Modal(this.app);
           modal.contentEl.createEl("h2", { text: "Delete Image", cls: "margin-top-0" });
           const deletePrompt = modal.contentEl.createEl("p", { text: `Please confirm you want to delete "IMGDESCRIPTION" from your AI Generated Banner History. This will not delete any images you have previously downloaded to your vault.` });
           deletePrompt.innerHTML = deletePrompt.innerHTML.replace("IMGDESCRIPTION", `<span style="color: var(--text-accent);">${imgDescription}</span>`);
@@ -3059,7 +3053,7 @@ var init_generateAIBannerModal = __esm({
         const confirmed = await this.confirmDelete(imgDescription);
         if (!confirmed) return;
         const deleteUrl = new URL(PIXEL_BANNER_PLUS.ENDPOINTS.HISTORY_DELETE, PIXEL_BANNER_PLUS.API_URL).toString();
-        const response = await (0, import_obsidian14.requestUrl)({
+        const response = await (0, import_obsidian15.requestUrl)({
           url: `${deleteUrl}/${imageId}`,
           method: "DELETE",
           headers: {
@@ -3070,10 +3064,10 @@ var init_generateAIBannerModal = __esm({
           }
         });
         if (response.status === 200) {
-          new import_obsidian14.Notice("Image deleted successfully");
+          new import_obsidian15.Notice("Image deleted successfully");
           this.refreshHistoryContainer();
         } else {
-          new import_obsidian14.Notice("Failed to delete image");
+          new import_obsidian15.Notice("Failed to delete image");
         }
       }
       async onOpen() {
@@ -3517,7 +3511,7 @@ var init_generateAIBannerModal = __esm({
         });
         generateButton.addEventListener("click", async () => {
           if (!this.prompt) {
-            new import_obsidian14.Notice("Please enter a prompt");
+            new import_obsidian15.Notice("Please enter a prompt");
             return;
           }
           await this.generateImage();
@@ -3630,7 +3624,7 @@ var init_generateAIBannerModal = __esm({
           inspirationButton.textContent = "\u23F3";
           inspirationButton.disabled = true;
           const inspirationUrl = new URL(PIXEL_BANNER_PLUS.ENDPOINTS.GENERATE_BANNER_IDEA, PIXEL_BANNER_PLUS.API_URL).toString();
-          const response = await (0, import_obsidian14.requestUrl)({
+          const response = await (0, import_obsidian15.requestUrl)({
             url: inspirationUrl,
             method: "GET",
             headers: {
@@ -3651,7 +3645,7 @@ var init_generateAIBannerModal = __esm({
           }
         } catch (error) {
           console.error("Failed to get prompt inspiration:", error);
-          new import_obsidian14.Notice("Failed to get prompt inspiration. Please try again.");
+          new import_obsidian15.Notice("Failed to get prompt inspiration. Please try again.");
         } finally {
           inspirationButton.textContent = originalText;
           inspirationButton.disabled = false;
@@ -3664,14 +3658,14 @@ var init_generateAIBannerModal = __esm({
         const promptTextarea = this.contentEl.querySelector("#ai-banner-prompt");
         let seed = promptTextarea.value.trim();
         if (seed.length === 0) {
-          new import_obsidian14.Notice("Please enter at lease one word in the Prompt box to grow your banner idea from.");
+          new import_obsidian15.Notice("Please enter at lease one word in the Prompt box to grow your banner idea from.");
           return;
         }
         try {
           inspirationFromSeedButton.textContent = "\u23F3";
           inspirationFromSeedButton.disabled = true;
           const inspirationUrl = new URL(PIXEL_BANNER_PLUS.ENDPOINTS.GENERATE_BANNER_IDEA_FROM_SEED, PIXEL_BANNER_PLUS.API_URL).toString();
-          const response = await (0, import_obsidian14.requestUrl)({
+          const response = await (0, import_obsidian15.requestUrl)({
             url: inspirationUrl + `/${seed}`,
             method: "GET",
             headers: {
@@ -3692,7 +3686,7 @@ var init_generateAIBannerModal = __esm({
           }
         } catch (error) {
           console.error("Failed to get prompt inspiration:", error);
-          new import_obsidian14.Notice("Failed to get prompt inspiration. Please try again.");
+          new import_obsidian15.Notice("Failed to get prompt inspiration. Please try again.");
         } finally {
           inspirationFromSeedButton.textContent = originalText;
           inspirationFromSeedButton.disabled = false;
@@ -3705,14 +3699,14 @@ var init_generateAIBannerModal = __esm({
         const promptTextarea = this.contentEl.querySelector("#ai-banner-prompt");
         let seed = promptTextarea.value.trim();
         if (seed.length === 0) {
-          new import_obsidian14.Notice("Please enter at lease one word in the Prompt box to generate a rewritten prompt.");
+          new import_obsidian15.Notice("Please enter at lease one word in the Prompt box to generate a rewritten prompt.");
           return;
         }
         try {
           rewritePromptButton.textContent = "\u23F3";
           rewritePromptButton.disabled = true;
           const inspirationUrl = new URL(PIXEL_BANNER_PLUS.ENDPOINTS.REWRITE_BANNER_IDEA, PIXEL_BANNER_PLUS.API_URL).toString();
-          const response = await (0, import_obsidian14.requestUrl)({
+          const response = await (0, import_obsidian15.requestUrl)({
             url: inspirationUrl + `/${seed}`,
             method: "GET",
             headers: {
@@ -3733,7 +3727,7 @@ var init_generateAIBannerModal = __esm({
           }
         } catch (error) {
           console.error("Failed to rewrite prompt:", error);
-          new import_obsidian14.Notice("Failed to rewrite prompt. Please try again.");
+          new import_obsidian15.Notice("Failed to rewrite prompt. Please try again.");
         } finally {
           rewritePromptButton.textContent = originalText;
           rewritePromptButton.disabled = false;
@@ -3789,7 +3783,7 @@ var init_generateAIBannerModal = __esm({
         historyContainer.empty();
         try {
           const countUrl = new URL(PIXEL_BANNER_PLUS.ENDPOINTS.HISTORY_COUNT, PIXEL_BANNER_PLUS.API_URL).toString();
-          const countResponse = await (0, import_obsidian14.requestUrl)({
+          const countResponse = await (0, import_obsidian15.requestUrl)({
             url: countUrl,
             method: "GET",
             headers: {
@@ -3805,7 +3799,7 @@ var init_generateAIBannerModal = __esm({
             this.totalPages = Math.ceil(this.totalItems / this.itemsPerPage);
           }
           const historyUrl = new URL(`${PIXEL_BANNER_PLUS.ENDPOINTS.HISTORY_PAGE}/${this.currentPage}?limit=${this.itemsPerPage}`, PIXEL_BANNER_PLUS.API_URL).toString();
-          const response = await (0, import_obsidian14.requestUrl)({
+          const response = await (0, import_obsidian15.requestUrl)({
             url: historyUrl,
             method: "GET",
             headers: {
@@ -3855,13 +3849,12 @@ var init_generateAIBannerModal = __esm({
           const shouldDownload = await this.checkDownloadHistory(img);
           if (!shouldDownload) return;
           const filename = img.getAttribute("filename");
-          const savedPath = await handlePinIconClick(imageData.base64Image, this.plugin, null, filename, false);
+          const activeFile = this.plugin.app.workspace.getActiveFile();
+          const savedPath = await handlePinIconClick(imageData.base64Image, this.plugin, null, filename, false, activeFile);
           this.downloadHistory.addImage(img.getAttribute("imageid"));
           this.close();
-          const activeFile = this.plugin.app.workspace.getActiveFile();
           if (!activeFile || !savedPath) return;
           await this.plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-            const bannerField = this.plugin.settings.customBannerField[0];
             const format = this.plugin.settings.imagePropertyFormat;
             let bannerValue;
             if (format === "image") {
@@ -3871,7 +3864,7 @@ var init_generateAIBannerModal = __esm({
             } else {
               bannerValue = `![[${savedPath}]]`;
             }
-            frontmatter[bannerField] = bannerValue;
+            writeField(frontmatter, this.plugin, "banner", bannerValue);
           });
           if (this.plugin.settings.openTargetingModalAfterSelectingBannerOrIcon) {
             new TargetPositionModal(this.app, this.plugin).open();
@@ -3891,7 +3884,7 @@ var init_generateAIBannerModal = __esm({
         loadingDiv.createDiv({ cls: "dot-pulse" });
         try {
           const historyUrl = new URL(`${PIXEL_BANNER_PLUS.ENDPOINTS.HISTORY_PAGE}/${this.currentPage}?limit=${this.itemsPerPage}`, PIXEL_BANNER_PLUS.API_URL).toString();
-          const response = await (0, import_obsidian14.requestUrl)({
+          const response = await (0, import_obsidian15.requestUrl)({
             url: historyUrl,
             method: "GET",
             headers: {
@@ -4000,15 +3993,15 @@ var init_generateAIBannerModal = __esm({
 });
 
 // src/modal/modals/imageSelectionModal.js
-var import_obsidian15, ImageSelectionModal;
+var import_obsidian16, ImageSelectionModal;
 var init_imageSelectionModal = __esm({
   "src/modal/modals/imageSelectionModal.js"() {
-    import_obsidian15 = require("obsidian");
+    import_obsidian16 = require("obsidian");
     init_generateAIBannerModal();
     init_folderSelectionModal();
     init_saveImageModal();
     init_selectPixelBannerModal();
-    ImageSelectionModal = class extends import_obsidian15.Modal {
+    ImageSelectionModal = class extends import_obsidian16.Modal {
       constructor(app, plugin, onChoose, defaultPath = "") {
         super(app);
         this.plugin = plugin;
@@ -4020,16 +4013,16 @@ var init_imageSelectionModal = __esm({
         this.sortOrder = "name-asc";
         this.imageFiles = this.app.vault.getFiles().filter((file) => file.extension.toLowerCase().match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/));
       }
-      debounce(func, wait) {
+      debounce(func, wait2) {
         let timeout;
         return (...args) => {
           clearTimeout(timeout);
-          timeout = setTimeout(() => func.apply(this, args), wait);
+          timeout = setTimeout(() => func.apply(this, args), wait2);
         };
       }
       async confirmDelete(file) {
         return new Promise((resolve) => {
-          const modal = new import_obsidian15.Modal(this.app);
+          const modal = new import_obsidian16.Modal(this.app);
           modal.contentEl.createEl("h2", { text: "Delete Image" });
           modal.contentEl.createEl("p", { text: `Are you sure you want to delete "${file.name}"?` });
           const buttonContainer = modal.contentEl.createDiv();
@@ -4060,7 +4053,7 @@ var init_imageSelectionModal = __esm({
           this.imageFiles = this.imageFiles.filter((f) => f.path !== file.path);
           this.updateImageGrid();
         } catch (error) {
-          new import_obsidian15.Notice(`Failed to delete image: ${error.message}`);
+          new import_obsidian16.Notice(`Failed to delete image: ${error.message}`);
         }
       }
       onOpen() {
@@ -4069,11 +4062,6 @@ var init_imageSelectionModal = __esm({
         contentEl.empty();
         const style = document.createElement("style");
         style.textContent = `
-            .pixel-banner-image-modal {
-                width: var(--dialog-max-width);
-                top: unset !important;
-            }
-
             .pixel-banner-image-select-modal {
                 top: unset !important;
                 width: var(--dialog-max-width);
@@ -4370,7 +4358,7 @@ var init_imageSelectionModal = __esm({
             style: "font-size: 12px; color: var(--text-muted);"
           }
         });
-        const toggle = new import_obsidian15.Setting(toggleContainer).addToggle((cb) => {
+        const toggle = new import_obsidian16.Setting(toggleContainer).addToggle((cb) => {
           cb.setValue(this.plugin.settings.useShortPath).onChange(async (value) => {
             this.plugin.settings.useShortPath = value;
             await this.plugin.saveSettings();
@@ -4400,7 +4388,7 @@ var init_imageSelectionModal = __esm({
                 }).open();
               });
               if (!folderPath) {
-                new import_obsidian15.Notice("No folder selected");
+                new import_obsidian16.Notice("No folder selected");
                 return;
               }
               if (!await this.app.vault.adapter.exists(folderPath)) {
@@ -4413,7 +4401,7 @@ var init_imageSelectionModal = __esm({
                 }).open();
               });
               if (!fileName) {
-                new import_obsidian15.Notice("No file name provided");
+                new import_obsidian16.Notice("No file name provided");
                 return;
               }
               try {
@@ -4422,7 +4410,7 @@ var init_imageSelectionModal = __esm({
                 this.onChoose(newFile);
                 this.close();
               } catch (error) {
-                new import_obsidian15.Notice("Failed to save image: " + error.message);
+                new import_obsidian16.Notice("Failed to save image: " + error.message);
               }
             };
             reader.readAsArrayBuffer(file);
@@ -4757,11 +4745,11 @@ var init_imageSelectionModal = __esm({
 });
 
 // src/modal/modals/iconFolderSelectionModal.js
-var import_obsidian16, IconFolderSelectionModal;
+var import_obsidian17, IconFolderSelectionModal;
 var init_iconFolderSelectionModal = __esm({
   "src/modal/modals/iconFolderSelectionModal.js"() {
-    import_obsidian16 = require("obsidian");
-    IconFolderSelectionModal = class extends import_obsidian16.FuzzySuggestModal {
+    import_obsidian17 = require("obsidian");
+    IconFolderSelectionModal = class extends import_obsidian17.FuzzySuggestModal {
       constructor(app, defaultFolder, onChoose) {
         super(app);
         this.defaultFolder = defaultFolder;
@@ -4841,163 +4829,3443 @@ var init_getCurrentTheme = __esm({
   }
 });
 
+// node_modules/canvas-confetti/dist/confetti.module.mjs
+var module2, confetti_module_default, create;
+var init_confetti_module = __esm({
+  "node_modules/canvas-confetti/dist/confetti.module.mjs"() {
+    module2 = {};
+    (function main(global, module3, isWorker, workerSize) {
+      var canUseWorker = !!(global.Worker && global.Blob && global.Promise && global.OffscreenCanvas && global.OffscreenCanvasRenderingContext2D && global.HTMLCanvasElement && global.HTMLCanvasElement.prototype.transferControlToOffscreen && global.URL && global.URL.createObjectURL);
+      var canUsePaths = typeof Path2D === "function" && typeof DOMMatrix === "function";
+      var canDrawBitmap = (function() {
+        if (!global.OffscreenCanvas) {
+          return false;
+        }
+        try {
+          var canvas = new OffscreenCanvas(1, 1);
+          var ctx = canvas.getContext("2d");
+          ctx.fillRect(0, 0, 1, 1);
+          var bitmap = canvas.transferToImageBitmap();
+          ctx.createPattern(bitmap, "no-repeat");
+        } catch (e) {
+          return false;
+        }
+        return true;
+      })();
+      function noop() {
+      }
+      function promise(func) {
+        var ModulePromise = module3.exports.Promise;
+        var Prom = ModulePromise !== void 0 ? ModulePromise : global.Promise;
+        if (typeof Prom === "function") {
+          return new Prom(func);
+        }
+        func(noop, noop);
+        return null;
+      }
+      var bitmapMapper = /* @__PURE__ */ (function(skipTransform, map) {
+        return {
+          transform: function(bitmap) {
+            if (skipTransform) {
+              return bitmap;
+            }
+            if (map.has(bitmap)) {
+              return map.get(bitmap);
+            }
+            var canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+            var ctx = canvas.getContext("2d");
+            ctx.drawImage(bitmap, 0, 0);
+            map.set(bitmap, canvas);
+            return canvas;
+          },
+          clear: function() {
+            map.clear();
+          }
+        };
+      })(canDrawBitmap, /* @__PURE__ */ new Map());
+      var raf = (function() {
+        var TIME = Math.floor(1e3 / 60);
+        var frame, cancel;
+        var frames = {};
+        var lastFrameTime = 0;
+        if (typeof requestAnimationFrame === "function" && typeof cancelAnimationFrame === "function") {
+          frame = function(cb) {
+            var id = Math.random();
+            frames[id] = requestAnimationFrame(function onFrame(time) {
+              if (lastFrameTime === time || lastFrameTime + TIME - 1 < time) {
+                lastFrameTime = time;
+                delete frames[id];
+                cb();
+              } else {
+                frames[id] = requestAnimationFrame(onFrame);
+              }
+            });
+            return id;
+          };
+          cancel = function(id) {
+            if (frames[id]) {
+              cancelAnimationFrame(frames[id]);
+            }
+          };
+        } else {
+          frame = function(cb) {
+            return setTimeout(cb, TIME);
+          };
+          cancel = function(timer) {
+            return clearTimeout(timer);
+          };
+        }
+        return { frame, cancel };
+      })();
+      var getWorker = /* @__PURE__ */ (function() {
+        var worker;
+        var prom;
+        var resolves = {};
+        function decorate(worker2) {
+          function execute(options, callback) {
+            worker2.postMessage({ options: options || {}, callback });
+          }
+          worker2.init = function initWorker(canvas) {
+            var offscreen = canvas.transferControlToOffscreen();
+            worker2.postMessage({ canvas: offscreen }, [offscreen]);
+          };
+          worker2.fire = function fireWorker(options, size, done) {
+            if (prom) {
+              execute(options, null);
+              return prom;
+            }
+            var id = Math.random().toString(36).slice(2);
+            prom = promise(function(resolve) {
+              function workerDone(msg) {
+                if (msg.data.callback !== id) {
+                  return;
+                }
+                delete resolves[id];
+                worker2.removeEventListener("message", workerDone);
+                prom = null;
+                bitmapMapper.clear();
+                done();
+                resolve();
+              }
+              worker2.addEventListener("message", workerDone);
+              execute(options, id);
+              resolves[id] = workerDone.bind(null, { data: { callback: id } });
+            });
+            return prom;
+          };
+          worker2.reset = function resetWorker() {
+            worker2.postMessage({ reset: true });
+            for (var id in resolves) {
+              resolves[id]();
+              delete resolves[id];
+            }
+          };
+        }
+        return function() {
+          if (worker) {
+            return worker;
+          }
+          if (!isWorker && canUseWorker) {
+            var code = [
+              "var CONFETTI, SIZE = {}, module = {};",
+              "(" + main.toString() + ")(this, module, true, SIZE);",
+              "onmessage = function(msg) {",
+              "  if (msg.data.options) {",
+              "    CONFETTI(msg.data.options).then(function () {",
+              "      if (msg.data.callback) {",
+              "        postMessage({ callback: msg.data.callback });",
+              "      }",
+              "    });",
+              "  } else if (msg.data.reset) {",
+              "    CONFETTI && CONFETTI.reset();",
+              "  } else if (msg.data.resize) {",
+              "    SIZE.width = msg.data.resize.width;",
+              "    SIZE.height = msg.data.resize.height;",
+              "  } else if (msg.data.canvas) {",
+              "    SIZE.width = msg.data.canvas.width;",
+              "    SIZE.height = msg.data.canvas.height;",
+              "    CONFETTI = module.exports.create(msg.data.canvas);",
+              "  }",
+              "}"
+            ].join("\n");
+            try {
+              worker = new Worker(URL.createObjectURL(new Blob([code])));
+            } catch (e) {
+              typeof console !== "undefined" && typeof console.warn === "function" ? console.warn("\u{1F38A} Could not load worker", e) : null;
+              return null;
+            }
+            decorate(worker);
+          }
+          return worker;
+        };
+      })();
+      var defaults = {
+        particleCount: 50,
+        angle: 90,
+        spread: 45,
+        startVelocity: 45,
+        decay: 0.9,
+        gravity: 1,
+        drift: 0,
+        ticks: 200,
+        x: 0.5,
+        y: 0.5,
+        shapes: ["square", "circle"],
+        zIndex: 100,
+        colors: [
+          "#26ccff",
+          "#a25afd",
+          "#ff5e7e",
+          "#88ff5a",
+          "#fcff42",
+          "#ffa62d",
+          "#ff36ff"
+        ],
+        // probably should be true, but back-compat
+        disableForReducedMotion: false,
+        scalar: 1
+      };
+      function convert(val, transform) {
+        return transform ? transform(val) : val;
+      }
+      function isOk(val) {
+        return !(val === null || val === void 0);
+      }
+      function prop(options, name, transform) {
+        return convert(
+          options && isOk(options[name]) ? options[name] : defaults[name],
+          transform
+        );
+      }
+      function onlyPositiveInt(number) {
+        return number < 0 ? 0 : Math.floor(number);
+      }
+      function randomInt(min, max) {
+        return Math.floor(Math.random() * (max - min)) + min;
+      }
+      function toDecimal(str) {
+        return parseInt(str, 16);
+      }
+      function colorsToRgb(colors) {
+        return colors.map(hexToRgb);
+      }
+      function hexToRgb(str) {
+        var val = String(str).replace(/[^0-9a-f]/gi, "");
+        if (val.length < 6) {
+          val = val[0] + val[0] + val[1] + val[1] + val[2] + val[2];
+        }
+        return {
+          r: toDecimal(val.substring(0, 2)),
+          g: toDecimal(val.substring(2, 4)),
+          b: toDecimal(val.substring(4, 6))
+        };
+      }
+      function getOrigin(options) {
+        var origin = prop(options, "origin", Object);
+        origin.x = prop(origin, "x", Number);
+        origin.y = prop(origin, "y", Number);
+        return origin;
+      }
+      function setCanvasWindowSize(canvas) {
+        canvas.width = document.documentElement.clientWidth;
+        canvas.height = document.documentElement.clientHeight;
+      }
+      function setCanvasRectSize(canvas) {
+        var rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width;
+        canvas.height = rect.height;
+      }
+      function getCanvas(zIndex) {
+        var canvas = document.createElement("canvas");
+        canvas.style.position = "fixed";
+        canvas.style.top = "0px";
+        canvas.style.left = "0px";
+        canvas.style.pointerEvents = "none";
+        canvas.style.zIndex = zIndex;
+        return canvas;
+      }
+      function ellipse(context, x, y, radiusX, radiusY, rotation, startAngle, endAngle, antiClockwise) {
+        context.save();
+        context.translate(x, y);
+        context.rotate(rotation);
+        context.scale(radiusX, radiusY);
+        context.arc(0, 0, 1, startAngle, endAngle, antiClockwise);
+        context.restore();
+      }
+      function randomPhysics(opts) {
+        var radAngle = opts.angle * (Math.PI / 180);
+        var radSpread = opts.spread * (Math.PI / 180);
+        return {
+          x: opts.x,
+          y: opts.y,
+          wobble: Math.random() * 10,
+          wobbleSpeed: Math.min(0.11, Math.random() * 0.1 + 0.05),
+          velocity: opts.startVelocity * 0.5 + Math.random() * opts.startVelocity,
+          angle2D: -radAngle + (0.5 * radSpread - Math.random() * radSpread),
+          tiltAngle: (Math.random() * (0.75 - 0.25) + 0.25) * Math.PI,
+          color: opts.color,
+          shape: opts.shape,
+          tick: 0,
+          totalTicks: opts.ticks,
+          decay: opts.decay,
+          drift: opts.drift,
+          random: Math.random() + 2,
+          tiltSin: 0,
+          tiltCos: 0,
+          wobbleX: 0,
+          wobbleY: 0,
+          gravity: opts.gravity * 3,
+          ovalScalar: 0.6,
+          scalar: opts.scalar,
+          flat: opts.flat
+        };
+      }
+      function updateFetti(context, fetti) {
+        fetti.x += Math.cos(fetti.angle2D) * fetti.velocity + fetti.drift;
+        fetti.y += Math.sin(fetti.angle2D) * fetti.velocity + fetti.gravity;
+        fetti.velocity *= fetti.decay;
+        if (fetti.flat) {
+          fetti.wobble = 0;
+          fetti.wobbleX = fetti.x + 10 * fetti.scalar;
+          fetti.wobbleY = fetti.y + 10 * fetti.scalar;
+          fetti.tiltSin = 0;
+          fetti.tiltCos = 0;
+          fetti.random = 1;
+        } else {
+          fetti.wobble += fetti.wobbleSpeed;
+          fetti.wobbleX = fetti.x + 10 * fetti.scalar * Math.cos(fetti.wobble);
+          fetti.wobbleY = fetti.y + 10 * fetti.scalar * Math.sin(fetti.wobble);
+          fetti.tiltAngle += 0.1;
+          fetti.tiltSin = Math.sin(fetti.tiltAngle);
+          fetti.tiltCos = Math.cos(fetti.tiltAngle);
+          fetti.random = Math.random() + 2;
+        }
+        var progress = fetti.tick++ / fetti.totalTicks;
+        var x1 = fetti.x + fetti.random * fetti.tiltCos;
+        var y1 = fetti.y + fetti.random * fetti.tiltSin;
+        var x2 = fetti.wobbleX + fetti.random * fetti.tiltCos;
+        var y2 = fetti.wobbleY + fetti.random * fetti.tiltSin;
+        context.fillStyle = "rgba(" + fetti.color.r + ", " + fetti.color.g + ", " + fetti.color.b + ", " + (1 - progress) + ")";
+        context.beginPath();
+        if (canUsePaths && fetti.shape.type === "path" && typeof fetti.shape.path === "string" && Array.isArray(fetti.shape.matrix)) {
+          context.fill(transformPath2D(
+            fetti.shape.path,
+            fetti.shape.matrix,
+            fetti.x,
+            fetti.y,
+            Math.abs(x2 - x1) * 0.1,
+            Math.abs(y2 - y1) * 0.1,
+            Math.PI / 10 * fetti.wobble
+          ));
+        } else if (fetti.shape.type === "bitmap") {
+          var rotation = Math.PI / 10 * fetti.wobble;
+          var scaleX = Math.abs(x2 - x1) * 0.1;
+          var scaleY = Math.abs(y2 - y1) * 0.1;
+          var width = fetti.shape.bitmap.width * fetti.scalar;
+          var height = fetti.shape.bitmap.height * fetti.scalar;
+          var matrix = new DOMMatrix([
+            Math.cos(rotation) * scaleX,
+            Math.sin(rotation) * scaleX,
+            -Math.sin(rotation) * scaleY,
+            Math.cos(rotation) * scaleY,
+            fetti.x,
+            fetti.y
+          ]);
+          matrix.multiplySelf(new DOMMatrix(fetti.shape.matrix));
+          var pattern = context.createPattern(bitmapMapper.transform(fetti.shape.bitmap), "no-repeat");
+          pattern.setTransform(matrix);
+          context.globalAlpha = 1 - progress;
+          context.fillStyle = pattern;
+          context.fillRect(
+            fetti.x - width / 2,
+            fetti.y - height / 2,
+            width,
+            height
+          );
+          context.globalAlpha = 1;
+        } else if (fetti.shape === "circle") {
+          context.ellipse ? context.ellipse(fetti.x, fetti.y, Math.abs(x2 - x1) * fetti.ovalScalar, Math.abs(y2 - y1) * fetti.ovalScalar, Math.PI / 10 * fetti.wobble, 0, 2 * Math.PI) : ellipse(context, fetti.x, fetti.y, Math.abs(x2 - x1) * fetti.ovalScalar, Math.abs(y2 - y1) * fetti.ovalScalar, Math.PI / 10 * fetti.wobble, 0, 2 * Math.PI);
+        } else if (fetti.shape === "star") {
+          var rot = Math.PI / 2 * 3;
+          var innerRadius = 4 * fetti.scalar;
+          var outerRadius = 8 * fetti.scalar;
+          var x = fetti.x;
+          var y = fetti.y;
+          var spikes = 5;
+          var step = Math.PI / spikes;
+          while (spikes--) {
+            x = fetti.x + Math.cos(rot) * outerRadius;
+            y = fetti.y + Math.sin(rot) * outerRadius;
+            context.lineTo(x, y);
+            rot += step;
+            x = fetti.x + Math.cos(rot) * innerRadius;
+            y = fetti.y + Math.sin(rot) * innerRadius;
+            context.lineTo(x, y);
+            rot += step;
+          }
+        } else {
+          context.moveTo(Math.floor(fetti.x), Math.floor(fetti.y));
+          context.lineTo(Math.floor(fetti.wobbleX), Math.floor(y1));
+          context.lineTo(Math.floor(x2), Math.floor(y2));
+          context.lineTo(Math.floor(x1), Math.floor(fetti.wobbleY));
+        }
+        context.closePath();
+        context.fill();
+        return fetti.tick < fetti.totalTicks;
+      }
+      function animate(canvas, fettis, resizer, size, done) {
+        var animatingFettis = fettis.slice();
+        var context = canvas.getContext("2d");
+        var animationFrame;
+        var destroy;
+        var prom = promise(function(resolve) {
+          function onDone() {
+            animationFrame = destroy = null;
+            context.clearRect(0, 0, size.width, size.height);
+            bitmapMapper.clear();
+            done();
+            resolve();
+          }
+          function update() {
+            if (isWorker && !(size.width === workerSize.width && size.height === workerSize.height)) {
+              size.width = canvas.width = workerSize.width;
+              size.height = canvas.height = workerSize.height;
+            }
+            if (!size.width && !size.height) {
+              resizer(canvas);
+              size.width = canvas.width;
+              size.height = canvas.height;
+            }
+            context.clearRect(0, 0, size.width, size.height);
+            animatingFettis = animatingFettis.filter(function(fetti) {
+              return updateFetti(context, fetti);
+            });
+            if (animatingFettis.length) {
+              animationFrame = raf.frame(update);
+            } else {
+              onDone();
+            }
+          }
+          animationFrame = raf.frame(update);
+          destroy = onDone;
+        });
+        return {
+          addFettis: function(fettis2) {
+            animatingFettis = animatingFettis.concat(fettis2);
+            return prom;
+          },
+          canvas,
+          promise: prom,
+          reset: function() {
+            if (animationFrame) {
+              raf.cancel(animationFrame);
+            }
+            if (destroy) {
+              destroy();
+            }
+          }
+        };
+      }
+      function confettiCannon(canvas, globalOpts) {
+        var isLibCanvas = !canvas;
+        var allowResize = !!prop(globalOpts || {}, "resize");
+        var hasResizeEventRegistered = false;
+        var globalDisableForReducedMotion = prop(globalOpts, "disableForReducedMotion", Boolean);
+        var shouldUseWorker = canUseWorker && !!prop(globalOpts || {}, "useWorker");
+        var worker = shouldUseWorker ? getWorker() : null;
+        var resizer = isLibCanvas ? setCanvasWindowSize : setCanvasRectSize;
+        var initialized = canvas && worker ? !!canvas.__confetti_initialized : false;
+        var preferLessMotion = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion)").matches;
+        var animationObj;
+        function fireLocal(options, size, done) {
+          var particleCount = prop(options, "particleCount", onlyPositiveInt);
+          var angle = prop(options, "angle", Number);
+          var spread = prop(options, "spread", Number);
+          var startVelocity = prop(options, "startVelocity", Number);
+          var decay = prop(options, "decay", Number);
+          var gravity = prop(options, "gravity", Number);
+          var drift = prop(options, "drift", Number);
+          var colors = prop(options, "colors", colorsToRgb);
+          var ticks = prop(options, "ticks", Number);
+          var shapes = prop(options, "shapes");
+          var scalar = prop(options, "scalar");
+          var flat = !!prop(options, "flat");
+          var origin = getOrigin(options);
+          var temp = particleCount;
+          var fettis = [];
+          var startX = canvas.width * origin.x;
+          var startY = canvas.height * origin.y;
+          while (temp--) {
+            fettis.push(
+              randomPhysics({
+                x: startX,
+                y: startY,
+                angle,
+                spread,
+                startVelocity,
+                color: colors[temp % colors.length],
+                shape: shapes[randomInt(0, shapes.length)],
+                ticks,
+                decay,
+                gravity,
+                drift,
+                scalar,
+                flat
+              })
+            );
+          }
+          if (animationObj) {
+            return animationObj.addFettis(fettis);
+          }
+          animationObj = animate(canvas, fettis, resizer, size, done);
+          return animationObj.promise;
+        }
+        function fire(options) {
+          var disableForReducedMotion = globalDisableForReducedMotion || prop(options, "disableForReducedMotion", Boolean);
+          var zIndex = prop(options, "zIndex", Number);
+          if (disableForReducedMotion && preferLessMotion) {
+            return promise(function(resolve) {
+              resolve();
+            });
+          }
+          if (isLibCanvas && animationObj) {
+            canvas = animationObj.canvas;
+          } else if (isLibCanvas && !canvas) {
+            canvas = getCanvas(zIndex);
+            document.body.appendChild(canvas);
+          }
+          if (allowResize && !initialized) {
+            resizer(canvas);
+          }
+          var size = {
+            width: canvas.width,
+            height: canvas.height
+          };
+          if (worker && !initialized) {
+            worker.init(canvas);
+          }
+          initialized = true;
+          if (worker) {
+            canvas.__confetti_initialized = true;
+          }
+          function onResize() {
+            if (worker) {
+              var obj = {
+                getBoundingClientRect: function() {
+                  if (!isLibCanvas) {
+                    return canvas.getBoundingClientRect();
+                  }
+                }
+              };
+              resizer(obj);
+              worker.postMessage({
+                resize: {
+                  width: obj.width,
+                  height: obj.height
+                }
+              });
+              return;
+            }
+            size.width = size.height = null;
+          }
+          function done() {
+            animationObj = null;
+            if (allowResize) {
+              hasResizeEventRegistered = false;
+              global.removeEventListener("resize", onResize);
+            }
+            if (isLibCanvas && canvas) {
+              if (document.body.contains(canvas)) {
+                document.body.removeChild(canvas);
+              }
+              canvas = null;
+              initialized = false;
+            }
+          }
+          if (allowResize && !hasResizeEventRegistered) {
+            hasResizeEventRegistered = true;
+            global.addEventListener("resize", onResize, false);
+          }
+          if (worker) {
+            return worker.fire(options, size, done);
+          }
+          return fireLocal(options, size, done);
+        }
+        fire.reset = function() {
+          if (worker) {
+            worker.reset();
+          }
+          if (animationObj) {
+            animationObj.reset();
+          }
+        };
+        return fire;
+      }
+      var defaultFire;
+      function getDefaultFire() {
+        if (!defaultFire) {
+          defaultFire = confettiCannon(null, { useWorker: true, resize: true });
+        }
+        return defaultFire;
+      }
+      function transformPath2D(pathString, pathMatrix, x, y, scaleX, scaleY, rotation) {
+        var path2d = new Path2D(pathString);
+        var t1 = new Path2D();
+        t1.addPath(path2d, new DOMMatrix(pathMatrix));
+        var t2 = new Path2D();
+        t2.addPath(t1, new DOMMatrix([
+          Math.cos(rotation) * scaleX,
+          Math.sin(rotation) * scaleX,
+          -Math.sin(rotation) * scaleY,
+          Math.cos(rotation) * scaleY,
+          x,
+          y
+        ]));
+        return t2;
+      }
+      function shapeFromPath(pathData) {
+        if (!canUsePaths) {
+          throw new Error("path confetti are not supported in this browser");
+        }
+        var path, matrix;
+        if (typeof pathData === "string") {
+          path = pathData;
+        } else {
+          path = pathData.path;
+          matrix = pathData.matrix;
+        }
+        var path2d = new Path2D(path);
+        var tempCanvas = document.createElement("canvas");
+        var tempCtx = tempCanvas.getContext("2d");
+        if (!matrix) {
+          var maxSize = 1e3;
+          var minX = maxSize;
+          var minY = maxSize;
+          var maxX = 0;
+          var maxY = 0;
+          var width, height;
+          for (var x = 0; x < maxSize; x += 2) {
+            for (var y = 0; y < maxSize; y += 2) {
+              if (tempCtx.isPointInPath(path2d, x, y, "nonzero")) {
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+              }
+            }
+          }
+          width = maxX - minX;
+          height = maxY - minY;
+          var maxDesiredSize = 10;
+          var scale = Math.min(maxDesiredSize / width, maxDesiredSize / height);
+          matrix = [
+            scale,
+            0,
+            0,
+            scale,
+            -Math.round(width / 2 + minX) * scale,
+            -Math.round(height / 2 + minY) * scale
+          ];
+        }
+        return {
+          type: "path",
+          path,
+          matrix
+        };
+      }
+      function shapeFromText(textData) {
+        var text, scalar = 1, color = "#000000", fontFamily = '"Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "EmojiOne Color", "Android Emoji", "Twemoji Mozilla", "system emoji", sans-serif';
+        if (typeof textData === "string") {
+          text = textData;
+        } else {
+          text = textData.text;
+          scalar = "scalar" in textData ? textData.scalar : scalar;
+          fontFamily = "fontFamily" in textData ? textData.fontFamily : fontFamily;
+          color = "color" in textData ? textData.color : color;
+        }
+        var fontSize = 10 * scalar;
+        var font = "" + fontSize + "px " + fontFamily;
+        var canvas = new OffscreenCanvas(fontSize, fontSize);
+        var ctx = canvas.getContext("2d");
+        ctx.font = font;
+        var size = ctx.measureText(text);
+        var width = Math.ceil(size.actualBoundingBoxRight + size.actualBoundingBoxLeft);
+        var height = Math.ceil(size.actualBoundingBoxAscent + size.actualBoundingBoxDescent);
+        var padding = 2;
+        var x = size.actualBoundingBoxLeft + padding;
+        var y = size.actualBoundingBoxAscent + padding;
+        width += padding + padding;
+        height += padding + padding;
+        canvas = new OffscreenCanvas(width, height);
+        ctx = canvas.getContext("2d");
+        ctx.font = font;
+        ctx.fillStyle = color;
+        ctx.fillText(text, x, y);
+        var scale = 1 / scalar;
+        return {
+          type: "bitmap",
+          // TODO these probably need to be transfered for workers
+          bitmap: canvas.transferToImageBitmap(),
+          matrix: [scale, 0, 0, scale, -width * scale / 2, -height * scale / 2]
+        };
+      }
+      module3.exports = function() {
+        return getDefaultFire().apply(this, arguments);
+      };
+      module3.exports.reset = function() {
+        getDefaultFire().reset();
+      };
+      module3.exports.create = confettiCannon;
+      module3.exports.shapeFromPath = shapeFromPath;
+      module3.exports.shapeFromText = shapeFromText;
+    })((function() {
+      if (typeof window !== "undefined") {
+        return window;
+      }
+      if (typeof self !== "undefined") {
+        return self;
+      }
+      return this || {};
+    })(), module2, false);
+    confetti_module_default = module2.exports;
+    create = module2.exports.create;
+  }
+});
+
+// src/core/confettiPresets.js
+function getPresetNames() {
+  return Object.keys(CONFETTI_PRESETS);
+}
+function getPreset(name) {
+  return Object.prototype.hasOwnProperty.call(CONFETTI_PRESETS, name) ? CONFETTI_PRESETS[name] : null;
+}
+function getLightThemeColors(name) {
+  return Object.prototype.hasOwnProperty.call(LIGHT_THEME_COLORS, name) ? [...LIGHT_THEME_COLORS[name]] : null;
+}
+function getPresetCopy(name) {
+  var _a;
+  const preset = getPreset(name);
+  if (!preset) return null;
+  const copy = { ...preset, emoji: (_a = preset.emoji) != null ? _a : null };
+  for (const key of PRESET_ARRAY_KEYS) {
+    if (Array.isArray(preset[key])) {
+      copy[key] = [...preset[key]];
+    }
+  }
+  return copy;
+}
+var CONFETTI_PRESETS, LIGHT_THEME_COLORS, PRESET_ARRAY_KEYS;
+var init_confettiPresets = __esm({
+  "src/core/confettiPresets.js"() {
+    CONFETTI_PRESETS = {
+      snow: {
+        count: 1,
+        size: 0.7,
+        speed: 0,
+        gravity: 0.5,
+        spread: 0,
+        drift: 0,
+        duration: 700,
+        delay: 0,
+        fadeIn: 500,
+        opacity: 0.8,
+        continuous: true,
+        interval: 100,
+        position: "top",
+        colors: ["#ffffff", "#b8cde0", "#9fb3c8"],
+        shapes: ["circle"],
+        flat: true,
+        emoji: null,
+        originSpread: "random",
+        sizeRange: [0.3, 0.8],
+        speedRange: [0, 0],
+        gravityRange: [0.4, 0.6],
+        driftRange: [-0.4, 0.4]
+      },
+      snowflakes: {
+        count: 1,
+        size: 0.7,
+        speed: 0,
+        gravity: 0.1,
+        spread: 1,
+        drift: 0,
+        duration: 1e3,
+        delay: 0,
+        fadeIn: 500,
+        opacity: 0.7,
+        continuous: true,
+        interval: 600,
+        position: "top",
+        startY: -0.1,
+        colors: ["#afc7d9", "#4cb3cd"],
+        customShapes: ["snowflake"],
+        emoji: null,
+        originSpread: "random",
+        sizeRange: [1, 3],
+        speedRange: [0, 0],
+        gravityRange: [0.1, 0.4],
+        driftRange: [-0.4, 0.4]
+      },
+      leaves: {
+        count: 1,
+        size: 2,
+        speed: 0,
+        gravity: 0.3,
+        spread: 0,
+        drift: 0,
+        duration: 600,
+        delay: 0,
+        fadeIn: 500,
+        opacity: 0.9,
+        continuous: true,
+        interval: 350,
+        position: "top",
+        colors: ["#e74c3c", "#e67e22", "#f39c12", "#d35400", "#c0392b"],
+        customShapes: ["leaf"],
+        emoji: null,
+        flat: false,
+        originSpread: "random",
+        sizeRange: [1, 2],
+        speedRange: [0, 0],
+        gravityRange: [0.2, 0.4],
+        driftRange: [-1, 1]
+      },
+      rain_light: {
+        count: 4,
+        size: 0.5,
+        speed: 0,
+        gravity: 2,
+        spread: 0,
+        drift: 0,
+        duration: 200,
+        delay: 0,
+        fadeIn: 350,
+        opacity: 0.6,
+        continuous: true,
+        interval: 400,
+        position: "top",
+        startY: -0.1,
+        colors: ["#2196f3", "#64b5f6"],
+        customShapes: ["raindrop"],
+        shapes: ["circle"],
+        flat: true,
+        emoji: null,
+        originSpread: "random",
+        sizeRange: [0.6, 1],
+        speedRange: [0, 0],
+        gravityRange: [1.8, 2.2],
+        driftRange: [0, 0]
+      },
+      rain_heavy: {
+        count: 4,
+        size: 0.5,
+        speed: 0,
+        gravity: 2,
+        spread: 0,
+        drift: 0,
+        duration: 200,
+        delay: 0,
+        fadeIn: 300,
+        opacity: 1,
+        continuous: true,
+        interval: 150,
+        position: "top",
+        colors: ["#1b78d4", "#aaccee"],
+        customShapes: ["raindrop"],
+        flat: true,
+        emoji: null,
+        originSpread: "random",
+        sizeRange: [0.6, 1],
+        speedRange: [0, 0],
+        gravityRange: [1.8, 2.2],
+        driftRange: [0, 0]
+      },
+      space: {
+        count: 1,
+        size: 0.4,
+        speed: 0,
+        gravity: 0,
+        spread: 0,
+        drift: 3,
+        duration: 800,
+        delay: 0,
+        fadeIn: 1e3,
+        opacity: 0.7,
+        continuous: true,
+        interval: 124,
+        position: "left",
+        startY: 0,
+        colors: ["#ffffff", "#ffffcc", "#fffacd", "#b8cde0", "#9fb3c8"],
+        shapes: ["circle"],
+        emoji: null,
+        originSpread: "random",
+        sizeRange: [0.2, 0.6],
+        speedRange: [0, 0],
+        gravityRange: [-0.05, 0.05],
+        driftRange: [2, 4]
+      },
+      aliens: {
+        count: 1,
+        size: 0.4,
+        speed: 0,
+        gravity: 0,
+        spread: 0,
+        drift: 3,
+        duration: 800,
+        delay: 0,
+        fadeIn: 1e3,
+        opacity: 0.7,
+        continuous: true,
+        interval: 700,
+        position: "left",
+        startY: 0,
+        colors: ["#ffffff", "#49c05d", "#9fb3c8"],
+        customShapes: ["alien", "ufo"],
+        emoji: null,
+        flat: true,
+        originSpread: "random",
+        sizeRange: [1, 2.75],
+        speedRange: [0, 0],
+        gravityRange: [-0.05, 0.05],
+        driftRange: [1, 4]
+      },
+      fireworks: {
+        count: 30,
+        size: 0.85,
+        speed: 20,
+        gravity: 0.2,
+        spread: 360,
+        drift: 0,
+        duration: 90,
+        delay: 0,
+        fadeIn: 0,
+        opacity: 0.7,
+        continuous: true,
+        interval: 2500,
+        position: "random",
+        colors: ["#ff0000", "#3e8a3e", "#008cff", "#ffff00", "#ff6600", "#00ffff", "#ffa600", "#ffffff"],
+        shapes: ["star"],
+        emoji: null,
+        originSpread: "random",
+        sizeRange: [0.85, 0.85],
+        speedRange: [20, 20],
+        gravityRange: [0.2, 0.2],
+        driftRange: [-0.25, 0.25]
+      },
+      confetti: {
+        count: 80,
+        size: 1,
+        speed: 55,
+        gravity: 1,
+        spread: 200,
+        drift: 0,
+        duration: 200,
+        delay: 0,
+        fadeIn: 0,
+        opacity: 0.8,
+        continuous: true,
+        interval: 7e3,
+        position: "center",
+        colors: ["#e74c3c", "#3498db", "#2ecc71", "#f39c12", "#9b59b6", "#1abc9c", "#e67e22"],
+        emoji: null,
+        originSpread: "fixed",
+        sizeRange: [1, 1],
+        speedRange: [55, 55],
+        gravityRange: [1, 1],
+        driftRange: [0, 0]
+      },
+      hearts: {
+        count: 10,
+        size: 2,
+        speed: 30,
+        gravity: -0.5,
+        spread: 280,
+        drift: 0.8,
+        duration: 500,
+        delay: 0,
+        fadeIn: 500,
+        opacity: 0.9,
+        continuous: true,
+        interval: 5e3,
+        position: "random",
+        colors: ["#e74c3c"],
+        emoji: "\u2764\uFE0F\u{1F495}\u{1F496}",
+        originSpread: "random",
+        sizeRange: [1.5, 3],
+        speedRange: [30, 30],
+        gravityRange: [-0.6, -0.3],
+        driftRange: [-0.8, 0.8]
+      },
+      sparkles: {
+        count: 1,
+        size: 0.7,
+        speed: 15,
+        gravity: 0.1,
+        spread: 360,
+        drift: 0.1,
+        duration: 400,
+        delay: 0,
+        fadeIn: 500,
+        opacity: 0.75,
+        continuous: true,
+        interval: 400,
+        position: "random",
+        colors: ["#ffd700", "#c0c0c0", "#ffffff"],
+        emoji: "\u2728",
+        originSpread: "random",
+        sizeRange: [1.2, 2.2],
+        speedRange: [3, 11],
+        gravityRange: [0.1, 0.1],
+        driftRange: [-4, 4]
+      },
+      pop_rocks: {
+        count: 1,
+        size: 0.7,
+        speed: 15,
+        gravity: 0.1,
+        spread: 360,
+        drift: 0.1,
+        duration: 400,
+        delay: 0,
+        fadeIn: 500,
+        opacity: 0.75,
+        continuous: true,
+        interval: 400,
+        position: "random",
+        colors: ["#ffd700", "#c0c0c0", "#ffffff"],
+        emoji: "\u{1F534}\u{1F7E0}\u{1F7E1}\u{1F7E2}\u{1F535}\u{1F7E3}",
+        originSpread: "random",
+        sizeRange: [1.2, 2.2],
+        speedRange: [3, 11],
+        gravityRange: [0.1, 0.1],
+        driftRange: [-4, 4]
+      },
+      crystals: {
+        count: 1,
+        size: 1.2,
+        speed: 0,
+        gravity: 0.3,
+        spread: 0,
+        drift: 0,
+        duration: 600,
+        delay: 0,
+        fadeIn: 500,
+        opacity: 0.8,
+        continuous: true,
+        interval: 300,
+        position: "random",
+        colors: ["#e0115f", "#36bbf8", "#50c878", "#9966cc", "#ffc30b"],
+        customShapes: ["gem", "gem2", "gem3", "gem4", "gem5"],
+        flat: true,
+        emoji: null,
+        originSpread: "random",
+        sizeRange: [0.8, 2.5],
+        speedRange: [0, 0],
+        gravityRange: [0.2, 0.4],
+        driftRange: [-0.3, 0.3]
+      },
+      bubbles: {
+        count: 35,
+        size: 1.5,
+        speed: 20,
+        gravity: -0.8,
+        spread: 180,
+        drift: 0.5,
+        duration: 500,
+        delay: 0,
+        fadeIn: 800,
+        opacity: 0.7,
+        continuous: true,
+        interval: 1e3,
+        position: "bottom",
+        colors: ["#5dade2", "#87ceeb", "#7fb3d5"],
+        shapes: ["circle"],
+        flat: true,
+        emoji: null,
+        originSpread: "random",
+        sizeRange: [1, 2],
+        speedRange: [20, 20],
+        gravityRange: [-0.8, -0.8],
+        driftRange: [0.25, 0.75]
+      }
+    };
+    LIGHT_THEME_COLORS = {
+      snow: ["#5c7d9e", "#7d9bb8", "#4a6a8a"],
+      snowflakes: ["#4a7fa7", "#2f8fb0", "#6b93b5"],
+      space: ["#4a5a8a", "#b8860b", "#6a5acd", "#5c7d9e"],
+      aliens: ["#2e8b57", "#3f8f4f", "#5c7d9e"]
+    };
+    PRESET_ARRAY_KEYS = ["colors", "shapes", "customShapes", "sizeRange", "speedRange", "gravityRange", "driftRange"];
+  }
+});
+
+// src/utils/confettiConfig.js
+function sanitizeHexColors(colors) {
+  if (!Array.isArray(colors)) return [];
+  const result = [];
+  for (const color of colors) {
+    if (typeof color !== "string") continue;
+    const value = color.trim();
+    if (!HEX_COLOR.test(value)) continue;
+    const hex = value.slice(1).toLowerCase();
+    if (hex.length === 3) {
+      result.push(`#${hex[0]}${hex[0]}${hex[1]}${hex[1]}${hex[2]}${hex[2]}`);
+    } else {
+      result.push(`#${hex.slice(0, 6)}`);
+    }
+  }
+  return result;
+}
+function resolvePresetName(name) {
+  if (typeof name !== "string") return null;
+  const key = name.trim().toLowerCase();
+  if (!key) return null;
+  return Object.prototype.hasOwnProperty.call(CONFETTI_PRESETS, key) ? key : null;
+}
+function parseValue(key, raw) {
+  if (isBlank(raw)) return void 0;
+  const schema = Object.prototype.hasOwnProperty.call(CONFETTI_SCHEMA, key) ? CONFETTI_SCHEMA[key] : null;
+  if (!schema) {
+    return typeof raw === "string" ? raw.trim() : raw;
+  }
+  switch (schema.type) {
+    case "number":
+    case "integer":
+      return toFiniteNumber(raw);
+    case "boolean":
+      if (typeof raw === "boolean") return raw;
+      if (typeof raw === "string") {
+        const val = raw.trim().toLowerCase();
+        if (val === "true") return true;
+        if (val === "false") return false;
+      }
+      return void 0;
+    case "range": {
+      const parts = Array.isArray(raw) ? raw : String(raw).split("|");
+      if (parts.length !== 2) return void 0;
+      const pair = parts.map(toFiniteNumber);
+      return pair.every((v) => v !== void 0) ? pair : void 0;
+    }
+    case "colors":
+    case "shapeList": {
+      let list = toStringList(raw);
+      if (schema.values) {
+        list = list.map((item) => item.toLowerCase()).filter((item) => schema.values.includes(item));
+      }
+      return list.length > 0 ? list : void 0;
+    }
+    case "enum": {
+      const val = String(raw).trim().toLowerCase();
+      return schema.values.includes(val) ? val : void 0;
+    }
+    case "emoji": {
+      const val = String(raw).replace(/,/g, "").trim();
+      return val === "" ? void 0 : val;
+    }
+    case "string": {
+      const val = String(raw).trim();
+      return val === "" ? void 0 : val;
+    }
+    default:
+      return void 0;
+  }
+}
+function buildResult(presetName, entries) {
+  const resolved = resolvePresetName(presetName);
+  if (!resolved) return null;
+  const overrides = {};
+  for (const [rawKey, raw] of entries) {
+    const key = canonicalKey(String(rawKey).trim());
+    if (key.toLowerCase() === "type") continue;
+    const value = parseValue(key, raw);
+    if (value !== void 0) overrides[key] = value;
+  }
+  return { presetName: resolved, overrides: normalize(overrides) };
+}
+function splitString(value) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const segments = trimmed.split(PAIR_BOUNDARY);
+  let presetName = null;
+  const entries = [];
+  segments.forEach((segment, index) => {
+    const match = segment.match(PAIR);
+    if (match) {
+      if (match[1].toLowerCase() === "type") {
+        presetName = match[2].trim();
+      } else {
+        entries.push([match[1], match[2]]);
+      }
+    } else if (index === 0) {
+      presetName = segment.split(",")[0].trim();
+    }
+  });
+  return { presetName, entries };
+}
+function parseString(value) {
+  const parts = splitString(value);
+  return parts ? buildResult(parts.presetName, parts.entries) : null;
+}
+function readPresetName(value) {
+  var _a;
+  let name = null;
+  if (typeof value === "string") {
+    name = (_a = splitString(value)) == null ? void 0 : _a.presetName;
+  } else if (Array.isArray(value)) {
+    name = value[0];
+  } else if (isPlainObject(value)) {
+    const typeKey = Object.keys(value).find((key) => key.toLowerCase() === "type");
+    name = typeKey ? value[typeKey] : null;
+  }
+  return typeof name === "string" && name.trim() !== "" ? name.trim() : null;
+}
+function parse(value) {
+  if (typeof value === "string") {
+    return parseString(value);
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0 || typeof value[0] !== "string") return null;
+    const overrides = isPlainObject(value[1]) ? value[1] : {};
+    return buildResult(value[0], Object.entries(overrides));
+  }
+  if (isPlainObject(value)) {
+    const typeKey = Object.keys(value).find((key) => key.toLowerCase() === "type");
+    if (!typeKey || typeof value[typeKey] !== "string") return null;
+    return buildResult(value[typeKey], Object.entries(value));
+  }
+  return null;
+}
+function normalize(config) {
+  if (!isPlainObject(config)) return {};
+  const result = {};
+  for (const key of Object.keys(config)) {
+    const raw = config[key];
+    const schema = Object.prototype.hasOwnProperty.call(CONFETTI_SCHEMA, key) ? CONFETTI_SCHEMA[key] : null;
+    if (raw === null || raw === void 0 || !schema) {
+      result[key] = raw;
+      continue;
+    }
+    let value;
+    switch (schema.type) {
+      case "number":
+      case "integer":
+        value = normalizeNumber(key, raw);
+        break;
+      case "range": {
+        const parts = Array.isArray(raw) ? raw : typeof raw === "string" ? raw.split("|") : [];
+        if (parts.length !== 2) break;
+        const pair = parts.map((part) => normalizeNumber(key, part));
+        if (pair.some((v) => v === void 0)) break;
+        value = pair[0] > pair[1] ? [pair[1], pair[0]] : pair;
+        break;
+      }
+      case "colors": {
+        const list = sanitizeHexColors(parseValue(key, raw) || []);
+        if (list.length > 0) value = list;
+        break;
+      }
+      case "shapeList":
+      case "boolean":
+      case "enum":
+      case "emoji":
+      case "string":
+        value = parseValue(key, raw);
+        break;
+    }
+    if (value !== void 0) result[key] = value;
+  }
+  return result;
+}
+function diffFromPreset(presetName, config) {
+  const resolved = resolvePresetName(presetName);
+  const presetCopy = resolved ? getPresetCopy(resolved) : null;
+  if (!presetCopy) return {};
+  const preset = normalize(presetCopy);
+  const normalized = normalize(config);
+  const overrides = {};
+  for (const key of Object.keys(normalized)) {
+    if (key === "type") continue;
+    const value = normalized[key];
+    if (value === null || value === void 0) continue;
+    let presetValue = preset[key];
+    if (presetValue === void 0 || presetValue === null) {
+      presetValue = CONFETTI_SCHEMA[key] ? CONFETTI_SCHEMA[key].default : void 0;
+    }
+    if (!valuesEqual(key, value, presetValue)) {
+      overrides[key] = value;
+    }
+  }
+  return overrides;
+}
+function serialize(presetName, overrides = {}) {
+  const resolved = resolvePresetName(presetName);
+  if (!resolved) return null;
+  const parts = [`type: ${resolved}`];
+  const normalized = normalize(overrides);
+  for (const [key, value] of Object.entries(normalized)) {
+    if (key.toLowerCase() === "type" || value === null || value === void 0) continue;
+    if (Array.isArray(value)) {
+      if (value.length === 0) continue;
+      parts.push(`${key}: ${value.map((item) => roundForKey(key, item)).join("|")}`);
+    } else if (typeof value === "number") {
+      parts.push(`${key}: ${roundForKey(key, value)}`);
+    } else {
+      const text = String(value).trim();
+      if (text === "") continue;
+      parts.push(`${key}: ${text}`);
+    }
+  }
+  return parts.join(", ");
+}
+function writeConfettiField(frontmatter, settings, value) {
+  if (!frontmatter || typeof frontmatter !== "object") return;
+  const plugin = { settings: { customBannerConfettiField: confettiFieldAliases(settings) } };
+  if (value === null || value === void 0) {
+    clearField(frontmatter, plugin, "confetti");
+    return;
+  }
+  writeField(frontmatter, plugin, "confetti", value);
+}
+var POSITIONS, CONFETTI_SCHEMA, HEX_COLOR, RANGE_KEYS, ARRAY_KEYS, isBlank, toFiniteNumber, toStringList, SCHEMA_KEYS_LOWER, canonicalKey, isPlainObject, PAIR_BOUNDARY, PAIR, decimalsFor, roundForKey, normalizeNumber, valuesEqual, confettiFieldAliases;
+var init_confettiConfig = __esm({
+  "src/utils/confettiConfig.js"() {
+    init_confettiPresets();
+    init_fieldRegistry();
+    POSITIONS = [
+      "top",
+      "bottom",
+      "left",
+      "right",
+      "center",
+      "top-left",
+      "top-right",
+      "bottom-left",
+      "bottom-right",
+      "random"
+    ];
+    CONFETTI_SCHEMA = {
+      count: { type: "integer", min: 1, max: 150, step: 1 },
+      size: { type: "number", min: 0.1, max: 5, step: 0.05 },
+      speed: { type: "number", min: 0, max: 100, step: 1 },
+      gravity: { type: "number", min: -3, max: 3, step: 0.1 },
+      spread: { type: "number", min: 0, max: 360, step: 1 },
+      drift: { type: "number", min: -5, max: 5, step: 0.1 },
+      duration: { type: "integer", min: 50, max: 1e3, step: 10 },
+      delay: { type: "integer", min: 0, max: 5e3, step: 1 },
+      fadeIn: { type: "integer", min: 0, max: 2e3, step: 1 },
+      opacity: { type: "number", min: 0.1, max: 1, step: 0.05 },
+      interval: { type: "integer", min: 50, max: 1e4, step: 50 },
+      startY: { type: "number", min: -1, max: 1, step: 0.01 },
+      sizeRange: { type: "range", min: 0.1, max: 5, step: 0.1 },
+      speedRange: { type: "range", min: 0, max: 100, step: 1 },
+      gravityRange: { type: "range", min: -3, max: 3, step: 0.1 },
+      driftRange: { type: "range", min: -5, max: 5, step: 0.1 },
+      continuous: { type: "boolean" },
+      flat: { type: "boolean", default: false },
+      respectReducedMotion: { type: "boolean", default: true },
+      position: { type: "enum", values: POSITIONS },
+      originSpread: { type: "enum", values: ["fixed", "edge", "random"] },
+      colors: { type: "colors" },
+      shapes: { type: "shapeList", values: ["circle", "square", "star"] },
+      customShapes: { type: "shapeList" },
+      emoji: { type: "emoji" }
+    };
+    HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+    RANGE_KEYS = Object.keys(CONFETTI_SCHEMA).filter((key) => CONFETTI_SCHEMA[key].type === "range");
+    ARRAY_KEYS = ["colors", "shapes", "customShapes", ...RANGE_KEYS];
+    isBlank = (raw) => raw === void 0 || raw === null || typeof raw === "string" && (raw.trim() === "" || raw.trim() === "null");
+    toFiniteNumber = (raw) => {
+      if (typeof raw === "number") return Number.isFinite(raw) ? raw : void 0;
+      if (typeof raw !== "string" || raw.trim() === "") return void 0;
+      const num = Number(raw.trim());
+      return Number.isFinite(num) ? num : void 0;
+    };
+    toStringList = (raw) => {
+      const list = Array.isArray(raw) ? raw : String(raw).split("|");
+      return list.filter((item) => item !== null && item !== void 0).map((item) => String(item).trim()).filter((item) => item !== "" && item !== "null");
+    };
+    SCHEMA_KEYS_LOWER = Object.keys(CONFETTI_SCHEMA).reduce((map, key) => {
+      map[key.toLowerCase()] = key;
+      return map;
+    }, {});
+    canonicalKey = (key) => {
+      if (Object.prototype.hasOwnProperty.call(CONFETTI_SCHEMA, key)) return key;
+      const lower = key.toLowerCase();
+      return Object.prototype.hasOwnProperty.call(SCHEMA_KEYS_LOWER, lower) ? SCHEMA_KEYS_LOWER[lower] : key;
+    };
+    isPlainObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+    PAIR_BOUNDARY = /,\s*(?=[A-Za-z_][A-Za-z0-9_]*\s*:)/;
+    PAIR = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*:([\s\S]*)$/;
+    decimalsFor = (schema) => {
+      var _a;
+      if (schema.type === "integer") return 0;
+      const step = String((_a = schema.step) != null ? _a : "");
+      const dot = step.indexOf(".");
+      return Math.max(dot === -1 ? 0 : step.length - dot - 1, 2);
+    };
+    roundForKey = (key, value) => {
+      const schema = CONFETTI_SCHEMA[key];
+      if (!schema || typeof value !== "number" || !Number.isFinite(value)) return value;
+      return Number(value.toFixed(decimalsFor(schema)));
+    };
+    normalizeNumber = (key, raw) => {
+      var _a, _b;
+      const schema = CONFETTI_SCHEMA[key];
+      let num = typeof raw === "string" && raw.trim() !== "" ? Number(raw.trim()) : raw;
+      if (typeof num !== "number" || Number.isNaN(num)) return void 0;
+      if (num === Infinity) num = (_a = schema.max) != null ? _a : void 0;
+      if (num === -Infinity) num = (_b = schema.min) != null ? _b : void 0;
+      if (num === void 0) return void 0;
+      if (schema.min !== void 0) num = Math.max(schema.min, num);
+      if (schema.max !== void 0) num = Math.min(schema.max, num);
+      return roundForKey(key, num);
+    };
+    valuesEqual = (key, a, b) => {
+      if (Array.isArray(a) || Array.isArray(b)) {
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+        return a.every((item, i) => valuesEqual(key, item, b[i]));
+      }
+      if (typeof a === "number" && typeof b === "number") {
+        return roundForKey(key, a) === roundForKey(key, b);
+      }
+      if (typeof a === "string" && typeof b === "string" && key === "colors") {
+        return a.toLowerCase() === b.toLowerCase();
+      }
+      return a === b;
+    };
+    confettiFieldAliases = (settings) => {
+      const configured = settings && settings.customBannerConfettiField;
+      const list = (Array.isArray(configured) ? configured : [configured]).filter((name) => typeof name === "string" && name.trim() !== "").map((name) => name.trim());
+      return list.length > 0 ? list : ["banner-confetti"];
+    };
+  }
+});
+
+// src/utils/confettiUtils.js
+function parseConfettiConfig(value) {
+  return parse(value);
+}
+function getPresetNames2() {
+  return getPresetNames();
+}
+function parseEmojiString(emojiString) {
+  if (!emojiString || typeof emojiString !== "string") {
+    return [];
+  }
+  if (typeof Intl !== "undefined" && Intl.Segmenter) {
+    const segmenter = new Intl.Segmenter(void 0, { granularity: "grapheme" });
+    const emojiArray = [];
+    for (const { segment } of segmenter.segment(emojiString)) {
+      if (EMOJI_SEGMENT_REGEX.test(segment)) {
+        emojiArray.push(segment);
+      }
+    }
+    return emojiArray;
+  }
+  return parseEmojiStringFallback(emojiString);
+}
+function parseEmojiStringFallback(emojiString) {
+  const characters = [...emojiString];
+  const emojiArray = [];
+  let i = 0;
+  while (i < characters.length) {
+    const char = characters[i];
+    if (/\s/.test(char)) {
+      i++;
+      continue;
+    }
+    let emoji = char;
+    let j = i + 1;
+    while (j < characters.length) {
+      const nextChar = characters[j];
+      const codePoint = nextChar.codePointAt(0);
+      if (codePoint === 8205) {
+        emoji += nextChar;
+        j++;
+        if (j < characters.length) {
+          emoji += characters[j];
+          j++;
+        }
+      } else if (codePoint >= 65024 && codePoint <= 65039) {
+        emoji += nextChar;
+        j++;
+      } else if (codePoint >= 127995 && codePoint <= 127999) {
+        emoji += nextChar;
+        j++;
+      } else if (codePoint >= 127462 && codePoint <= 127487 && char.codePointAt(0) >= 127462 && char.codePointAt(0) <= 127487) {
+        emoji += nextChar;
+        j++;
+      } else {
+        break;
+      }
+    }
+    const firstCodePoint = char.codePointAt(0);
+    const isLikelyEmoji = firstCodePoint > 255 && // Not basic ASCII
+    (firstCodePoint >= 126976 && firstCodePoint <= 131071 || // Emoticons and symbols
+    firstCodePoint >= 9728 && firstCodePoint <= 10175 || // Misc symbols
+    firstCodePoint >= 11008 && firstCodePoint <= 11263 || // Misc symbols and arrows
+    firstCodePoint >= 65024 && firstCodePoint <= 65039 || // Variation selectors
+    firstCodePoint >= 127462 && firstCodePoint <= 127487 || // Regional indicators
+    firstCodePoint >= 8960 && firstCodePoint <= 9215 || // Misc technical
+    firstCodePoint >= 9984 && firstCodePoint <= 10175 || // Dingbats
+    firstCodePoint >= 8986 && firstCodePoint <= 8987 || // Watch, hourglass
+    firstCodePoint >= 9642 && firstCodePoint <= 9643 || // Squares
+    firstCodePoint >= 9654 && firstCodePoint <= 9664 || // Triangles
+    firstCodePoint >= 9723 && firstCodePoint <= 9726 || // Squares
+    firstCodePoint >= 9748 && firstCodePoint <= 9749 || // Umbrella, coffee
+    firstCodePoint >= 9800 && firstCodePoint <= 9811 || // Zodiac
+    firstCodePoint >= 9855 && firstCodePoint <= 9855 || // Wheelchair
+    firstCodePoint >= 9875 && firstCodePoint <= 9875 || // Anchor
+    firstCodePoint >= 9889 && firstCodePoint <= 9889 || // High voltage
+    firstCodePoint >= 9898 && firstCodePoint <= 9899 || // Circles
+    firstCodePoint >= 9917 && firstCodePoint <= 9918 || // Sports balls
+    firstCodePoint >= 9924 && firstCodePoint <= 9925 || // Snowman, sun
+    firstCodePoint >= 9934 && firstCodePoint <= 9934 || // Ophiuchus
+    firstCodePoint >= 9940 && firstCodePoint <= 9940 || // No entry
+    firstCodePoint >= 9962 && firstCodePoint <= 9962 || // Church
+    firstCodePoint >= 9970 && firstCodePoint <= 9971 || // Fountain, golf
+    firstCodePoint >= 9973 && firstCodePoint <= 9973 || // Sailboat
+    firstCodePoint >= 9978 && firstCodePoint <= 9978 || // Tent
+    firstCodePoint >= 9981 && firstCodePoint <= 9981 || // Fuel pump
+    firstCodePoint >= 9986 && firstCodePoint <= 9986 || // Scissors
+    firstCodePoint >= 9989 && firstCodePoint <= 9989 || // Check mark
+    firstCodePoint >= 9992 && firstCodePoint <= 9997 || // Airplane etc
+    firstCodePoint >= 9999 && firstCodePoint <= 9999 || // Pencil
+    firstCodePoint >= 10002 && firstCodePoint <= 10002 || // Black nib
+    firstCodePoint >= 10004 && firstCodePoint <= 10004 || // Check mark
+    firstCodePoint >= 10006 && firstCodePoint <= 10006 || // X mark
+    firstCodePoint >= 10013 && firstCodePoint <= 10013 || // Latin cross
+    firstCodePoint >= 10017 && firstCodePoint <= 10017 || // Star of David
+    firstCodePoint >= 10024 && firstCodePoint <= 10024 || // Sparkles
+    firstCodePoint >= 10035 && firstCodePoint <= 10036 || // Eight spoked
+    firstCodePoint >= 10052 && firstCodePoint <= 10052 || // Snowflake
+    firstCodePoint >= 10055 && firstCodePoint <= 10055 || // Sparkle
+    firstCodePoint >= 10060 && firstCodePoint <= 10060 || // Cross mark
+    firstCodePoint >= 10062 && firstCodePoint <= 10062 || // Cross mark
+    firstCodePoint >= 10067 && firstCodePoint <= 10069 || // Question marks
+    firstCodePoint >= 10071 && firstCodePoint <= 10071 || // Exclamation
+    firstCodePoint >= 10083 && firstCodePoint <= 10084 || // Heart exclamation
+    firstCodePoint >= 10133 && firstCodePoint <= 10135 || // Math symbols
+    firstCodePoint >= 10145 && firstCodePoint <= 10145 || // Right arrow
+    firstCodePoint >= 10160 && firstCodePoint <= 10160 || // Curly loop
+    firstCodePoint >= 10175 && firstCodePoint <= 10175 || // Double curly
+    firstCodePoint >= 10548 && firstCodePoint <= 10549 || // Arrows
+    firstCodePoint >= 11013 && firstCodePoint <= 11015 || // Arrows
+    firstCodePoint >= 11035 && firstCodePoint <= 11036 || // Squares
+    firstCodePoint >= 11088 && firstCodePoint <= 11088 || // Star
+    firstCodePoint >= 11093 && firstCodePoint <= 11093 || // Circle
+    firstCodePoint >= 12336 && firstCodePoint <= 12336 || // Wavy dash
+    firstCodePoint >= 12349 && firstCodePoint <= 12349 || // Part alternation
+    firstCodePoint >= 12951 && firstCodePoint <= 12951 || // Circled ideograph
+    firstCodePoint >= 12953 && firstCodePoint <= 12953);
+    if (isLikelyEmoji) {
+      emojiArray.push(emoji);
+    }
+    i = j;
+  }
+  return emojiArray;
+}
+function getPresetDefaults(presetName) {
+  return getPresetCopy(presetName);
+}
+function sanitizeConfig(config) {
+  return normalize(config);
+}
+var EMOJI_SEGMENT_REGEX;
+var init_confettiUtils = __esm({
+  "src/utils/confettiUtils.js"() {
+    init_confettiPresets();
+    init_confettiConfig();
+    EMOJI_SEGMENT_REGEX = /\p{Extended_Pictographic}|\p{Regional_Indicator}|⃣|[©®™]/u;
+  }
+});
+
+// src/core/confettiShapes.js
+function getPathShape(shapeName) {
+  if (compiledShapes.has(shapeName)) {
+    return compiledShapes.get(shapeName);
+  }
+  if (!isCustomPathShape(shapeName)) {
+    return null;
+  }
+  try {
+    const shape = confetti_module_default.shapeFromPath({
+      path: SHAPE_PATHS[shapeName],
+      matrix: SHAPE_MATRICES[shapeName]
+    });
+    compiledShapes.set(shapeName, shape);
+    return shape;
+  } catch (error) {
+    console.error(`Pixel Banner: Error creating shape "${shapeName}":`, error);
+    return null;
+  }
+}
+function isCustomPathShape(name) {
+  return Object.prototype.hasOwnProperty.call(SHAPE_PATHS, name);
+}
+function getCustomShapeNames() {
+  return Object.keys(SHAPE_PATHS);
+}
+function clearShapeCache() {
+  compiledShapes.clear();
+}
+var SHAPE_PATHS, SHAPE_MATRICES, compiledShapes;
+var init_confettiShapes = __esm({
+  "src/core/confettiShapes.js"() {
+    init_confetti_module();
+    SHAPE_PATHS = {
+      diamond: "M12 20L4.6797 10.8496C4.34718 10.434 4.18092 10.2262 4.13625 9.9757C4.09159 9.72524 4.17575 9.47276 4.34407 8.96778L5.0883 6.73509C5.52832 5.41505 5.74832 4.75503 6.2721 4.37752C6.79587 4 7.49159 4 8.88304 4H15.117C16.5084 4 17.2041 4 17.7279 4.37752C18.2517 4.75503 18.4717 5.41505 18.9117 6.73509L19.6559 8.96778C19.8243 9.47276 19.9084 9.72524 19.8637 9.9757C19.8191 10.2262 19.6528 10.434 19.3203 10.8496L12 20Z",
+      snowflake: "M21.188 17.029l-2.17-1.259 2.047-1.183c.44-.258-.486-1.851-.923-1.593l-2.973 1.714-4.673-2.699 4.673-2.699 2.973 1.711c.44.258 1.366-1.349.923-1.593l-2.048-1.183 2.17-1.259c.44-.258-.486-1.851-.923-1.593l-2.17 1.259v-2.367c0-.516-1.851-.516-1.851 0v3.444l-4.673 2.699v-5.397l2.973-1.714c.44-.258-.486-1.851-.923-1.593l-2.036 1.167v-2.503c0-.516-1.851-.516-1.851 0v2.503l-2.048-1.184c-.44-.258-1.366 1.349-.923 1.593l2.973 1.714v5.386l-4.673-2.699v-3.415c0-.516-1.851-.516-1.851 0v2.366l-2.174-1.259c-.44-.258-1.366 1.349-.923 1.593l2.17 1.259-2.048 1.183c-.44.258.486 1.851.923 1.593l2.973-1.714 4.673 2.716-4.673 2.699-2.973-1.714c-.44-.258-1.366 1.349-.923 1.593l2.048 1.183-2.17 1.262c-.44.258.486 1.851.923 1.593l2.17-1.259v2.367c0 .516 1.851.516 1.851 0v-3.447l4.673-2.699v5.386l-2.971 1.716c-.44.258.486 1.851.923 1.593l2.048-1.183v2.502c0 .516 1.851.516 1.851 0v-2.503l2.048 1.183c.44.258 1.366-1.349.923-1.593l-2.973-1.714v-5.37l4.673 2.699v3.444c0 .516 1.851.516 1.851 0v-2.365l2.17 1.259c.444.227 1.354-1.366.914-1.623z",
+      alien: "M32 2C15.791 2 5 13.123 5 30.607C5 54.065 32 62 32 62s27-7.935 27-31.393C59 13.123 48.207 2 32 2zm12.143 50.996C39.039 56.739 33.848 58.73 32 59.369c-4.086-1.415-24.5-9.46-24.5-28.762C7.5 14.748 17.117 4.5 32 4.5s24.5 10.248 24.5 26.107c0 8.841-4.158 16.374-12.357 22.389z M42.303 45.452c-.311 0-.662.176-1.301.494c-1.527.765-4.371 2.187-9.004 2.187c-4.629 0-7.475-1.422-9.002-2.187c-.637-.318-.988-.494-1.299-.494c-.334 0-.672.229-.672.743c0 2.525 5.334 4.913 10.973 4.913c5.643 0 10.975-2.388 10.975-4.913c0-.513-.336-.743-.67-.743 M26.084 37.71c1.633-1.607 1.688-4.359.43-7.146l.016.014c-.613-1.629-1.662-3.048-2.848-4.292a17.764 17.764 0 0 0-4.084-3.167a17.533 17.533 0 0 0-4.799-1.848c-1.666-.375-3.387-.502-5.074-.271c1.542.576 3.023 1.102 4.462 1.699c-.847.188-1.597.562-2.19 1.146c-2.482 2.443-1.338 7.524 2.553 11.354c3.889 3.826 9.055 4.951 11.534 2.511m-7.883-8.965c-1.99-1.247-3.076-3.086-2.42-4.106c.662-1.021 2.814-.837 4.807.409c1.996 1.247 3.078 3.086 2.418 4.106c-.656 1.022-2.807.838-4.805-.409 M49.81 22.699c1.44-.597 2.921-1.122 4.462-1.699c-1.688-.23-3.404-.105-5.072.271c-1.67.377-3.299.992-4.799 1.847a17.706 17.706 0 0 0-4.082 3.166c-1.189 1.246-2.236 2.665-2.85 4.293l.015-.013c-1.258 2.786-1.204 5.539.429 7.146c2.48 2.442 7.646 1.317 11.535-2.512c3.891-3.828 5.033-8.91 2.555-11.354c-.595-.583-1.346-.958-2.193-1.145m-4.017 6.046c-1.994 1.246-4.146 1.43-4.807.407c-.656-1.02.426-2.858 2.42-4.104c1.996-1.247 4.146-1.431 4.809-.408c.656 1.02-.428 2.857-2.422 4.105",
+      ufo: "M475.256,145.369l-117-42.6c21.9-42.3,23.8-72.6,5.7-90.6c-29.6-29.5-88.1-0.2-134.8,33c-21.1-19.8-96.2-54.8-172.1,11.8 c-26,22.8-64.4,96.8-12.8,170.3c-32.3,47.6-61.5,106-31.9,135.6c8.3,8.3,31.2,25.1,91.4-5.7l43.8,118c5.2,16.3,22.5,13.9,25,12.5 c10.4-4.2,16.6-15.6,12.5-26l-45.7-125.4c29.8-19.5,61.6-45.3,93.3-75.5l81.3,81.3c12.9,11.3,25,4.2,29.1,0 c8.3-8.3,8.3-20.8,0-29.1l-81.3-81.3c29.6-31.1,55.7-63.1,75.3-93l124.6,45.3c14.4,3.7,23.9-4.2,26-12.5 C490.856,160.969,485.656,149.569,475.256,145.369z M86.156,85.069c61.6-51.7,111.3-16.6,129,0c7.7,22.4-56.9,116.8-123.8,130 C87.256,215.869,23.356,160.869,86.156,85.069z M40.356,332.669c-1-4.9,0.8-29.6,34.8-79.4c82,20.7,203-131.3,178.2-178.5 c50.5-34.8,75.5-37.5,80.4-35.5c4.2,13.5-21.8,82.2-116.5,176.9S53.956,337.869,40.356,332.669z",
+      // Tall, thin drop (12 x 28) so rain reads as streaks rather than dots
+      raindrop: "M6 0C6 0 0 16 0 22a6 6 0 0 0 12 0C12 16 6 0 6 0Z",
+      triangle: "M0 10 L5 0 L10 10z",
+      heart: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z",
+      leaf: "M12.295,14.201 C12.43,14.088 12.557,13.969 12.676,13.847 C10.687,12.944 9.178,11.848 7.818,10.739 C6.194,10.735 4.52,10.321 3.663,9.262 C4.94,9.905 6.284,9.908 6.737,9.847 C2.898,6.381 1.835,2.992 1.835,2.992 C3.149,5.052 4.536,6.644 5.894,7.908 C5.325,6.82 5.658,4.808 5.658,4.808 C6.765,8.706 6.895,8.768 6.822,8.802 C7.722,9.531 8.697,10.216 9.509,10.739 C9.217,10.059 9.01,9.068 9.037,7.37 C9.037,7.37 9.759,10.932 10.893,11.809 C11.796,12.33 12.591,12.734 13.207,13.041 C14.183,11.585 14.188,7.703 11.796,6.144 C9.218,4.462 4.871,4.398 0.474,0.096 C-0.841,-1.191 1.603,10.132 5.144,13.289 C7.32,15.234 10.152,15.99 12.295,14.201 L12.295,14.201 ZM11.266,14.064 C11.266,14.064 12.446,14.677 13.8,15.275 C15.154,15.873 15.803,15.752 15.879,15.9 C15.957,16.05 15.918,14.258 15.918,14.258 C15.918,14.258 14.09,14.691 12.055,13.562 L11.266,14.064 L11.266,14.064 Z",
+      gem: "M 30.01 10.00 C 43.35 10.01 56.69 10.00 70.03 10.00 C 76.68 16.68 83.38 23.31 90.01 30.02 C 89.99 43.34 90.00 56.67 90.00 69.99 C 83.33 76.67 76.67 83.34 69.99 90.00 C 56.67 90.00 43.36 90.00 30.04 90.00 C 23.35 83.35 16.71 76.64 10.00 70.00 C 9.99 56.67 10.01 43.34 10.00 30.01 C 16.66 23.33 23.33 16.66 30.01 10.00 M 36.68 17.13 C 38.00 20.10 39.37 23.05 40.35 26.15 C 46.65 26.69 52.98 26.16 59.29 26.58 C 60.67 23.39 62.16 20.24 63.13 16.89 C 54.31 17.01 45.48 16.56 36.68 17.13 M 19.25 30.27 C 22.51 31.58 25.91 32.56 29.05 34.16 C 30.76 32.64 32.44 31.08 34.14 29.53 C 33.29 25.95 31.59 22.67 30.24 19.27 C 26.56 22.93 22.88 26.57 19.25 30.27 M 65.84 29.07 C 67.38 30.77 68.95 32.45 70.50 34.14 C 74.08 33.32 77.34 31.59 80.73 30.23 C 77.08 26.55 73.43 22.87 69.72 19.25 C 68.42 22.52 67.39 25.91 65.84 29.07 M 33.48 39.85 C 33.48 46.62 33.48 53.40 33.48 60.17 C 35.56 62.26 37.64 64.35 39.70 66.47 C 46.43 66.51 53.17 66.66 59.90 66.43 C 62.52 64.93 64.33 62.22 66.56 60.18 C 66.28 53.48 66.52 46.77 66.29 40.07 C 64.65 37.60 62.41 35.41 59.98 33.71 C 53.27 33.48 46.54 33.71 39.83 33.44 C 37.68 35.55 35.56 37.69 33.48 39.85 M 16.89 36.88 C 16.87 45.64 16.85 54.40 16.90 63.16 C 20.06 62.21 23.00 60.67 26.14 59.65 C 26.70 53.36 26.14 47.04 26.60 40.75 C 23.43 39.30 20.26 37.80 16.89 36.88 M 73.84 40.35 C 73.32 46.65 73.83 52.98 73.42 59.28 C 76.60 60.68 79.79 62.08 83.11 63.14 C 83.14 54.39 83.13 45.63 83.11 36.87 C 79.93 37.77 77.03 39.43 73.84 40.35 M 19.26 69.75 C 22.91 73.43 26.57 77.12 30.28 80.74 C 31.59 77.47 32.62 74.08 34.16 70.89 C 32.56 69.11 30.90 67.38 29.21 65.68 C 25.90 67.04 22.58 68.40 19.26 69.75 M 65.68 70.77 C 66.99 74.11 68.37 77.42 69.76 80.72 C 73.45 77.09 77.13 73.44 80.74 69.73 C 77.47 68.41 74.11 67.32 70.90 65.85 C 69.13 67.45 67.39 69.09 65.68 70.77 M 36.87 83.11 C 45.63 83.14 54.39 83.14 63.14 83.11 C 62.23 79.93 60.63 77.01 59.66 73.85 C 53.36 73.32 47.02 73.83 40.70 73.42 C 39.32 76.61 37.83 79.76 36.87 83.11 Z",
+      gem2: "M 16.67 30.05 C 27.76 23.34 38.92 16.76 49.98 10.02 C 61.12 16.63 72.19 23.35 83.32 29.98 C 83.35 43.34 83.33 56.70 83.33 70.06 C 72.18 76.65 61.16 83.45 49.98 89.99 C 38.88 83.33 27.78 76.66 16.67 70.01 C 16.66 56.69 16.66 43.37 16.67 30.05 M 25.56 32.72 C 27.65 36.12 29.50 39.64 31.39 43.14 C 32.76 41.53 33.73 39.64 34.54 37.70 C 35.97 34.96 37.56 32.30 38.88 29.49 C 40.99 27.46 42.02 24.50 43.29 21.89 C 37.26 25.27 31.10 28.57 25.56 32.72 M 56.72 21.86 C 60.36 29.12 64.22 36.36 68.65 43.17 C 69.45 41.68 70.19 40.15 70.89 38.60 C 71.29 37.85 72.09 36.33 72.49 35.58 C 72.51 35.54 72.54 35.47 72.56 35.43 C 73.07 34.37 73.59 33.32 74.13 32.27 L 72.61 31.44 C 72.57 31.41 72.48 31.36 72.43 31.34 C 71.71 30.91 70.25 30.05 69.53 29.62 C 69.48 29.60 69.40 29.55 69.36 29.52 L 67.64 28.49 C 67.59 28.46 67.49 28.40 67.44 28.37 L 65.67 27.35 L 65.71 27.15 C 62.76 25.31 59.89 23.31 56.72 21.86 M 49.55 24.28 C 44.78 32.86 39.96 41.42 35.28 50.06 C 40.09 58.60 44.78 67.20 49.58 75.75 C 51.39 76.09 51.34 73.28 52.21 72.19 C 52.55 71.55 53.21 70.29 53.54 69.66 C 53.57 69.61 53.62 69.53 53.64 69.48 C 54.91 67.17 56.19 64.87 57.47 62.56 C 57.50 62.52 57.54 62.44 57.57 62.40 L 58.53 60.68 C 58.55 60.63 58.60 60.54 58.63 60.50 C 59.91 58.17 61.20 55.86 62.49 53.54 C 62.51 53.50 62.56 53.42 62.58 53.38 C 63.20 52.25 63.82 51.11 64.44 49.97 C 63.81 48.84 63.18 47.71 62.55 46.57 C 62.53 46.53 62.49 46.46 62.46 46.42 C 60.84 43.48 59.21 40.53 57.57 37.60 C 57.54 37.56 57.50 37.48 57.48 37.44 C 55.71 34.24 53.90 31.07 52.22 27.83 C 51.36 26.71 51.43 23.87 49.55 24.28 M 23.47 42.20 C 22.67 47.41 23.52 52.65 23.44 57.89 C 23.76 57.14 24.20 56.42 24.38 55.64 C 25.54 53.81 26.59 51.92 27.62 50.02 C 26.63 48.13 25.59 46.26 24.46 44.44 L 24.50 44.21 C 24.15 43.54 23.81 42.87 23.47 42.20 M 76.60 42.12 C 76.32 42.64 75.77 43.67 75.50 44.19 L 75.56 44.47 C 74.42 46.27 73.37 48.15 72.39 50.05 C 73.44 51.97 74.52 53.87 75.72 55.70 C 75.90 56.46 76.14 57.20 76.42 57.94 C 77.54 52.71 76.23 47.40 76.60 42.12 M 25.55 67.29 C 31.11 71.43 37.28 74.72 43.31 78.14 C 42.04 75.53 41.02 72.55 38.89 70.53 C 37.57 67.72 35.98 65.04 34.56 62.28 C 33.68 60.40 32.72 58.55 31.68 56.76 C 29.41 60.13 27.71 63.85 25.55 67.29 M 68.31 56.83 C 64.43 63.93 60.22 70.85 56.67 78.12 C 59.85 76.75 62.68 74.73 65.61 72.91 L 65.57 72.70 C 66.84 71.97 68.10 71.24 69.36 70.50 C 69.40 70.47 69.47 70.43 69.51 70.41 C 71.04 69.49 72.59 68.58 74.15 67.69 C 73.61 66.64 73.07 65.59 72.54 64.54 C 72.52 64.50 72.48 64.43 72.46 64.39 C 72.02 63.63 71.15 62.10 70.71 61.34 C 70.68 59.61 69.18 58.25 68.31 56.83 Z",
+      gem3: "M 16.66 30.07 C 27.76 23.36 38.91 16.72 50.03 10.02 C 61.13 16.68 72.24 23.34 83.33 30.01 C 83.33 43.34 83.34 56.66 83.33 69.99 C 72.23 76.67 61.11 83.33 50.00 90.00 C 38.93 83.25 27.76 76.65 16.67 69.94 C 16.66 56.65 16.67 43.36 16.66 30.07 M 27.00 31.70 C 30.30 33.55 33.50 35.59 36.95 37.15 C 40.00 35.00 43.34 33.31 46.46 31.26 C 46.47 27.54 46.47 23.82 46.53 20.10 C 40.02 23.96 33.61 28.01 27.00 31.70 M 53.72 20.37 C 53.74 23.96 53.65 27.54 53.45 31.12 C 56.60 33.15 59.75 35.21 63.09 36.91 C 66.72 36.05 69.69 33.38 73.03 31.75 C 66.53 28.07 60.24 24.03 53.72 20.37 M 40.13 43.34 C 40.12 47.78 40.13 52.21 40.12 56.65 C 43.46 58.52 46.72 60.54 49.99 62.52 C 53.30 60.62 56.54 58.60 59.85 56.69 C 59.99 52.26 60.05 47.82 59.99 43.38 C 56.57 41.56 53.36 39.40 50.00 37.47 C 46.72 39.43 43.47 41.48 40.13 43.34 M 23.52 37.96 C 23.53 46.00 23.52 54.04 23.53 62.07 C 26.69 60.29 29.80 58.42 33.00 56.72 C 33.02 52.23 33.00 47.74 32.87 43.25 C 29.78 41.43 26.66 39.68 23.52 37.96 M 67.00 43.29 C 66.99 47.78 67.00 52.27 67.14 56.75 C 70.26 58.51 73.37 60.27 76.49 62.04 C 76.46 54.01 76.48 45.98 76.48 37.95 C 73.33 39.75 70.22 41.62 67.00 43.29 M 27.00 68.31 C 33.56 71.82 39.73 76.00 46.27 79.54 C 46.19 76.05 46.53 72.56 46.43 69.07 C 43.66 66.56 40.18 64.87 36.91 63.07 C 33.31 64.06 30.31 66.61 27.00 68.31 M 53.57 68.70 C 53.51 72.45 53.53 76.20 53.48 79.96 C 59.97 76.05 66.41 72.07 72.99 68.32 C 69.78 66.38 66.56 64.43 63.15 62.84 C 60.07 64.97 56.76 66.74 53.57 68.70 Z",
+      gem4: "M 26.69 23.31 C 34.48 18.91 42.25 14.45 50.03 10.00 C 57.81 14.41 65.56 18.87 73.32 23.31 C 73.34 41.10 73.35 58.90 73.32 76.70 C 65.53 81.11 57.80 85.62 49.99 89.99 C 42.25 85.52 34.48 81.09 26.69 76.69 C 26.64 58.90 26.66 41.10 26.69 23.31 M 36.70 25.31 C 37.77 25.93 38.82 26.59 39.91 27.17 L 40.27 26.95 C 41.29 27.63 42.30 28.31 43.32 29.00 C 44.34 28.35 45.38 27.75 46.40 27.10 C 46.38 26.25 46.34 24.54 46.32 23.69 L 46.79 23.47 C 46.80 22.21 46.81 20.95 46.82 19.69 C 43.28 21.24 40.02 23.35 36.70 25.31 M 53.19 19.69 C 53.19 20.94 53.20 22.19 53.21 23.45 L 53.67 23.67 C 53.65 24.52 53.62 26.22 53.61 27.07 C 54.61 27.71 55.62 28.35 56.62 29.00 L 57.34 28.54 C 57.38 28.52 57.47 28.46 57.51 28.44 C 58.06 28.07 59.17 27.34 59.72 26.97 L 60.10 27.21 C 61.20 26.63 62.25 25.98 63.27 25.27 C 59.96 23.32 56.75 21.15 53.19 19.69 M 33.58 68.64 C 35.78 67.47 37.93 66.21 40.03 64.86 C 40.01 64.18 39.96 62.81 39.94 62.13 C 40.09 53.16 39.93 44.18 40.03 35.21 C 39.00 34.63 37.96 34.05 36.93 33.48 L 36.95 33.16 C 35.80 32.56 34.65 31.95 33.49 31.35 C 33.40 43.78 33.23 56.22 33.58 68.64 M 59.99 35.11 C 59.99 45.04 60.03 54.96 59.97 64.89 C 60.85 65.38 61.72 65.88 62.60 66.37 C 63.88 67.03 65.11 67.77 66.38 68.45 C 66.40 57.18 66.29 45.90 66.44 34.62 C 66.49 33.80 66.59 32.14 66.64 31.32 C 64.37 32.48 62.15 33.75 59.99 35.11 M 46.84 35.05 C 46.87 45.02 46.87 54.99 46.84 64.96 C 47.85 65.58 48.86 66.20 49.87 66.82 C 50.93 66.18 51.99 65.53 53.05 64.88 C 53.03 54.96 53.03 45.04 53.05 35.12 C 51.99 34.47 50.93 33.82 49.86 33.17 C 48.86 33.80 47.85 34.42 46.84 35.05 M 40.19 73.05 L 39.92 72.89 C 38.89 73.38 37.85 73.88 36.82 74.37 C 39.73 76.89 43.31 78.70 46.83 80.21 C 46.83 79.01 46.82 77.80 46.81 76.60 L 46.33 76.36 C 46.35 75.51 46.38 73.82 46.40 72.97 C 45.46 72.32 44.51 71.67 43.58 71.01 C 42.42 71.65 41.32 72.36 40.19 73.05 M 56.62 70.99 C 55.62 71.64 54.61 72.29 53.61 72.93 C 53.62 73.79 53.65 75.50 53.67 76.36 L 53.19 76.60 C 53.19 77.83 53.19 79.07 53.20 80.31 C 56.76 78.83 59.99 76.68 63.29 74.71 C 62.25 74.03 61.18 73.39 60.10 72.78 L 59.71 73.02 C 59.17 72.66 58.09 71.94 57.55 71.58 C 57.51 71.56 57.42 71.50 57.38 71.48 L 56.62 70.99 Z",
+      gem5: "M 46.44 10.43 C 48.62 9.66 51.37 9.68 53.57 10.42 C 62.30 20.70 70.64 31.33 79.30 41.70 C 80.66 43.43 82.27 45.03 83.24 47.05 C 83.35 49.71 84.04 52.86 81.98 54.99 C 72.48 66.49 63.18 78.18 53.57 89.58 C 50.83 90.28 46.72 90.94 45.00 88.00 C 36.95 78.06 28.83 68.17 20.70 58.30 C 19.33 56.57 17.74 54.95 16.77 52.95 C 16.65 50.29 15.97 47.14 18.03 45.01 C 27.51 33.50 36.84 21.84 46.44 10.43 M 26.13 46.24 C 29.03 46.33 31.92 46.31 34.82 46.33 C 36.17 39.60 39.71 32.70 46.61 30.35 C 46.70 27.17 46.65 23.99 46.68 20.81 C 39.79 29.24 32.82 37.64 26.13 46.24 M 53.80 21.64 C 53.68 24.38 53.46 27.13 53.75 29.87 C 56.19 31.87 59.18 33.31 60.97 36.02 C 63.36 39.12 64.14 43.00 65.02 46.71 C 68.17 46.70 71.32 46.66 74.47 46.60 C 67.49 38.35 60.86 29.81 53.80 21.64 M 44.74 39.77 C 40.58 45.64 40.58 54.35 44.74 60.22 C 46.08 62.39 48.67 62.92 50.93 63.62 C 60.54 58.00 60.56 42.00 50.93 36.39 C 48.67 37.07 46.09 37.61 44.74 39.77 M 25.38 53.30 C 26.55 54.58 27.31 56.39 28.93 57.15 C 34.44 64.40 40.29 71.40 46.19 78.32 C 46.32 75.60 46.53 72.85 46.24 70.13 C 41.36 67.17 37.23 62.91 35.77 57.23 C 35.69 55.92 35.59 54.62 35.48 53.32 C 32.11 53.21 28.75 53.20 25.38 53.30 M 65.17 53.65 C 63.81 60.38 60.31 67.30 53.39 69.65 C 53.29 72.83 53.35 76.02 53.32 79.20 C 60.24 70.78 67.15 62.35 73.89 53.77 C 70.98 53.67 68.08 53.67 65.17 53.65 Z"
+    };
+    SHAPE_MATRICES = {
+      diamond: [0.625, 0, 0, 0.625, -7.5, -7.5],
+      snowflake: [0.5, 0, 0, 0.5, -5.5, -6],
+      alien: [0.16666666666666666, 0, 0, 0.16666666666666666, -5.333333333333333, -5.333333333333333],
+      ufo: [0.0205761316872428, 0, 0, 0.0205761316872428, -5.041152263374485, -5.041152263374485],
+      raindrop: [0.35714285714285715, 0, 0, 0.35714285714285715, -2.142857142857143, -5],
+      triangle: [1, 0, 0, 1, -5, -6],
+      heart: [0.625, 0, 0, 0.625, -7.5, -7.5],
+      leaf: [0.8333333333333334, 0, 0, 0.8333333333333334, -5.833333333333334, -6.666666666666667],
+      gem: [0.125, 0, 0, 0.125, -6.25, -6.375],
+      gem2: [0.13157894736842105, 0, 0, 0.13157894736842105, -6.578947368421052, -6.578947368421052],
+      gem3: [0.1282051282051282, 0, 0, 0.1282051282051282, -6.41025641025641, -6.538461538461538],
+      gem4: [0.13157894736842105, 0, 0, 0.13157894736842105, -6.578947368421052, -6.578947368421052],
+      gem5: [0.125, 0, 0, 0.125, -6.25, -6.25]
+    };
+    compiledShapes = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/core/confettiManager.js
+function getConfettiBlockReason(plugin, overrides = {}) {
+  if (plugin && plugin.settings && plugin.settings.confettiDisableOnMobile && import_obsidian18.Platform.isMobile) {
+    return "mobile";
+  }
+  const prefersReducedMotion = typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (prefersReducedMotion && (!overrides || overrides.respectReducedMotion !== false)) {
+    return "reduced-motion";
+  }
+  return null;
+}
+function shouldRunConfetti(plugin, overrides = {}) {
+  return getConfettiBlockReason(plugin, overrides) === null;
+}
+function budgetParticleCount(config) {
+  const count = config.count;
+  if (!config.continuous || !(config.interval > 0) || !(config.duration > 0)) return count;
+  const isEdge = config.originSpread === "edge";
+  const firedPerBurst = (n) => isEdge ? EDGE_BURSTS * Math.ceil(n / EDGE_BURSTS) : n;
+  const burstsPerLifetime = Math.max(1, config.duration * CONFETTI_FRAME_MS / config.interval);
+  if (firedPerBurst(count) * burstsPerLifetime <= LIVE_PARTICLE_BUDGET) return count;
+  const maxFired = Math.floor(LIVE_PARTICLE_BUDGET / burstsPerLifetime);
+  return Math.max(1, isEdge ? Math.floor(maxFired / EDGE_BURSTS) * EDGE_BURSTS : maxFired);
+}
+function configKey(presetName, overrides) {
+  const normalized = normalize(overrides || {});
+  const sorted = {};
+  for (const key of Object.keys(normalized).sort()) {
+    sorted[key] = normalized[key];
+  }
+  return JSON.stringify([resolvePresetName(presetName) || presetName, sorted]);
+}
+function isLightTheme() {
+  return typeof document !== "undefined" && !!document.body && document.body.classList.contains("theme-light");
+}
+function applyRanges(options, config) {
+  const pick = ([min, max]) => min + Math.random() * (max - min);
+  if (Array.isArray(config.sizeRange)) {
+    options.scalar = pick(config.sizeRange);
+  }
+  if (Array.isArray(config.speedRange)) {
+    options.startVelocity = pick(config.speedRange);
+  }
+  if (Array.isArray(config.gravityRange)) {
+    options.gravity = pick(config.gravityRange);
+  }
+  if (Array.isArray(config.driftRange)) {
+    options.drift = pick(config.driftRange);
+  } else if (config.drift !== void 0) {
+    options.drift = config.drift + (Math.random() - 0.5) * 0.5;
+  }
+}
+function pickBurstEmoji(options, config) {
+  if (config.emoji && options.shapes && options.shapes.length > 1 && options.particleCount <= 3) {
+    options.shapes = [options.shapes[Math.floor(Math.random() * options.shapes.length)]];
+  }
+}
+var import_obsidian18, PREVIEW_EFFECT_ID, CONFETTI_HOST_CLASS, LIVE_PARTICLE_BUDGET, CONFETTI_FRAME_MS, EDGE_BURSTS, SINGULAR_RANGE_KEYS, ConfettiEffect, ConfettiManager, confettiManager;
+var init_confettiManager = __esm({
+  "src/core/confettiManager.js"() {
+    init_confetti_module();
+    import_obsidian18 = require("obsidian");
+    init_confettiPresets();
+    init_confettiUtils();
+    init_confettiConfig();
+    init_confettiShapes();
+    PREVIEW_EFFECT_ID = "<<confetti-modal-preview>>";
+    CONFETTI_HOST_CLASS = "pixel-banner-confetti-host";
+    LIVE_PARTICLE_BUDGET = 1500;
+    CONFETTI_FRAME_MS = 1e3 / 60;
+    EDGE_BURSTS = 7;
+    SINGULAR_RANGE_KEYS = {
+      size: "sizeRange",
+      speed: "speedRange",
+      gravity: "gravityRange",
+      drift: "driftRange"
+    };
+    ConfettiEffect = class {
+      constructor(manager, id, containerEl, { presetName, overrides, options, config, isPreview, filePath }) {
+        this.manager = manager;
+        this.id = id;
+        this.containerEl = containerEl;
+        this.doc = containerEl.doc || containerEl.ownerDocument || document;
+        this.presetName = presetName;
+        this.overrides = overrides || {};
+        this.rawConfig = { presetName, overrides: this.overrides };
+        this.configKey = configKey(presetName, this.overrides);
+        this.options = options;
+        this.config = config;
+        this.isPreview = !!isPreview;
+        this.filePath = filePath || null;
+        this.canvas = null;
+        this.confettiInstance = null;
+        this.intervalId = null;
+        this.timeoutId = null;
+        this.fadeInTimeoutId = null;
+        this.fadeOutTimeoutId = null;
+        this.resizeObserver = null;
+        this.intersectionObserver = null;
+        this.observedEl = null;
+        this.observedRoot = null;
+        this.lastTargetLookup = 0;
+        this.isContinuous = !!(config.continuous && config.interval > 0);
+        this.delayDone = false;
+        this.hasSize = false;
+        this.onScreen = true;
+        this.paused = false;
+        this.firedOnce = false;
+        this.idle = false;
+        this.stopped = false;
+        this.disposed = false;
+      }
+      // Same preset and normalized overrides as this running effect?
+      matches(presetName, overrides) {
+        return this.configKey === configKey(presetName, overrides);
+      }
+      start() {
+        this.manager._watchDocument(this.doc);
+        const canvas = this.doc.createElement("canvas");
+        canvas.className = "pixel-banner-confetti-canvas";
+        canvas.style.opacity = "0";
+        canvas.style.transition = "opacity 0s linear";
+        const win = this.containerEl.win || this.doc.defaultView || window;
+        const position = win.getComputedStyle(this.containerEl).position;
+        if (!position || position === "static") {
+          this.containerEl.classList.add(CONFETTI_HOST_CLASS);
+        }
+        this.containerEl.appendChild(canvas);
+        this.canvas = canvas;
+        this.confettiInstance = confetti_module_default.create(canvas, {
+          resize: false,
+          useWorker: false
+        });
+        if (this.config.fadeIn > 0) {
+          canvas.style.transition = `opacity ${this.config.fadeIn}ms ease-in`;
+        }
+        this.fadeInTimeoutId = setTimeout(() => {
+          this.fadeInTimeoutId = null;
+          if (this.canvas) this.canvas.style.opacity = String(this.config.opacity);
+        }, 10);
+        if (typeof ResizeObserver !== "undefined") {
+          this.resizeObserver = new ResizeObserver(() => this.handleResize());
+          this.resizeObserver.observe(this.containerEl);
+        }
+        this.handleResize();
+        this.observeVisibility();
+        if (this.config.delay > 0) {
+          this.timeoutId = setTimeout(() => {
+            this.timeoutId = null;
+            this.delayDone = true;
+            this.reconcile();
+          }, this.config.delay);
+        } else {
+          this.delayDone = true;
+          this.reconcile();
+        }
+      }
+      // Keep the canvas buffer at the container's size. A size change clears the
+      // particles in flight, since the library keeps drawing at the old size.
+      handleResize() {
+        if (this.stopped || this.idle || !this.canvas) return;
+        const width = this.containerEl.clientWidth || 0;
+        const height = this.containerEl.clientHeight || 0;
+        this.hasSize = width > 0 && height > 0;
+        if (this.hasSize && (this.canvas.width !== width || this.canvas.height !== height)) {
+          if (this.firedOnce) {
+            try {
+              this.confettiInstance.reset();
+            } catch (error) {
+            }
+          }
+          this.canvas.width = width;
+          this.canvas.height = height;
+        }
+        this.reconcile();
+      }
+      // The element to watch for on-screen state and its scroll container:
+      // the banner inside the scroller that is currently shown (editing or
+      // reading view), otherwise the container itself against the viewport.
+      // The container holds the scroller, so it can never intersect it (a new
+      // split pane has no banner yet when its effect starts), and a banner
+      // outside the shown scroller sits in a hidden view that never comes on
+      // screen (a pane hidden behind another tab has no shown scroller).
+      resolveVisibilityTarget() {
+        this.lastTargetLookup = Date.now();
+        const scrollers = Array.from(this.containerEl.querySelectorAll(".cm-scroller, .markdown-preview-view"));
+        const root = scrollers.find((el) => el.offsetParent !== null) || null;
+        const banner = root ? root.querySelector(".pixel-banner-image") : null;
+        return banner ? { root, target: banner } : { root: null, target: this.containerEl };
+      }
+      observeVisibility() {
+        if (typeof IntersectionObserver === "undefined") return;
+        const { root, target } = this.resolveVisibilityTarget();
+        if (this.intersectionObserver && target === this.observedEl && root === this.observedRoot) return;
+        if (this.intersectionObserver) this.intersectionObserver.disconnect();
+        this.observedEl = target;
+        this.observedRoot = root;
+        this.intersectionObserver = new IntersectionObserver((entries) => {
+          for (const entry2 of entries) {
+            if (!entry2.target.isConnected) {
+              this.observeVisibility();
+              return;
+            }
+            this.onScreen = entry2.isIntersecting;
+          }
+          this.reconcile();
+          if (this.onScreen && this.observedEl === this.containerEl) {
+            this.observeVisibility();
+          }
+        }, { root, threshold: 0 });
+        this.intersectionObserver.observe(target);
+      }
+      // Re-resolve the watched element (after a mode switch or banner re-render)
+      refreshVisibilityTarget() {
+        if (this.stopped || this.idle) return;
+        this.observeVisibility();
+        this.handleResize();
+      }
+      shouldRun() {
+        return !this.stopped && !this.paused && this.delayDone && this.hasSize && this.onScreen && !this.doc.hidden;
+      }
+      // Start or stop the interval (continuous) or fire the one burst, based on
+      // whether the effect should be running right now. Resuming fires once
+      // immediately so there is no visible gap.
+      reconcile() {
+        if (this.stopped) return;
+        const run = this.shouldRun();
+        if (!this.isContinuous) {
+          if (run && !this.firedOnce) {
+            this.fireBurst();
+          }
+          return;
+        }
+        if (run && this.intervalId === null) {
+          this.fireBurst();
+          this.intervalId = setInterval(() => this.fireBurst(), this.config.interval);
+        } else if (!run && this.intervalId !== null) {
+          clearInterval(this.intervalId);
+          this.intervalId = null;
+        }
+      }
+      fireBurst() {
+        if (this.stopped || !this.confettiInstance) return;
+        if (this.intersectionObserver && this.observedEl === this.containerEl && Date.now() - this.lastTargetLookup >= 1e3) {
+          this.observeVisibility();
+        }
+        this.firedOnce = true;
+        const animation = this.manager.fireBurst(this.confettiInstance, this.config, this.options);
+        if (!this.isContinuous && animation && typeof animation.then === "function") {
+          const release = () => this.releaseAfterBurst();
+          animation.then(release, release);
+        }
+      }
+      // A one-shot burst has finished: nothing will draw again, so drop the
+      // observers and the pane-sized canvas buffer. Skipped when the effect
+      // was stopped or replaced while the burst was still animating.
+      releaseAfterBurst() {
+        if (this.stopped || this.disposed || this.idle || this.isContinuous) return;
+        if (this.manager.effects.get(this.id) !== this) return;
+        this.idle = true;
+        if (this.resizeObserver) {
+          this.resizeObserver.disconnect();
+          this.resizeObserver = null;
+        }
+        if (this.intersectionObserver) {
+          this.intersectionObserver.disconnect();
+          this.intersectionObserver = null;
+        }
+        this.observedEl = null;
+        this.observedRoot = null;
+        if (this.canvas) {
+          this.canvas.width = 0;
+          this.canvas.height = 0;
+        }
+      }
+      pause() {
+        this.paused = true;
+        this.reconcile();
+      }
+      resume() {
+        this.paused = false;
+        this.reconcile();
+      }
+      _clearRunning() {
+        if (this.intervalId !== null) {
+          clearInterval(this.intervalId);
+          this.intervalId = null;
+        }
+        if (this.timeoutId !== null) {
+          clearTimeout(this.timeoutId);
+          this.timeoutId = null;
+        }
+        if (this.fadeInTimeoutId !== null) {
+          clearTimeout(this.fadeInTimeoutId);
+          this.fadeInTimeoutId = null;
+        }
+        if (this.resizeObserver) {
+          this.resizeObserver.disconnect();
+          this.resizeObserver = null;
+        }
+        if (this.intersectionObserver) {
+          this.intersectionObserver.disconnect();
+          this.intersectionObserver = null;
+        }
+      }
+      // Stop spawning at once; let the particles fade with the canvas, then
+      // clear them and remove the canvas. fadeMs 0 removes everything now.
+      stop(fadeMs = 500) {
+        if (this.disposed) return;
+        if (this.stopped) {
+          if (fadeMs <= 0) this.dispose();
+          return;
+        }
+        this.stopped = true;
+        this._clearRunning();
+        if (fadeMs > 0 && this.canvas) {
+          this.canvas.style.transition = `opacity ${fadeMs}ms ease-out`;
+          this.canvas.style.opacity = "0";
+          this.fadeOutTimeoutId = setTimeout(() => {
+            this.fadeOutTimeoutId = null;
+            this.dispose();
+          }, fadeMs);
+        } else {
+          this.dispose();
+        }
+      }
+      // Release everything: timers, observers, particles and the canvas. Safe to call twice.
+      dispose() {
+        if (this.disposed) return;
+        this.disposed = true;
+        this.stopped = true;
+        this._clearRunning();
+        if (this.fadeOutTimeoutId !== null) {
+          clearTimeout(this.fadeOutTimeoutId);
+          this.fadeOutTimeoutId = null;
+        }
+        if (this.confettiInstance) {
+          try {
+            this.confettiInstance.reset();
+          } catch (error) {
+          }
+        }
+        if (this.canvas && this.canvas.parentNode) {
+          this.canvas.parentNode.removeChild(this.canvas);
+        }
+        this.canvas = null;
+        this.confettiInstance = null;
+        this.observedEl = null;
+        this.observedRoot = null;
+        this.manager._forget(this);
+        this.removeHostClass();
+      }
+      // Drop the host class unless another live effect still draws in this container
+      removeHostClass() {
+        const shared = [...this.manager.effects.values(), ...this.manager.fadingEffects].some((effect) => effect !== this && !effect.disposed && effect.containerEl === this.containerEl);
+        if (!shared) {
+          this.containerEl.classList.remove(CONFETTI_HOST_CLASS);
+        }
+      }
+    };
+    ConfettiManager = class {
+      constructor() {
+        this.effects = /* @__PURE__ */ new Map();
+        this.fadingEffects = /* @__PURE__ */ new Set();
+        this.plugin = null;
+        this.popoutDocs = /* @__PURE__ */ new Set();
+        this._onVisibilityChange = this._onVisibilityChange.bind(this);
+      }
+      // Register lifecycle hooks through the plugin so unload releases them:
+      // the main window's visibility listener, and one cleanup that disposes
+      // every effect (with its interval) even if onunload's destroy() is missed.
+      // Intervals are not registered one by one: a resume creates a new one each
+      // time, and each registration would live until unload.
+      init(plugin) {
+        if (this.plugin === plugin) return;
+        this.plugin = plugin;
+        if (typeof document !== "undefined") {
+          plugin.registerDomEvent(document, "visibilitychange", this._onVisibilityChange);
+        }
+        if (typeof plugin.register === "function") {
+          plugin.register(() => this.destroy());
+        }
+      }
+      // Dispose every effect (plugin unload)
+      destroy() {
+        for (const effect of [...this.effects.values(), ...this.fadingEffects]) {
+          effect.dispose();
+        }
+        this.effects.clear();
+        this.fadingEffects.clear();
+        this.plugin = null;
+      }
+      _onVisibilityChange() {
+        for (const effect of this.effects.values()) {
+          effect.reconcile();
+        }
+      }
+      // A popout window's document gets its own listener while an effect runs
+      // there; init() covers the main document for the plugin's lifetime
+      _watchDocument(doc) {
+        if (doc === document || this.popoutDocs.has(doc)) return;
+        doc.addEventListener("visibilitychange", this._onVisibilityChange);
+        this.popoutDocs.add(doc);
+      }
+      _forget(effect) {
+        this.fadingEffects.delete(effect);
+        if (this.effects.get(effect.id) === effect) {
+          this.effects.delete(effect.id);
+        }
+        const doc = effect.doc;
+        if (this.popoutDocs.has(doc) && ![...this.effects.values(), ...this.fadingEffects].some((e) => e.doc === doc)) {
+          doc.removeEventListener("visibilitychange", this._onVisibilityChange);
+          this.popoutDocs.delete(doc);
+        }
+      }
+      // Map user-friendly position to origin {x, y}
+      mapPosition(position) {
+        const positionMap = {
+          "top": { x: 0.5, y: 0 },
+          "bottom": { x: 0.5, y: 1 },
+          "left": { x: 0, y: 0.5 },
+          "right": { x: 1, y: 0.5 },
+          "center": { x: 0.5, y: 0.5 },
+          "top-left": { x: 0, y: 0 },
+          "top-right": { x: 1, y: 0 },
+          "bottom-left": { x: 0, y: 1 },
+          "bottom-right": { x: 1, y: 1 },
+          "random": { x: Math.random(), y: Math.random() }
+        };
+        return positionMap[position] || positionMap["center"];
+      }
+      // Get position along an edge for distributed bursts
+      getEdgePosition(basePosition, index, total, yOffset = 0) {
+        const spacing = 0.9 / (total - 1);
+        const position = 0.05 + spacing * index;
+        switch (basePosition) {
+          case "top":
+            return { x: position, y: 0 + yOffset };
+          case "bottom":
+            return { x: position, y: 1 + yOffset };
+          case "left":
+            return { x: 0 + yOffset, y: position };
+          case "right":
+            return { x: 1 + yOffset, y: position };
+          default:
+            const basePos = this.mapPosition(basePosition);
+            return { x: position, y: basePos.y + yOffset };
+        }
+      }
+      // Get random position along a specified edge
+      getRandomEdgePosition(basePosition) {
+        switch (basePosition) {
+          case "top":
+            return { x: Math.random(), y: 0 };
+          case "bottom":
+            return { x: Math.random(), y: 1 };
+          case "left":
+            return { x: 0, y: Math.random() };
+          case "right":
+            return { x: 1, y: Math.random() };
+          case "random":
+            return { x: Math.random(), y: Math.random() };
+          default:
+            const basePos = this.mapPosition(basePosition);
+            if (basePosition.includes("top") || basePosition.includes("bottom")) {
+              return { x: Math.random(), y: basePos.y };
+            }
+            return basePos;
+        }
+      }
+      // Create emoji shapes from string
+      createEmojiShapes(emojiString, scalar = 1) {
+        if (!emojiString) return null;
+        const emojiArray = parseEmojiString(emojiString);
+        if (!emojiArray || emojiArray.length === 0) return null;
+        try {
+          const shapes = emojiArray.map((emoji) => {
+            return confetti_module_default.shapeFromText({ text: emoji, scalar });
+          });
+          return shapes;
+        } catch (error) {
+          console.error("Pixel Banner: Error creating emoji shapes:", error);
+          return null;
+        }
+      }
+      // Build confetti options from preset + overrides
+      buildOptions(presetName, overrides = {}) {
+        const preset = getPresetCopy(presetName);
+        if (!preset) {
+          return null;
+        }
+        const userOverrides = normalize(overrides);
+        const singularRanges = {};
+        for (const [key, rangeKey] of Object.entries(SINGULAR_RANGE_KEYS)) {
+          if (typeof userOverrides[key] === "number" && !Array.isArray(userOverrides[rangeKey])) {
+            singularRanges[rangeKey] = [userOverrides[key], userOverrides[key]];
+          }
+        }
+        const config = sanitizeConfig({ ...preset, ...overrides, ...singularRanges });
+        const options = {
+          particleCount: budgetParticleCount(config),
+          scalar: config.size,
+          startVelocity: config.speed,
+          gravity: config.gravity,
+          spread: config.spread,
+          drift: config.drift,
+          ticks: config.duration,
+          origin: this.mapPosition(config.position),
+          disableForReducedMotion: config.respectReducedMotion !== false
+        };
+        let usedEmojiShapes = false;
+        if (config.emoji) {
+          const shapes = this.createEmojiShapes(config.emoji, config.size);
+          if (shapes && shapes.length > 0) {
+            options.shapes = shapes;
+            options.flat = true;
+            usedEmojiShapes = true;
+          }
+        }
+        const userPickedShapes = Array.isArray(userOverrides.shapes) && userOverrides.shapes.length > 0 && !userOverrides.customShapes;
+        if (!usedEmojiShapes && !userPickedShapes && config.customShapes && Array.isArray(config.customShapes) && config.customShapes.length > 0) {
+          const pathShapes = config.customShapes.map((name) => getPathShape(name)).filter((s) => s !== null);
+          if (pathShapes.length > 0) {
+            options.shapes = pathShapes;
+          }
+        }
+        if (!usedEmojiShapes && !options.shapes && config.shapes && Array.isArray(config.shapes)) {
+          options.shapes = config.shapes;
+        }
+        if (!usedEmojiShapes) {
+          const lightColors = !userOverrides.colors && isLightTheme() ? getLightThemeColors(presetName) : null;
+          let colors = sanitizeHexColors(lightColors || config.colors);
+          if (colors.length === 0) {
+            colors = sanitizeHexColors(preset.colors);
+          }
+          if (colors.length > 0) {
+            options.colors = colors;
+          }
+        }
+        if (config.flat === true) {
+          options.flat = true;
+        }
+        return { options, config };
+      }
+      // Start an effect for effectId (a leaf id, or PREVIEW_EFFECT_ID) inside
+      // containerEl, replacing any effect already running under that id.
+      start(effectId, containerEl, presetName, overrides = {}, opts = {}) {
+        const { isPreview = false, filePath = null } = opts && typeof opts === "object" ? opts : {};
+        this.stop(effectId, 0);
+        if (!containerEl) return null;
+        const result = this.buildOptions(presetName, overrides);
+        if (!result) return null;
+        const effect = new ConfettiEffect(this, effectId, containerEl, {
+          presetName,
+          overrides,
+          options: result.options,
+          config: result.config,
+          isPreview,
+          filePath
+        });
+        this.effects.set(effectId, effect);
+        effect.start();
+        return effect;
+      }
+      // Fire single burst. Returns the instance's promise for the animation
+      // (resolved when its last particle is gone), or undefined.
+      fireBurst(confettiInstance, config, baseOptions) {
+        const originSpread = config.originSpread || "fixed";
+        const totalCount = Number.isFinite(baseOptions.particleCount) ? baseOptions.particleCount : config.count;
+        let animation;
+        if (originSpread === "edge") {
+          const numBursts = EDGE_BURSTS;
+          const particlesPerBurst = Math.ceil(totalCount / numBursts);
+          const yOffset = config.startY || 0;
+          for (let i = 0; i < numBursts; i++) {
+            const options = { ...baseOptions };
+            options.particleCount = particlesPerBurst;
+            options.origin = this.getEdgePosition(config.position, i, numBursts, yOffset);
+            applyRanges(options, config);
+            pickBurstEmoji(options, config);
+            if (options.colors && options.colors.length > 1 && particlesPerBurst <= 3) {
+              const randomColor = options.colors[Math.floor(Math.random() * options.colors.length)];
+              options.colors = [randomColor];
+            }
+            try {
+              animation = confettiInstance(options);
+            } catch (error) {
+              console.error("Pixel Banner: Error firing confetti burst:", error);
+            }
+          }
+        } else if (originSpread === "random") {
+          const options = { ...baseOptions };
+          const baseOrigin = this.getRandomEdgePosition(config.position);
+          const yOffset = config.startY || 0;
+          options.origin = { x: baseOrigin.x, y: baseOrigin.y + yOffset };
+          applyRanges(options, config);
+          pickBurstEmoji(options, config);
+          if (options.colors && options.colors.length > 1 && totalCount <= 3) {
+            const randomColor = options.colors[Math.floor(Math.random() * options.colors.length)];
+            options.colors = [randomColor];
+          }
+          try {
+            animation = confettiInstance(options);
+          } catch (error) {
+            console.error("Pixel Banner: Error firing confetti burst:", error);
+          }
+        } else {
+          const options = { ...baseOptions };
+          if (config.position === "random") {
+            options.origin = { x: Math.random(), y: Math.random() };
+          }
+          applyRanges(options, config);
+          pickBurstEmoji(options, config);
+          try {
+            animation = confettiInstance(options);
+          } catch (error) {
+            console.error("Pixel Banner: Error firing confetti burst:", error);
+          }
+        }
+        return animation;
+      }
+      // Stop one effect, fading it out over fadeOutDuration ms
+      stop(effectId, fadeOutDuration = 500) {
+        const effect = this.effects.get(effectId);
+        if (!effect) return;
+        this.effects.delete(effectId);
+        if (fadeOutDuration > 0) {
+          this.fadingEffects.add(effect);
+        }
+        effect.stop(fadeOutDuration);
+      }
+      // Stop all active effects
+      stopAll(immediate = false) {
+        for (const effectId of Array.from(this.effects.keys())) {
+          this.stop(effectId, immediate ? 0 : 500);
+        }
+        if (immediate) {
+          for (const effect of Array.from(this.fadingEffects)) {
+            effect.dispose();
+          }
+        }
+      }
+      pause(effectId) {
+        const effect = this.effects.get(effectId);
+        if (effect) effect.pause();
+      }
+      resume(effectId) {
+        const effect = this.effects.get(effectId);
+        if (effect) effect.resume();
+      }
+      // Check if an effect id has a running effect
+      hasActiveEffect(effectId) {
+        return this.effects.has(effectId);
+      }
+      getEffect(effectId) {
+        return this.effects.get(effectId) || null;
+      }
+      // Ids of note effects (the modal preview excluded)
+      getNoteEffectIds() {
+        return Array.from(this.effects.values()).filter((effect) => !effect.isPreview).map((effect) => effect.id);
+      }
+      // Re-resolve each effect's watched element (after layout or mode changes)
+      refreshVisibility() {
+        for (const effect of this.effects.values()) {
+          effect.refreshVisibilityTarget();
+        }
+      }
+      // Restart an effect only when its config or container really changed
+      update(effectId, containerEl, presetName, overrides = {}, opts = {}) {
+        const effect = this.effects.get(effectId);
+        if (effect && effect.containerEl === containerEl && effect.matches(presetName, overrides)) {
+          if (opts && typeof opts === "object" && opts.filePath) {
+            effect.filePath = opts.filePath;
+          }
+          effect.refreshVisibilityTarget();
+          return effect;
+        }
+        return this.start(effectId, containerEl, presetName, overrides, opts);
+      }
+    };
+    confettiManager = new ConfettiManager();
+  }
+});
+
+// src/modal/modals/confettiModal.js
+var import_obsidian19, PREVIEW_NOTE_ID, PREVIEW_DEBOUNCE_MS, stepDecimals, roundToStep, clamp, formatValue, ConfettiModal;
+var init_confettiModal = __esm({
+  "src/modal/modals/confettiModal.js"() {
+    import_obsidian19 = require("obsidian");
+    init_confettiManager();
+    init_confettiUtils();
+    init_confettiConfig();
+    init_confettiShapes();
+    init_confettiPresets();
+    PREVIEW_NOTE_ID = PREVIEW_EFFECT_ID;
+    PREVIEW_DEBOUNCE_MS = 100;
+    stepDecimals = (step) => {
+      const text = String(step);
+      const dot = text.indexOf(".");
+      return dot === -1 ? 0 : text.length - dot - 1;
+    };
+    roundToStep = (value, step) => Number((Math.round(value / step) * step).toFixed(stepDecimals(step)));
+    clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+    formatValue = (value, isInteger) => {
+      const num = Number(value);
+      if (!Number.isFinite(num)) return "";
+      return isInteger ? String(Math.round(num)) : num.toFixed(2);
+    };
+    ConfettiModal = class extends import_obsidian19.Modal {
+      constructor(app, plugin, currentConfig = null) {
+        super(app);
+        this.plugin = plugin;
+        this.targetFile = app.workspace.getActiveFile();
+        this.unknownPresetName = null;
+        const resolvedPreset = (currentConfig == null ? void 0 : currentConfig.presetName) ? resolvePresetName(currentConfig.presetName) : null;
+        if ((currentConfig == null ? void 0 : currentConfig.presetName) && !resolvedPreset) {
+          this.unknownPresetName = currentConfig.presetName;
+          new import_obsidian19.Notice(`Unknown confetti preset "${currentConfig.presetName}"; choose one to replace it`);
+          currentConfig = null;
+        }
+        this.currentConfig = currentConfig;
+        this.selectedPreset = resolvedPreset || "none";
+        this.settings = this.initializeSettings();
+        this.uiOnlyKeys = /* @__PURE__ */ new Set();
+        this.seededRanges = {};
+        this.rangeControls = {};
+        this.isModified = false;
+        this.sliderInputRefs = {};
+        this.previewDebounceTimeout = null;
+        this.previewLayer = null;
+        this.onWindowResize = null;
+        this.suppressedNote = null;
+        this.applied = false;
+      }
+      initializeSettings() {
+        if (this.currentConfig && this.currentConfig.presetName && this.currentConfig.presetName !== "none") {
+          const defaults = getPresetDefaults(this.currentConfig.presetName);
+          if (defaults) {
+            const overrides = this.currentConfig.overrides || {};
+            const settings = {
+              ...defaults,
+              ...overrides
+            };
+            if (Array.isArray(overrides.shapes) && overrides.shapes.length > 0 && !(Array.isArray(overrides.customShapes) && overrides.customShapes.length > 0)) {
+              settings.customShapes = null;
+            }
+            this.normalizeColors(settings);
+            return settings;
+          }
+        }
+        return {
+          count: 100,
+          size: 1,
+          speed: 45,
+          gravity: 1,
+          spread: 70,
+          drift: 0,
+          duration: 200,
+          delay: 0,
+          fadeIn: 0,
+          opacity: 1,
+          continuous: false,
+          interval: 1e3,
+          position: "center",
+          colors: ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff"],
+          emoji: null,
+          flat: false,
+          respectReducedMotion: true
+        };
+      }
+      // Normalize colors to 6-character hex format (strip alpha channel if present)
+      normalizeColors(settings) {
+        if (settings.colors && Array.isArray(settings.colors)) {
+          settings.colors = settings.colors.map((color) => {
+            if (typeof color !== "string") return "#ffffff";
+            if (color.match(/^#[0-9a-fA-F]{8}$/)) {
+              return color.substring(0, 7);
+            }
+            if (color.match(/^#[0-9a-fA-F]{6}$/)) {
+              return color;
+            }
+            if (color.match(/^#[0-9a-fA-F]{3}$/)) {
+              const r = color[1];
+              const g = color[2];
+              const b = color[3];
+              return `#${r}${r}${g}${g}${b}${b}`;
+            }
+            return "#ffffff";
+          });
+        }
+      }
+      onOpen() {
+        const { contentEl } = this;
+        contentEl.empty();
+        contentEl.addClass("confetti-modal");
+        this.suppressNoteEffect();
+        this.buildUI();
+        this.onWindowResize = () => this.positionPreviewLayer();
+        window.addEventListener("resize", this.onWindowResize);
+        this.updatePreview();
+        this.updateModifiedIndicator();
+      }
+      onClose() {
+        this.cleanupPreview();
+        this.restoreNoteEffect();
+        if (this.onWindowResize) {
+          window.removeEventListener("resize", this.onWindowResize);
+          this.onWindowResize = null;
+        }
+        const { contentEl } = this;
+        contentEl.empty();
+      }
+      buildUI() {
+        const { contentEl } = this;
+        const headerContainer = contentEl.createDiv({ cls: "confetti-modal-header" });
+        headerContainer.createEl("h2", {
+          text: "Confetti Effect Settings",
+          cls: "confetti-modal-title"
+        });
+        this.modifiedIndicator = headerContainer.createSpan({
+          cls: "modified-indicator",
+          text: "(modified)"
+        });
+        this.modifiedIndicator.addClass("is-hidden");
+        this.previewNotice = contentEl.createDiv({ cls: "confetti-preview-notice is-hidden" });
+        const effectContainer = contentEl.createDiv({ cls: "confetti-section" });
+        effectContainer.createEl("h4", { text: "Effect Selection", cls: "section-header" });
+        new import_obsidian19.Setting(effectContainer).setName("Effect Type").setDesc("Choose a confetti effect preset").addDropdown((dropdown) => {
+          dropdown.addOption("none", "None");
+          const presets = getPresetNames2();
+          presets.forEach((preset) => {
+            const displayName = preset.split("_").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+            dropdown.addOption(preset, displayName);
+          });
+          dropdown.setValue(this.selectedPreset);
+          dropdown.onChange((value) => {
+            this.selectedPreset = value;
+            if (value !== "none") {
+              const defaults = getPresetDefaults(value);
+              if (defaults) {
+                this.settings = { ...defaults };
+                this.normalizeColors(this.settings);
+                this.uiOnlyKeys = /* @__PURE__ */ new Set();
+                this.seededRanges = {};
+                this.seedRangeDefaults();
+                this.updateAllControls();
+              }
+            }
+            this.toggleSettingsSections(value !== "none");
+            this.updateColorHint();
+            this.checkIfModified();
+          });
+          this.effectDropdown = dropdown;
+        });
+        this.settingsSectionsContainer = contentEl.createDiv({ cls: "confetti-settings-sections" });
+        this.buildParticleSection();
+        this.buildAppearanceSection();
+        this.buildTimingSection();
+        this.buildAccessibilitySection();
+        this.toggleSettingsSections(this.selectedPreset !== "none");
+        const actionsContainer = contentEl.createDiv({ cls: "confetti-actions" });
+        const resetButton = actionsContainer.createEl("button", {
+          text: "Reset to Preset Defaults",
+          cls: "confetti-reset-button"
+        });
+        resetButton.addEventListener("click", () => this.resetToDefaults());
+        const cancelButton = actionsContainer.createEl("button", {
+          text: "Cancel",
+          cls: "confetti-cancel-button"
+        });
+        cancelButton.addEventListener("click", () => this.close());
+        const applyButton = actionsContainer.createEl("button", {
+          text: "Apply",
+          cls: "confetti-apply-button"
+        });
+        applyButton.addEventListener("click", () => this.applySettings());
+      }
+      buildParticleSection() {
+        const section = this.settingsSectionsContainer.createDiv({ cls: "confetti-section" });
+        section.createEl("h4", { text: "Particle Settings", cls: "section-header" });
+        this.createSliderWithInput(section, {
+          name: "Particle Count",
+          desc: "Number of particles per burst (1-150)",
+          key: "count",
+          min: 1,
+          max: 150,
+          step: 1,
+          isInteger: true
+        });
+        this.createRangeSlider(section, {
+          name: "Size Range",
+          desc: "Min and max size of particles (0.1-5.0)",
+          key: "sizeRange",
+          min: 0.1,
+          max: 5,
+          step: 0.1,
+          isInteger: false
+        });
+        this.createRangeSlider(section, {
+          name: "Speed Range",
+          desc: "Min and max initial velocity (0-100)",
+          key: "speedRange",
+          min: 0,
+          max: 100,
+          step: 1,
+          isInteger: true
+        });
+        this.createRangeSlider(section, {
+          name: "Gravity Range",
+          desc: "Min and max gravity (-3.0 to 3.0, negative floats up)",
+          key: "gravityRange",
+          min: -3,
+          max: 3,
+          step: 0.1,
+          isInteger: false
+        });
+        this.createRangeSlider(section, {
+          name: "Drift Range",
+          desc: "Min and max horizontal drift (-5.0 to 5.0)",
+          key: "driftRange",
+          min: -5,
+          max: 5,
+          step: 0.1,
+          isInteger: false
+        });
+        this.createSliderWithInput(section, {
+          name: "Duration",
+          desc: "How long particles stay visible (higher = longer)",
+          key: "duration",
+          min: 50,
+          max: 1e3,
+          step: 10,
+          isInteger: true
+        });
+        this.createSliderWithInput(section, {
+          name: "Canvas Opacity",
+          desc: "Opacity of the effect (0.1-1.0)",
+          key: "opacity",
+          min: 0.1,
+          max: 1,
+          step: 0.05,
+          isInteger: false
+        });
+      }
+      buildAppearanceSection() {
+        const section = this.settingsSectionsContainer.createDiv({ cls: "confetti-section" });
+        section.createEl("h4", { text: "Appearance", cls: "section-header" });
+        new import_obsidian19.Setting(section).setName("Spawn Position").setDesc("Where particles originate from").addDropdown((dropdown) => {
+          const positions = [
+            "top",
+            "bottom",
+            "left",
+            "right",
+            "center",
+            "top-left",
+            "top-right",
+            "bottom-left",
+            "bottom-right",
+            "random"
+          ];
+          positions.forEach((pos) => {
+            const displayName = pos.split("-").map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ");
+            dropdown.addOption(pos, displayName);
+          });
+          dropdown.setValue(this.settings.position);
+          dropdown.onChange((value) => {
+            this.settings.position = value;
+            this.checkIfModified();
+          });
+          this.positionDropdown = dropdown;
+        });
+        const colorSetting = new import_obsidian19.Setting(section).setName("Colors");
+        this.colorSetting = colorSetting;
+        this.updateColorHint();
+        const colorContainer = colorSetting.controlEl.createDiv({ cls: "color-swatches" });
+        this.colorContainer = colorContainer;
+        this.renderColorSwatches();
+        new import_obsidian19.Setting(section).setName("Shape").setDesc("Custom shape for particles").addDropdown((dropdown) => {
+          var _a, _b;
+          dropdown.addOption("", "Default");
+          dropdown.addOption("circle", "Circle");
+          dropdown.addOption("square", "Square");
+          dropdown.addOption("star", "Star");
+          const customShapeNames = getCustomShapeNames();
+          customShapeNames.forEach((shape) => {
+            const base = shape.replace(/(\d+)$/, " $1");
+            const displayName = base.charAt(0).toUpperCase() + base.slice(1);
+            dropdown.addOption(shape, displayName);
+          });
+          const currentShape = ((_a = this.settings.customShapes) == null ? void 0 : _a[0]) || ((_b = this.settings.shapes) == null ? void 0 : _b[0]) || "";
+          dropdown.selectEl.classList.add("confetti-select");
+          dropdown.setValue(currentShape);
+          dropdown.onChange((value) => {
+            if (value === "") {
+              delete this.settings.customShapes;
+              delete this.settings.shapes;
+            } else if (["circle", "square", "star"].includes(value)) {
+              this.settings.shapes = [value];
+              this.settings.customShapes = null;
+            } else {
+              this.settings.customShapes = [value];
+              this.settings.shapes = null;
+            }
+            this.checkIfModified();
+          });
+          this.shapeDropdown = dropdown;
+        });
+        new import_obsidian19.Setting(section).setName("Custom Emoji").setDesc("Use emoji as particles (overrides shape selection)").addText((text) => {
+          text.setPlaceholder("e.g., \u{1F342}\u{1F341}\u{1F343}").setValue(this.settings.emoji || "").onChange((value) => {
+            const emoji = (value || "").replace(/[,\s]/g, "");
+            this.settings.emoji = emoji || null;
+            this.checkIfModified();
+          });
+          text.inputEl.addEventListener("blur", () => {
+            var _a;
+            const presetEmoji = this.selectedPreset !== "none" ? (_a = getPresetDefaults(this.selectedPreset)) == null ? void 0 : _a.emoji : null;
+            if (!this.settings.emoji && presetEmoji) {
+              this.settings.emoji = presetEmoji;
+              text.setValue(presetEmoji);
+              this.checkIfModified();
+            }
+          });
+          this.emojiInput = text;
+        });
+        new import_obsidian19.Setting(section).setName("3D Wobble").setDesc("How particles rotate (only applies to shapes, not emoji)").addDropdown((dropdown) => {
+          dropdown.addOption("tumble", "Tumble (3D rotation)");
+          dropdown.addOption("flat", "Flat (no rotation)");
+          dropdown.selectEl.classList.add("confetti-select");
+          dropdown.setValue(this.settings.flat ? "flat" : "tumble");
+          dropdown.onChange((value) => {
+            this.settings.flat = value === "flat";
+            this.checkIfModified();
+          });
+          this.flatDropdown = dropdown;
+        });
+      }
+      buildTimingSection() {
+        const section = this.settingsSectionsContainer.createDiv({ cls: "confetti-section" });
+        section.createEl("h4", { text: "Timing", cls: "section-header" });
+        new import_obsidian19.Setting(section).setName("Continuous Effect").setDesc("Keep spawning particles at intervals").addToggle((toggle) => {
+          toggle.setValue(this.settings.continuous);
+          toggle.onChange((value) => {
+            this.settings.continuous = value;
+            this.toggleIntervalSlider(value);
+            this.checkIfModified();
+          });
+          this.continuousToggle = toggle;
+        });
+        const intervalSetting = this.createSliderWithInput(section, {
+          name: "Burst Interval",
+          desc: "Time between bursts when continuous (50-10000ms)",
+          key: "interval",
+          min: 50,
+          max: 1e4,
+          step: 50,
+          isInteger: true
+        });
+        this.intervalSettingEl = intervalSetting;
+        this.toggleIntervalSlider(this.settings.continuous);
+      }
+      buildAccessibilitySection() {
+        const section = this.settingsSectionsContainer.createDiv({ cls: "confetti-section" });
+        section.createEl("h4", { text: "Accessibility", cls: "section-header" });
+        new import_obsidian19.Setting(section).setName("Disable for reduced motion").setDesc("Respects user preference for reduced motion").addToggle((toggle) => {
+          toggle.setValue(this.settings.respectReducedMotion !== false);
+          toggle.onChange((value) => {
+            this.settings.respectReducedMotion = value;
+            this.checkIfModified();
+          });
+          this.reducedMotionToggle = toggle;
+        });
+      }
+      createSliderWithInput(container, { name, desc, key, min, max, step, isInteger }) {
+        const setting = new import_obsidian19.Setting(container).setName(name).setDesc(desc);
+        let sliderRef = null;
+        let textRef = null;
+        setting.addSlider((slider) => {
+          slider.setLimits(min, max, step).setValue(Number(this.settings[key])).setDynamicTooltip().onChange((value) => {
+            const rounded = roundToStep(Number(value), step);
+            this.settings[key] = rounded;
+            if (textRef) {
+              textRef.setValue(formatValue(rounded, isInteger));
+            }
+            this.checkIfModified();
+          });
+          sliderRef = slider;
+        });
+        setting.addText((text) => {
+          text.setValue(formatValue(this.settings[key], isInteger)).setPlaceholder(String(this.settings[key]));
+          text.inputEl.addClass("confetti-number-input");
+          text.inputEl.type = "number";
+          text.inputEl.step = String(step);
+          text.inputEl.min = String(min);
+          text.inputEl.max = String(max);
+          const commit = () => {
+            const raw = text.inputEl.value.trim();
+            const num = raw === "" ? NaN : parseFloat(raw);
+            const stored = Number(this.settings[key]);
+            if (!Number.isFinite(num) || num === stored) {
+              text.setValue(formatValue(this.settings[key], isInteger));
+              return;
+            }
+            const value = clamp(roundToStep(clamp(num, min, max), step), min, max);
+            text.setValue(formatValue(value, isInteger));
+            if (sliderRef) {
+              sliderRef.setValue(value);
+            }
+            if (value !== stored) {
+              this.settings[key] = value;
+              this.checkIfModified();
+            }
+          };
+          text.inputEl.addEventListener("change", commit);
+          text.inputEl.addEventListener("blur", commit);
+          textRef = text;
+        });
+        this.sliderInputRefs[key] = { slider: sliderRef, text: textRef, isInteger };
+        return setting;
+      }
+      createRangeSlider(container, { name, desc, key, min, max, step, isInteger }) {
+        const setting = new import_obsidian19.Setting(container).setName(name).setDesc(desc);
+        this.rangeControls[key] = { min, max };
+        this.seedRange(key);
+        setting.settingEl.addClass("confetti-range-setting");
+        const rangeContainer = setting.controlEl.createDiv({ cls: "range-slider-container" });
+        const label = name.replace(/\s*Range$/, "");
+        const inputAttrs = { min: String(min), max: String(max), step: String(step) };
+        const minInput = rangeContainer.createEl("input", { type: "number", cls: "range-input range-min confetti-number-input", attr: { ...inputAttrs, "aria-label": `${label} minimum` } });
+        const maxInput = rangeContainer.createEl("input", { type: "number", cls: "range-input range-max confetti-number-input", attr: { ...inputAttrs, "aria-label": `${label} maximum` } });
+        const trackRow = setting.settingEl.createDiv({ cls: "range-slider-row" });
+        const sliderTrack = trackRow.createDiv({ cls: "range-slider-track" });
+        const sliderFill = sliderTrack.createDiv({ cls: "range-slider-fill" });
+        const createThumb = (cls, ariaLabel) => sliderTrack.createDiv({
+          cls: `range-thumb ${cls}`,
+          attr: {
+            role: "slider",
+            tabindex: "0",
+            "aria-label": ariaLabel,
+            "aria-valuemin": String(min),
+            "aria-valuemax": String(max)
+          }
+        });
+        const thumbs = [
+          createThumb("range-thumb-min", `${label} minimum`),
+          createThumb("range-thumb-max", `${label} maximum`)
+        ];
+        const inputs = [minInput, maxInput];
+        const currentPair = () => {
+          if (!Array.isArray(this.settings[key]) || this.settings[key].length < 2) {
+            this.seedRange(key);
+          }
+          return [Number(this.settings[key][0]), Number(this.settings[key][1])];
+        };
+        const updateThumbPositions = () => {
+          const pair = currentPair();
+          const percents = pair.map((value) => clamp((value - min) / (max - min) * 100, 0, 100));
+          pair.forEach((value, index) => {
+            inputs[index].value = formatValue(value, isInteger);
+            thumbs[index].setCssProps({ "--confetti-thumb-left": `${percents[index]}%` });
+            thumbs[index].setAttribute("aria-valuenow", formatValue(value, isInteger));
+          });
+          sliderFill.setCssProps({
+            "--confetti-fill-left": `${percents[0]}%`,
+            "--confetti-fill-width": `${percents[1] - percents[0]}%`
+          });
+        };
+        const setValue = (index, raw) => {
+          const pair = currentPair();
+          let value = Number(raw);
+          if (!Number.isFinite(value) || value === pair[index]) {
+            updateThumbPositions();
+            return;
+          }
+          value = clamp(roundToStep(clamp(value, min, max), step), min, max);
+          value = index === 0 ? Math.min(value, pair[1]) : Math.max(value, pair[0]);
+          if (value === pair[index]) {
+            updateThumbPositions();
+            return;
+          }
+          pair[index] = value;
+          this.settings[key] = pair;
+          const seed = this.seededRanges[key];
+          if (seed && seed[0] === pair[0] && seed[1] === pair[1]) {
+            this.uiOnlyKeys.add(key);
+          } else {
+            this.uiOnlyKeys.delete(key);
+          }
+          updateThumbPositions();
+          this.checkIfModified();
+        };
+        thumbs.forEach((thumb, index) => {
+          let activePointer = null;
+          let dragIndex = index;
+          const valueAt = (clientX) => {
+            const rect = sliderTrack.getBoundingClientRect();
+            if (!rect.width) return NaN;
+            return min + clamp((clientX - rect.left) / rect.width, 0, 1) * (max - min);
+          };
+          thumb.addEventListener("pointerdown", (e) => {
+            e.preventDefault();
+            activePointer = e.pointerId;
+            dragIndex = index;
+            try {
+              thumb.setPointerCapture(e.pointerId);
+            } catch (error) {
+            }
+            thumb.focus();
+          });
+          thumb.addEventListener("pointermove", (e) => {
+            if (activePointer === null || e.pointerId !== activePointer) return;
+            const value = valueAt(e.clientX);
+            const pair = currentPair();
+            if (pair[0] === pair[1] && Number.isFinite(value)) {
+              if (value < pair[0]) dragIndex = 0;
+              else if (value > pair[1]) dragIndex = 1;
+            }
+            setValue(dragIndex, value);
+          });
+          const endDrag = (e) => {
+            if (e.pointerId === activePointer) activePointer = null;
+          };
+          thumb.addEventListener("pointerup", endDrag);
+          thumb.addEventListener("pointercancel", endDrag);
+          thumb.addEventListener("lostpointercapture", endDrag);
+          thumb.addEventListener("keydown", (e) => {
+            const value = currentPair()[index];
+            const keySteps = {
+              ArrowLeft: -step,
+              ArrowDown: -step,
+              ArrowRight: step,
+              ArrowUp: step,
+              PageDown: -step * 10,
+              PageUp: step * 10
+            };
+            let next;
+            if (Object.prototype.hasOwnProperty.call(keySteps, e.key)) {
+              next = value + keySteps[e.key];
+            } else if (e.key === "Home") {
+              next = min;
+            } else if (e.key === "End") {
+              next = max;
+            } else {
+              return;
+            }
+            e.preventDefault();
+            setValue(index, next);
+          });
+        });
+        inputs.forEach((input, index) => {
+          const commit = () => {
+            const text = input.value.trim();
+            setValue(index, text === "" ? NaN : parseFloat(text));
+          };
+          input.addEventListener("change", commit);
+          input.addEventListener("blur", commit);
+        });
+        updateThumbPositions();
+        this.sliderInputRefs[key] = {
+          type: "range",
+          minInput,
+          maxInput,
+          thumbs,
+          updateThumbPositions,
+          isInteger
+        };
+        return setting;
+      }
+      // Seed a range the preset doesn't define from its singular value
+      // (sizeRange from size) so the control has something to show. Seeded
+      // ranges are UI-only: they are never written unless the user edits them.
+      seedRange(key) {
+        const current = this.settings[key];
+        if (Array.isArray(current) && current.length >= 2) return;
+        const { min, max } = this.rangeControls[key];
+        const singularValue = this.settings[key.replace("Range", "")];
+        if (typeof singularValue === "number" && Number.isFinite(singularValue)) {
+          this.settings[key] = [singularValue, singularValue];
+        } else {
+          this.settings[key] = [min + (max - min) * 0.25, min + (max - min) * 0.75];
+        }
+        this.seededRanges[key] = [...this.settings[key]];
+        this.uiOnlyKeys.add(key);
+      }
+      seedRangeDefaults() {
+        for (const key of Object.keys(this.rangeControls)) {
+          this.seedRange(key);
+        }
+      }
+      // In the light theme, presets drawn in white use a darker palette while
+      // the note sets no colours: say so, since the swatches show the preset's own
+      updateColorHint() {
+        if (!this.colorSetting) return;
+        const usesLightPalette = isLightTheme() && this.selectedPreset !== "none" && !!getLightThemeColors(this.selectedPreset);
+        this.colorSetting.setDesc(usesLightPalette ? "Click swatch to edit, + to add, X to remove. In light themes this preset draws in darker colours until you change one." : "Click swatch to edit, + to add, X to remove");
+      }
+      renderColorSwatches() {
+        this.colorContainer.empty();
+        if (!this.settings.colors || !Array.isArray(this.settings.colors)) {
+          this.settings.colors = ["#ff0000", "#00ff00", "#0000ff"];
+        }
+        const colors = this.settings.colors;
+        colors.forEach((color, index) => {
+          const swatch = this.colorContainer.createDiv({ cls: "color-swatch" });
+          swatch.setCssProps({ "--confetti-swatch-color": color });
+          const colorInput = swatch.createEl("input", {
+            type: "color",
+            value: color,
+            cls: "color-input-hidden",
+            attr: { "aria-label": `Colour ${index + 1}` }
+          });
+          colorInput.addEventListener("input", (e) => {
+            this.settings.colors[index] = e.target.value;
+            swatch.setCssProps({ "--confetti-swatch-color": e.target.value });
+            removeBtn.setAttribute("aria-label", `Remove colour ${e.target.value}`);
+            this.checkIfModified();
+          });
+          swatch.addEventListener("click", (e) => {
+            if (e.target === swatch) {
+              colorInput.click();
+            }
+          });
+          const removeBtn = swatch.createEl("button", {
+            cls: "remove-color",
+            text: "X",
+            attr: { type: "button", "aria-label": `Remove colour ${color}` }
+          });
+          removeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (this.settings.colors.length > 1) {
+              this.settings.colors.splice(index, 1);
+              this.renderColorSwatches();
+              this.checkIfModified();
+            }
+          });
+        });
+        const addBtn = this.colorContainer.createEl("button", {
+          cls: "add-color",
+          text: "+",
+          attr: { type: "button", "aria-label": "Add colour" }
+        });
+        addBtn.addEventListener("click", () => {
+          if (!this.settings.colors) {
+            this.settings.colors = [];
+          }
+          this.settings.colors.push("#ffffff");
+          this.renderColorSwatches();
+          this.checkIfModified();
+        });
+      }
+      toggleSettingsSections(show) {
+        this.settingsSectionsContainer.toggleClass("is-hidden", !show);
+      }
+      toggleIntervalSlider(enabled) {
+        if (this.intervalSettingEl) {
+          const settingItem = this.intervalSettingEl.settingEl;
+          if (settingItem) {
+            settingItem.toggleClass("confetti-setting-disabled", !enabled);
+          }
+        }
+        const ref = this.sliderInputRefs.interval;
+        if (ref) {
+          if (ref.slider) ref.slider.setDisabled(!enabled);
+          if (ref.text) ref.text.setDisabled(!enabled);
+        }
+      }
+      updateAllControls() {
+        var _a, _b;
+        this.seedRangeDefaults();
+        for (const key in this.sliderInputRefs) {
+          const ref = this.sliderInputRefs[key];
+          if (ref && this.settings[key] !== void 0) {
+            if (ref.type === "range") {
+              ref.updateThumbPositions();
+            } else {
+              if (ref.slider) {
+                ref.slider.setValue(this.settings[key]);
+              }
+              if (ref.text) {
+                ref.text.setValue(formatValue(this.settings[key], ref.isInteger));
+              }
+            }
+          }
+        }
+        if (this.positionDropdown) {
+          this.positionDropdown.setValue(this.settings.position);
+        }
+        if (this.shapeDropdown) {
+          const currentShape = ((_a = this.settings.customShapes) == null ? void 0 : _a[0]) || ((_b = this.settings.shapes) == null ? void 0 : _b[0]) || "";
+          this.shapeDropdown.setValue(currentShape);
+        }
+        if (this.emojiInput) {
+          this.emojiInput.setValue(this.settings.emoji || "");
+        }
+        if (this.continuousToggle) {
+          this.continuousToggle.setValue(this.settings.continuous);
+          this.toggleIntervalSlider(this.settings.continuous);
+        }
+        if (this.reducedMotionToggle) {
+          this.reducedMotionToggle.setValue(this.settings.respectReducedMotion !== false);
+        }
+        if (this.flatDropdown) {
+          this.flatDropdown.setValue(this.settings.flat ? "flat" : "tumble");
+        }
+        this.renderColorSwatches();
+      }
+      // ----------------------------------------------------------------------
+      // Live preview — renders the effect over the modal itself so users can
+      // see the result before applying. Reuses confettiManager (under a
+      // synthetic note ID) so the preview goes through the exact same code path
+      // as the real on-note effect: presets, overrides, sanitizeConfig, shapes,
+      // emoji, continuous intervals, and visibility pausing all behave
+      // identically.
+      // ----------------------------------------------------------------------
+      updatePreview() {
+        if (this.selectedPreset === "none") {
+          this.setPreviewNotice(null);
+          this.cleanupPreview();
+          return;
+        }
+        if (!this.modalEl) return;
+        const overrides = { ...this.getOverridesFromDefaults(), delay: 0 };
+        if (!shouldRunConfetti(this.plugin, overrides)) {
+          this.setPreviewNotice(getConfettiBlockReason(this.plugin, overrides) || "unknown");
+          this.cleanupPreview();
+          return;
+        }
+        this.setPreviewNotice(null);
+        confettiManager.start(PREVIEW_NOTE_ID, this.ensurePreviewLayer(), this.selectedPreset, overrides, { isPreview: true });
+      }
+      // Show why the preview is blocked ('reduced-motion', 'mobile', or any
+      // other truthy reason), or hide the line when blocked is null
+      setPreviewNotice(blocked) {
+        if (!this.previewNotice) return;
+        if (blocked === null || blocked === void 0) {
+          this.previewNotice.setText("");
+          this.previewNotice.addClass("is-hidden");
+          return;
+        }
+        let text = "Preview hidden: confetti is turned off here";
+        if (blocked === "reduced-motion") {
+          text = "Preview hidden: your system asks for reduced motion";
+        } else if (blocked === "mobile") {
+          text = "Preview hidden: confetti is turned off on mobile";
+        }
+        this.previewNotice.setText(text);
+        this.previewNotice.removeClass("is-hidden");
+      }
+      // The preview draws on a fixed layer over the modal, outside modalEl
+      // (the scroll container), so it stays on screen while the modal scrolls.
+      ensurePreviewLayer() {
+        if (!this.previewLayer || this.previewLayer.parentNode !== this.containerEl) {
+          this.previewLayer = this.containerEl.createDiv({ cls: "pixel-banner-confetti-preview-layer" });
+        }
+        this.positionPreviewLayer();
+        return this.previewLayer;
+      }
+      positionPreviewLayer() {
+        if (!this.previewLayer || !this.modalEl) return;
+        const rect = this.modalEl.getBoundingClientRect();
+        this.previewLayer.setCssProps({
+          "--confetti-preview-top": `${rect.top}px`,
+          "--confetti-preview-left": `${rect.left}px`,
+          "--confetti-preview-width": `${rect.width}px`,
+          "--confetti-preview-height": `${rect.height}px`
+        });
+      }
+      // Debounced preview refresh; slider drags call this on every change and
+      // the preview restarts once the user pauses.
+      schedulePreviewUpdate() {
+        if (this.previewDebounceTimeout) {
+          clearTimeout(this.previewDebounceTimeout);
+        }
+        this.previewDebounceTimeout = setTimeout(() => {
+          this.previewDebounceTimeout = null;
+          this.updatePreview();
+        }, PREVIEW_DEBOUNCE_MS);
+      }
+      cleanupPreview() {
+        if (this.previewDebounceTimeout) {
+          clearTimeout(this.previewDebounceTimeout);
+          this.previewDebounceTimeout = null;
+        }
+        confettiManager.stop(PREVIEW_NOTE_ID, 0);
+        if (this.previewLayer) {
+          this.previewLayer.remove();
+          this.previewLayer = null;
+        }
+      }
+      // Pause the note's own active effect while the modal is open so the live
+      // preview is the only confetti on screen — otherwise the note's applied
+      // effect and the preview run side by side and compete visually.
+      suppressNoteEffect() {
+        var _a;
+        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian19.MarkdownView);
+        const leafId = (_a = activeView == null ? void 0 : activeView.leaf) == null ? void 0 : _a.id;
+        if ((activeView == null ? void 0 : activeView.file) && leafId && confettiManager.hasActiveEffect(leafId)) {
+          this.suppressedNote = { leaf: activeView.leaf, path: activeView.file.path, element: activeView.contentEl };
+          confettiManager.stop(leafId, 0);
+        }
+      }
+      // On Cancel, resume the note's original effect that suppressNoteEffect()
+      // paused. On Apply this is a no-op: applySettings already started the
+      // new effect (or removed it).
+      restoreNoteEffect() {
+        var _a, _b, _c, _d, _e;
+        if (this.applied || !this.suppressedNote) return;
+        const { leaf, path, element } = this.suppressedNote;
+        this.suppressedNote = null;
+        if (!((_a = this.currentConfig) == null ? void 0 : _a.presetName) || this.currentConfig.presetName === "none") return;
+        if (!element || element.isConnected === false) return;
+        if (((_c = (_b = leaf == null ? void 0 : leaf.view) == null ? void 0 : _b.file) == null ? void 0 : _c.path) !== path) return;
+        if (typeof this.plugin.handleConfettiForNote !== "function") return;
+        const frontmatter = (_e = (_d = this.app.metadataCache) == null ? void 0 : _d.getFileCache(leaf.view.file)) == null ? void 0 : _e.frontmatter;
+        this.plugin.handleConfettiForNote(leaf, frontmatter);
+      }
+      checkIfModified() {
+        this.schedulePreviewUpdate();
+        this.updateModifiedIndicator();
+      }
+      // Show "(modified)" when the shown values differ from the preset. Split
+      // from checkIfModified so onOpen can set it without a second preview start.
+      updateModifiedIndicator() {
+        const hasPreset = this.selectedPreset !== "none" && !!getPresetDefaults(this.selectedPreset);
+        this.isModified = hasPreset && Object.keys(this.getOverridesFromDefaults()).length > 0;
+        if (this.modifiedIndicator) {
+          this.modifiedIndicator.toggleClass("is-hidden", !this.isModified);
+        }
+      }
+      getOverridesFromDefaults() {
+        if (this.selectedPreset === "none") return {};
+        const config = {};
+        for (const key of Object.keys(this.settings)) {
+          if (this.uiOnlyKeys.has(key)) continue;
+          config[key] = this.settings[key];
+        }
+        return diffFromPreset(this.selectedPreset, config);
+      }
+      resetToDefaults() {
+        if (this.selectedPreset === "none") return;
+        const defaults = getPresetDefaults(this.selectedPreset);
+        if (defaults) {
+          this.settings = { ...defaults };
+          this.normalizeColors(this.settings);
+          this.uiOnlyKeys = /* @__PURE__ */ new Set();
+          this.seededRanges = {};
+          this.seedRangeDefaults();
+          this.updateAllControls();
+          this.checkIfModified();
+        }
+      }
+      async applySettings() {
+        const targetFile = this.targetFile;
+        if (!targetFile) {
+          new import_obsidian19.Notice("Open a note to apply confetti");
+          return;
+        }
+        try {
+          if (this.selectedPreset === "none") {
+            await this.removeConfettiFromFrontmatter(targetFile);
+            this.applied = true;
+          } else {
+            const overrides = this.getOverridesFromDefaults();
+            const frontmatterValue = serialize(this.selectedPreset, overrides);
+            await this.app.fileManager.processFrontMatter(targetFile, (fm) => {
+              writeConfettiField(fm, this.plugin.settings, frontmatterValue);
+            });
+            this.applied = true;
+            this.cleanupPreview();
+            this.triggerConfettiOnNote(frontmatterValue);
+          }
+        } catch (error) {
+          console.error("Pixel Banner: Error applying confetti settings:", error);
+          if (!this.applied) {
+            new import_obsidian19.Notice("Could not save confetti settings to the note; your edits are kept, try Apply again");
+            return;
+          }
+        }
+        this.close();
+      }
+      async removeConfettiFromFrontmatter(file) {
+        var _a;
+        await this.app.fileManager.processFrontMatter(file, (fm) => {
+          writeConfettiField(fm, this.plugin.settings, null);
+        });
+        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian19.MarkdownView);
+        if (activeView && activeView.leaf && ((_a = activeView.file) == null ? void 0 : _a.path) === file.path) {
+          confettiManager.stop(activeView.leaf.id);
+        }
+      }
+      // Start the note's effect from the value just written, through
+      // handleConfettiForNote so the mobile and reduced-motion gates apply.
+      // The metadata change that follows finds the same config and leaves it.
+      triggerConfettiOnNote(frontmatterValue) {
+        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian19.MarkdownView);
+        if (!activeView || !activeView.file || !activeView.leaf) return;
+        if (this.targetFile && activeView.file.path !== this.targetFile.path) return;
+        if (typeof this.plugin.handleConfettiForNote !== "function") return;
+        const frontmatter = {};
+        writeConfettiField(frontmatter, this.plugin.settings, frontmatterValue);
+        this.plugin.handleConfettiForNote(activeView.leaf, frontmatter);
+      }
+    };
+  }
+});
+
+// src/core/headerMode.js
+function hasText(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+function toNumber(value, fallback = 0) {
+  const parsed = typeof value === "number" ? value : parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+function getHeaderMode({ hasBannerSource: hasBannerSource2, imageFailed, icon, iconImage }) {
+  const hasIcon = hasText(icon) || hasText(iconImage);
+  if (hasBannerSource2 && !(imageFailed && hasIcon)) return "banner";
+  if (hasIcon) return "icon-only";
+  return "none";
+}
+function getIconLayoutVars(plugin, frontmatter, folderSpecific, { mode, bannerHeight } = {}) {
+  var _a;
+  const iconSize = resolveField(plugin, "iconSize", frontmatter, folderSpecific);
+  const isIconOnly = mode === "icon-only";
+  return {
+    "--pixel-banner-icon-size": `${iconSize}px`,
+    "--pixel-banner-icon-start": isIconOnly ? `${ICON_ONLY_INSET_PX}px` : `${bannerHeight - iconSize / 2}px`,
+    "--pixel-banner-icon-translate-y": isIconOnly ? "0%" : "-15%",
+    "--pixel-banner-icon-x": `${resolveField(plugin, "iconXPosition", frontmatter, folderSpecific)}%`,
+    "--pixel-banner-icon-opacity": `${resolveField(plugin, "iconOpacity", frontmatter, folderSpecific)}%`,
+    "--pixel-banner-icon-color": resolveField(plugin, "iconColor", frontmatter, folderSpecific),
+    "--pixel-banner-icon-font-weight": resolveField(plugin, "iconFontWeight", frontmatter, folderSpecific),
+    "--pixel-banner-icon-background-color": (_a = resolveField(plugin, "iconBackgroundColor", frontmatter, folderSpecific)) != null ? _a : "transparent",
+    "--pixel-banner-icon-padding-x": `${resolveField(plugin, "iconPaddingX", frontmatter, folderSpecific)}px`,
+    "--pixel-banner-icon-padding-y": `${resolveField(plugin, "iconPaddingY", frontmatter, folderSpecific)}px`,
+    "--pixel-banner-icon-border-radius": `${resolveField(plugin, "iconBorderRadius", frontmatter, folderSpecific)}px`,
+    "--pixel-banner-icon-vertical-offset": `${resolveField(plugin, "iconVerticalOffset", frontmatter, folderSpecific)}px`,
+    "--pixel-banner-icon-rotate": `${resolveField(plugin, "iconRotate", frontmatter, folderSpecific)}deg`,
+    "--pixel-banner-icon-image-size-multiplier": `${resolveField(plugin, "iconImageSizeMultiplier", frontmatter, folderSpecific)}em`,
+    "--pixel-banner-icon-text-vertical-offset": `${resolveField(plugin, "iconTextVerticalOffset", frontmatter, folderSpecific)}px`
+  };
+}
+function getIconOnlyContentStart(plugin, frontmatter, folderSpecific) {
+  const noteContentStart = toNumber(getFrontmatterValue(frontmatter, getFieldNames(plugin, "contentStart")), NaN);
+  if (Number.isFinite(noteContentStart)) return noteContentStart;
+  const iconSize = toNumber(resolveField(plugin, "iconSize", frontmatter, folderSpecific));
+  const imageMultiplier = toNumber(resolveField(plugin, "iconImageSizeMultiplier", frontmatter, folderSpecific), 1);
+  const paddingY = toNumber(resolveField(plugin, "iconPaddingY", frontmatter, folderSpecific));
+  const verticalOffset = toNumber(resolveField(plugin, "iconVerticalOffset", frontmatter, folderSpecific));
+  const textVerticalOffset = toNumber(resolveField(plugin, "iconTextVerticalOffset", frontmatter, folderSpecific));
+  return ICON_ONLY_INSET_PX + iconSize * Math.max(1, imageMultiplier) + 2 * paddingY + Math.max(0, verticalOffset) + Math.max(0, textVerticalOffset) + ICON_ONLY_GAP_PX;
+}
+function resolveHideEmbeddedBanners(plugin, frontmatter, folderSpecific) {
+  var _a, _b;
+  return getFrontmatterValue(frontmatter, (_a = plugin == null ? void 0 : plugin.settings) == null ? void 0 : _a.customHideEmbeddedNoteBannersField) || (folderSpecific == null ? void 0 : folderSpecific.hideEmbeddedNoteBanners) || ((_b = plugin == null ? void 0 : plugin.settings) == null ? void 0 : _b.hideEmbeddedNoteBanners) || false;
+}
+function resolveMaxWidth(plugin, frontmatter) {
+  const noteValue = getFrontmatterValue(frontmatter, getFieldNames(plugin, "maxWidth"));
+  if (typeof noteValue === "string") {
+    const keyword = noteValue.trim().toLowerCase();
+    if (keyword === "readable") return "readable";
+    if (keyword === "unset") return "unset";
+    const parsed = parseInt(noteValue, 10);
+    if (Number.isFinite(parsed)) return parsed;
+  } else if (typeof noteValue === "number" && Number.isFinite(noteValue)) {
+    return noteValue;
+  }
+  const settings = plugin == null ? void 0 : plugin.settings;
+  if ((settings == null ? void 0 : settings.bannerMaxWidthReadable) === true) return "readable";
+  if (Number.isFinite(settings == null ? void 0 : settings.bannerMaxWidth)) return settings.bannerMaxWidth;
+  return "unset";
+}
+function maxWidthCssValue(resolved) {
+  if (resolved === "readable") return "var(--pixel-banner-readable-width, none)";
+  if (typeof resolved === "number") return `${resolved}px`;
+  return "unset";
+}
+var ICON_ONLY_INSET_PX, ICON_ONLY_GAP_PX;
+var init_headerMode = __esm({
+  "src/core/headerMode.js"() {
+    init_frontmatterUtils();
+    init_fieldRegistry();
+    ICON_ONLY_INSET_PX = 16;
+    ICON_ONLY_GAP_PX = 16;
+  }
+});
+
 // src/modal/modals/targetPositionModal.js
 var targetPositionModal_exports = {};
 __export(targetPositionModal_exports, {
   TargetPositionModal: () => TargetPositionModal
 });
-var import_obsidian17, TargetPositionModal;
+var import_obsidian20, TargetPositionModal;
 var init_targetPositionModal = __esm({
   "src/modal/modals/targetPositionModal.js"() {
-    import_obsidian17 = require("obsidian");
+    import_obsidian20 = require("obsidian");
     init_getCurrentTheme();
     init_modals();
     init_selectPixelBannerModal();
+    init_confettiModal();
     init_flags();
     init_frontmatterUtils();
-    TargetPositionModal = class _TargetPositionModal extends import_obsidian17.Modal {
+    init_fieldRegistry();
+    init_confettiUtils();
+    init_confettiConfig();
+    init_headerMode();
+    TargetPositionModal = class _TargetPositionModal extends import_obsidian20.Modal {
       constructor(app, plugin, onPositionChange) {
-        var _a;
+        var _a, _b;
         super(app);
         this.plugin = plugin;
         this.onPositionChange = onPositionChange;
         this.isDragging = false;
         const activeFile = this.app.workspace.getActiveFile();
         const frontmatter = (_a = this.app.metadataCache.getFileCache(activeFile)) == null ? void 0 : _a.frontmatter;
-        const alignmentField = Array.isArray(this.plugin.settings.customBannerAlignmentField) ? this.plugin.settings.customBannerAlignmentField[0].split(",")[0].trim() : this.plugin.settings.customBannerAlignmentField;
-        this.currentAlignment = (frontmatter == null ? void 0 : frontmatter[alignmentField]) || "center";
-        const displayField = Array.isArray(this.plugin.settings.customImageDisplayField) ? this.plugin.settings.customImageDisplayField[0].split(",")[0].trim() : this.plugin.settings.customImageDisplayField;
-        this.currentDisplay = (frontmatter == null ? void 0 : frontmatter[displayField]) || this.plugin.settings.imageDisplay;
-        const xField = Array.isArray(this.plugin.settings.customXPositionField) ? this.plugin.settings.customXPositionField[0].split(",")[0].trim() : this.plugin.settings.customXPositionField;
-        this.currentX = getValueWithZeroCheck([
-          frontmatter == null ? void 0 : frontmatter[xField],
-          this.plugin.settings.xPosition
-        ]);
-        const yField = Array.isArray(this.plugin.settings.customYPositionField) ? this.plugin.settings.customYPositionField[0].split(",")[0].trim() : this.plugin.settings.customYPositionField;
-        this.currentY = getValueWithZeroCheck([
-          frontmatter == null ? void 0 : frontmatter[yField],
-          this.plugin.settings.yPosition
-        ]);
-        const heightField = Array.isArray(this.plugin.settings.customBannerHeightField) ? this.plugin.settings.customBannerHeightField[0].split(",")[0].trim() : this.plugin.settings.customBannerHeightField;
-        this.currentHeight = (frontmatter == null ? void 0 : frontmatter[heightField]) || this.plugin.settings.bannerHeight;
-        const maxWidthField = Array.isArray(this.plugin.settings.customBannerMaxWidthField) ? this.plugin.settings.customBannerMaxWidthField[0].split(",")[0].trim() : this.plugin.settings.customBannerMaxWidthField;
-        const maxWidthValue = frontmatter == null ? void 0 : frontmatter[maxWidthField];
-        const directMaxWidth = frontmatter == null ? void 0 : frontmatter["banner-max-width"];
-        const maxWidthExists = maxWidthValue !== void 0 && maxWidthValue !== null || directMaxWidth !== void 0 && directMaxWidth !== null;
-        const isMaxWidthUnset = !maxWidthExists;
-        this.currentMaxWidth = isMaxWidthUnset ? 1928 : parseInt(maxWidthValue || directMaxWidth) || 1928;
-        const contentStartPositionField = Array.isArray(this.plugin.settings.customContentStartField) ? this.plugin.settings.customContentStartField[0].split(",")[0].trim() : this.plugin.settings.customContentStartField;
-        this.currentContentStartPosition = (frontmatter == null ? void 0 : frontmatter[contentStartPositionField]) || this.plugin.settings.contentStartPosition;
-        const bannerIconXPositionField = Array.isArray(this.plugin.settings.customBannerIconXPositionField) ? this.plugin.settings.customBannerIconXPositionField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconXPositionField;
-        this.currentBannerIconXPosition = (frontmatter == null ? void 0 : frontmatter[bannerIconXPositionField]) || this.plugin.settings.bannerIconXPosition;
-        const bannerIconImageAlignmentField = Array.isArray(this.plugin.settings.customBannerIconImageAlignmentField) ? this.plugin.settings.customBannerIconImageAlignmentField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageAlignmentField;
-        const bannerIconRotateField = Array.isArray(this.plugin.settings.customBannerIconRotateField) ? this.plugin.settings.customBannerIconRotateField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconRotateField;
-        this.currentBannerIconRotate = getValueWithZeroCheck([
-          frontmatter == null ? void 0 : frontmatter[bannerIconRotateField],
-          0
-        ]);
-        const frontmatterValue = frontmatter == null ? void 0 : frontmatter[bannerIconImageAlignmentField];
-        const defaultValue = this.plugin.settings.bannerIconImageAlignment;
+        this.currentAlignment = resolveField(this.plugin, "alignment", frontmatter);
+        this.currentDisplay = resolveField(this.plugin, "imageDisplay", frontmatter);
+        this.currentX = resolveField(this.plugin, "xPosition", frontmatter);
+        this.currentY = resolveField(this.plugin, "yPosition", frontmatter);
+        this.currentHeight = resolveField(this.plugin, "height", frontmatter);
+        const maxWidthValue = getFrontmatterValue(frontmatter, getFieldNames(this.plugin, "maxWidth"));
+        this.isMaxWidthReadable = typeof maxWidthValue === "string" && maxWidthValue.trim().toLowerCase() === "readable";
+        const isMaxWidthUnset = !this.isMaxWidthReadable && (maxWidthValue === void 0 || maxWidthValue === null);
+        this.currentMaxWidth = isMaxWidthUnset ? 1928 : parseInt(maxWidthValue) || 1928;
+        this.currentContentStartPosition = resolveField(this.plugin, "contentStart", frontmatter);
+        this.isIconOnly = activeFile ? !this.plugin.hasBannerSource(activeFile) : false;
+        if (this.isIconOnly) {
+          this.currentContentStartPosition = this.getIconOnlyContentStartPosition(frontmatter);
+        }
+        this.currentBannerIconXPosition = resolveField(this.plugin, "iconXPosition", frontmatter);
+        this.currentBannerIconRotate = resolveField(this.plugin, "iconRotate", frontmatter);
+        const frontmatterValue = getFrontmatterValue(frontmatter, getFieldNames(this.plugin, "iconImageAlignment"));
         this.currentBannerIconImageAlignment = frontmatterValue === "right" ? "right" : "left";
-        const repeatField = Array.isArray(this.plugin.settings.customImageRepeatField) ? this.plugin.settings.customImageRepeatField[0].split(",")[0].trim() : this.plugin.settings.customImageRepeatField;
-        this.currentRepeat = (frontmatter == null ? void 0 : frontmatter[repeatField]) !== void 0 ? frontmatter[repeatField] : this.plugin.settings.imageRepeat;
-        const fadeField = Array.isArray(this.plugin.settings.customFadeField) ? this.plugin.settings.customFadeField[0].split(",")[0].trim() : this.plugin.settings.customFadeField;
-        this.currentFade = (frontmatter == null ? void 0 : frontmatter[fadeField]) !== void 0 ? frontmatter[fadeField] : this.plugin.settings.fade;
-        const borderRadiusField = Array.isArray(this.plugin.settings.customBorderRadiusField) ? this.plugin.settings.customBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBorderRadiusField;
-        this.currentBorderRadius = (frontmatter == null ? void 0 : frontmatter[borderRadiusField]) !== void 0 ? frontmatter[borderRadiusField] : this.plugin.settings.borderRadius || 0;
+        this.currentRepeat = resolveField(this.plugin, "imageRepeat", frontmatter);
+        this.currentFade = resolveField(this.plugin, "fade", frontmatter);
+        this.currentBorderRadius = (_b = resolveField(this.plugin, "borderRadius", frontmatter)) != null ? _b : 0;
         this.currentZoom = 100;
         if (this.currentDisplay && this.currentDisplay.endsWith("%")) {
           this.currentZoom = parseInt(this.currentDisplay) || 100;
           this.currentDisplay = "cover-zoom";
         }
       }
+      // The content start an icon-only note uses: its own value if set, else the height of the icon header
+      getIconOnlyContentStartPosition(frontmatter) {
+        const activeFile = this.app.workspace.getActiveFile();
+        const folderSpecific = activeFile ? this.plugin.getFolderSpecificImage(activeFile.path) : null;
+        return getIconOnlyContentStart(this.plugin, frontmatter || {}, folderSpecific);
+      }
       // Helper to update frontmatter with new display value
       updateDisplayMode(mode, zoom = null) {
-        const displayField = Array.isArray(this.plugin.settings.customImageDisplayField) ? this.plugin.settings.customImageDisplayField[0].split(",")[0].trim() : this.plugin.settings.customImageDisplayField;
-        const repeatField = Array.isArray(this.plugin.settings.customImageRepeatField) ? this.plugin.settings.customImageRepeatField[0].split(",")[0].trim() : this.plugin.settings.customImageRepeatField;
         let newValue = mode;
         if (mode === "cover-zoom") {
           newValue = `${zoom}%`;
         }
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (fm) => {
-          fm[displayField] = newValue;
+          writeField(fm, this.plugin, "imageDisplay", newValue);
           if (mode === "contain" || mode === "auto") {
-            fm[repeatField] = this.currentRepeat;
+            writeField(fm, this.plugin, "imageRepeat", this.currentRepeat);
           } else {
-            if (repeatField in fm) {
-              delete fm[repeatField];
-            }
+            clearField(fm, this.plugin, "imageRepeat");
           }
         });
       }
       updateBannerMaxWidth(maxWidth) {
-        const maxWidthField = Array.isArray(this.plugin.settings.customBannerMaxWidthField) ? this.plugin.settings.customBannerMaxWidthField[0].split(",")[0].trim() : this.plugin.settings.customBannerMaxWidthField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
           if (maxWidth === "unset") {
-            if (maxWidthField in frontmatter) {
-              delete frontmatter[maxWidthField];
-            }
+            clearField(frontmatter, this.plugin, "maxWidth");
           } else {
-            frontmatter[maxWidthField] = maxWidth;
+            writeField(frontmatter, this.plugin, "maxWidth", maxWidth);
           }
         });
         setTimeout(() => {
-          const view = this.app.workspace.getActiveViewOfType(import_obsidian17.MarkdownView);
+          const view = this.app.workspace.getActiveViewOfType(import_obsidian20.MarkdownView);
           if (view) {
             this.plugin.updateBanner(view, true);
           }
         }, 350);
       }
       updateBannerHeight(height) {
-        const heightField = Array.isArray(this.plugin.settings.customBannerHeightField) ? this.plugin.settings.customBannerHeightField[0].split(",")[0].trim() : this.plugin.settings.customBannerHeightField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[heightField] = height;
+          writeField(frontmatter, this.plugin, "height", height);
         });
       }
       updateBannerContentStartPosition(position) {
-        const contentStartPositionField = Array.isArray(this.plugin.settings.customContentStartField) ? this.plugin.settings.customContentStartField[0].split(",")[0].trim() : this.plugin.settings.customContentStartField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[contentStartPositionField] = position;
+          writeField(frontmatter, this.plugin, "contentStart", position);
         });
       }
       updateBannerIconXPosition(position) {
-        const bannerIconXPositionField = Array.isArray(this.plugin.settings.customBannerIconXPositionField) ? this.plugin.settings.customBannerIconXPositionField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconXPositionField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconXPositionField] = position;
+          writeField(frontmatter, this.plugin, "iconXPosition", position);
         });
       }
       updateBannerIconSize(size) {
-        const bannerIconSizeField = Array.isArray(this.plugin.settings.customBannerIconSizeField) ? this.plugin.settings.customBannerIconSizeField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconSizeField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconSizeField] = size;
+          writeField(frontmatter, this.plugin, "iconSize", size);
         });
       }
       updateBannerIconImageSizeMultiplier(sizeMultiplier) {
-        const bannerIconImageSizeMultiplierField = Array.isArray(this.plugin.settings.customBannerIconImageSizeMultiplierField) ? this.plugin.settings.customBannerIconImageSizeMultiplierField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageSizeMultiplierField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconImageSizeMultiplierField] = sizeMultiplier;
+          writeField(frontmatter, this.plugin, "iconImageSizeMultiplier", sizeMultiplier);
         });
       }
       updateBannerIconRotate(rotate) {
-        const bannerIconRotateField = Array.isArray(this.plugin.settings.customBannerIconRotateField) ? this.plugin.settings.customBannerIconRotateField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconRotateField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconRotateField] = rotate;
+          writeField(frontmatter, this.plugin, "iconRotate", rotate);
         });
       }
       updateBannerIconColor(color) {
-        const bannerIconColorField = Array.isArray(this.plugin.settings.customBannerIconColorField) ? this.plugin.settings.customBannerIconColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconColorField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconColorField] = color;
+          writeField(frontmatter, this.plugin, "iconColor", color);
         });
       }
       updateBannerIconFontWeight(fontWeight) {
-        const bannerIconFontWeightField = Array.isArray(this.plugin.settings.customBannerIconFontWeightField) ? this.plugin.settings.customBannerIconFontWeightField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconFontWeightField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconFontWeightField] = fontWeight;
+          writeField(frontmatter, this.plugin, "iconFontWeight", fontWeight);
         });
       }
       updateBannerIconBgColor(color, alpha) {
-        const bannerIconBgColorField = Array.isArray(this.plugin.settings.customBannerIconBackgroundColorField) ? this.plugin.settings.customBannerIconBackgroundColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBackgroundColorField;
         let finalColor = color;
         if (alpha < 100) {
           if (color.startsWith("#")) {
@@ -5021,82 +8289,71 @@ var init_targetPositionModal = __esm({
           }
         }
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconBgColorField] = finalColor;
+          writeField(frontmatter, this.plugin, "iconBackgroundColor", finalColor);
         });
       }
       updateBannerIconPaddingX(paddingX) {
-        const bannerIconPaddingXField = Array.isArray(this.plugin.settings.customBannerIconPaddingXField) ? this.plugin.settings.customBannerIconPaddingXField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingXField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconPaddingXField] = paddingX;
+          writeField(frontmatter, this.plugin, "iconPaddingX", paddingX);
         });
       }
       updateBannerIconPaddingY(paddingY) {
-        const bannerIconPaddingYField = Array.isArray(this.plugin.settings.customBannerIconPaddingYField) ? this.plugin.settings.customBannerIconPaddingYField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingYField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconPaddingYField] = paddingY;
+          writeField(frontmatter, this.plugin, "iconPaddingY", paddingY);
         });
       }
       updateBannerIconBorderRadius(borderRadius) {
-        const bannerIconBorderRadiusField = Array.isArray(this.plugin.settings.customBannerIconBorderRadiusField) ? this.plugin.settings.customBannerIconBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBorderRadiusField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconBorderRadiusField] = borderRadius;
+          writeField(frontmatter, this.plugin, "iconBorderRadius", borderRadius);
         });
       }
       updateBannerIconVerticalOffset(verticalOffset) {
-        const bannerIconVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconVerticalOffsetField] = verticalOffset;
+          writeField(frontmatter, this.plugin, "iconVerticalOffset", verticalOffset);
         });
       }
       updateBannerIconTextVerticalOffset(textVerticalOffset) {
-        const bannerIconTextVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconTextVerticalOffsetField) ? this.plugin.settings.customBannerIconTextVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconTextVerticalOffsetField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconTextVerticalOffsetField] = textVerticalOffset;
+          writeField(frontmatter, this.plugin, "iconTextVerticalOffset", textVerticalOffset);
         });
       }
       updateBannerIconImageAlignment(alignment) {
-        const bannerIconImageAlignmentField = Array.isArray(this.plugin.settings.customBannerIconImageAlignmentField) ? this.plugin.settings.customBannerIconImageAlignmentField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageAlignmentField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[bannerIconImageAlignmentField] = alignment;
+          writeField(frontmatter, this.plugin, "iconImageAlignment", alignment);
         });
         setTimeout(() => {
-          const view = this.app.workspace.getActiveViewOfType(import_obsidian17.MarkdownView);
+          const view = this.app.workspace.getActiveViewOfType(import_obsidian20.MarkdownView);
           if (view) {
             this.plugin.updateBanner(view, true);
           }
         }, 350);
       }
       updateTitleColor(color) {
-        const titleColorField = Array.isArray(this.plugin.settings.customTitleColorField) ? this.plugin.settings.customTitleColorField[0].split(",")[0].trim() : this.plugin.settings.customTitleColorField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[titleColorField] = color;
+          writeField(frontmatter, this.plugin, "titleColor", color);
         });
       }
       updateRepeatMode(repeat) {
-        const repeatField = Array.isArray(this.plugin.settings.customImageRepeatField) ? this.plugin.settings.customImageRepeatField[0].split(",")[0].trim() : this.plugin.settings.customImageRepeatField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (fm) => {
-          fm[repeatField] = repeat;
+          writeField(fm, this.plugin, "imageRepeat", repeat);
         });
       }
       updateBannerAlignment(alignment) {
-        const alignmentField = Array.isArray(this.plugin.settings.customBannerAlignmentField) ? this.plugin.settings.customBannerAlignmentField[0].split(",")[0].trim() : this.plugin.settings.customBannerAlignmentField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (fm) => {
-          fm[alignmentField] = alignment;
+          writeField(fm, this.plugin, "alignment", alignment);
         });
       }
       updateBannerFade(fade) {
-        const fadeField = Array.isArray(this.plugin.settings.customFadeField) ? this.plugin.settings.customFadeField[0].split(",")[0].trim() : this.plugin.settings.customFadeField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[fadeField] = fade;
+          writeField(frontmatter, this.plugin, "fade", fade);
         });
       }
       updateBannerBorderRadius(borderRadius) {
-        const borderRadiusField = Array.isArray(this.plugin.settings.customBorderRadiusField) ? this.plugin.settings.customBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBorderRadiusField;
         this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter) => {
-          frontmatter[borderRadiusField] = borderRadius;
+          writeField(frontmatter, this.plugin, "borderRadius", borderRadius);
         });
         setTimeout(() => {
-          const view = this.app.workspace.getActiveViewOfType(import_obsidian17.MarkdownView);
+          const view = this.app.workspace.getActiveViewOfType(import_obsidian20.MarkdownView);
           if (view) {
             this.plugin.updateBanner(view, true);
           }
@@ -5113,10 +8370,12 @@ var init_targetPositionModal = __esm({
       onOpen() {
         const { contentEl } = this;
         contentEl.empty();
-        this.setupUI(contentEl);
+        this.setupUI(contentEl).catch((error) => {
+          console.error("Pixel Banner: failed to build the target position modal", error);
+        });
       }
       async setupUI(contentEl) {
-        var _a;
+        var _a, _b;
         const { modalEl, bgEl } = this;
         contentEl.empty();
         contentEl.addClass("target-position-modal");
@@ -5124,6 +8383,11 @@ var init_targetPositionModal = __esm({
         modalEl.style.width = "max-content";
         modalEl.style.height = "max-content";
         bgEl.style.opacity = "0";
+        if (this.isIconOnly) modalEl.addClass("pixel-banner-target-icon-only");
+        const markBannerOnly = (el) => {
+          if (this.isIconOnly) el.addClass("pixel-banner-banner-only");
+          return el;
+        };
         const activeFile = this.app.workspace.getActiveFile();
         const frontmatter = activeFile ? ((_a = this.app.metadataCache.getFileCache(activeFile)) == null ? void 0 : _a.frontmatter) || {} : {};
         const dragHandle = contentEl.createDiv({
@@ -5160,6 +8424,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
+        markBannerOnly(bannerImageHeader);
         const bannerImageHeaderButtons = bannerImageHeader.createEl("div", {
           cls: "banner-image-header-buttons",
           attr: {
@@ -5171,6 +8436,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
+        markBannerOnly(bannerImageHeaderButtons);
         const bannerImageHeaderChangeButton = bannerImageHeaderButtons.createEl("button", {
           text: "\u270F\uFE0F Change Banner",
           cls: "banner-image-header-button cursor-pointer",
@@ -5212,8 +8478,7 @@ var init_targetPositionModal = __esm({
           }
         });
         let isVideoFile = false;
-        const bannerField = Array.isArray(this.plugin.settings.customBannerField) ? this.plugin.settings.customBannerField[0].split(",")[0].trim() : this.plugin.settings.customBannerField;
-        const bannerValue = frontmatter == null ? void 0 : frontmatter[bannerField];
+        const bannerValue = getFrontmatterValue(frontmatter, getFieldNames(this.plugin, "banner"));
         if (bannerValue) {
           if (typeof bannerValue === "string") {
             const lowerBanner = bannerValue.toLowerCase();
@@ -5239,6 +8504,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
+        markBannerOnly(controlPanel);
         const displaySelect = controlPanel.createEl("select", { cls: "display-mode-select" });
         ["cover", "auto", "contain", "cover-zoom"].forEach((mode) => {
           const option = displaySelect.createEl("option", {
@@ -5310,6 +8576,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
+        markBannerOnly(maxWidthContainer);
         const maxWidthLabel = maxWidthContainer.createEl("div", {
           text: "Max Width",
           cls: "max-width-label",
@@ -5320,12 +8587,11 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const maxWidthField = Array.isArray(this.plugin.settings.customBannerMaxWidthField) ? this.plugin.settings.customBannerMaxWidthField[0].split(",")[0].trim() : this.plugin.settings.customBannerMaxWidthField;
-        const maxWidthValue = frontmatter == null ? void 0 : frontmatter[maxWidthField];
-        const directMaxWidth = frontmatter == null ? void 0 : frontmatter["banner-max-width"];
-        const maxWidthExists = maxWidthValue !== void 0 && maxWidthValue !== null || directMaxWidth !== void 0 && directMaxWidth !== null;
-        const isMaxWidthUnset = !maxWidthExists;
-        this.currentMaxWidth = isMaxWidthUnset ? 1928 : parseInt(maxWidthValue || directMaxWidth) || 1928;
+        const maxWidthValue = getFrontmatterValue(frontmatter, getFieldNames(this.plugin, "maxWidth"));
+        this.isMaxWidthReadable = typeof maxWidthValue === "string" && maxWidthValue.trim().toLowerCase() === "readable";
+        const isMaxWidthUnset = !this.isMaxWidthReadable && (maxWidthValue === void 0 || maxWidthValue === null);
+        const isMaxWidthSliderOff = isMaxWidthUnset || this.isMaxWidthReadable;
+        this.currentMaxWidth = isMaxWidthUnset ? 1928 : parseInt(maxWidthValue) || 1928;
         const unsetContainer = maxWidthContainer.createDiv({
           cls: "unset-container",
           attr: {
@@ -5346,6 +8612,25 @@ var init_targetPositionModal = __esm({
         unsetContainer.createEl("span", {
           text: "unset"
         });
+        const readableContainer = maxWidthContainer.createDiv({
+          cls: "readable-container",
+          attr: {
+            style: `
+                    display: flex;
+                    align-items: center;
+                    gap: 5px;
+                    margin-bottom: 5px;
+                `
+          }
+        });
+        const readableCheckbox = readableContainer.createEl("input", {
+          type: "checkbox",
+          cls: "readable-checkbox"
+        });
+        readableCheckbox.checked = this.isMaxWidthReadable;
+        readableContainer.createEl("span", {
+          text: "readable"
+        });
         const maxWidthValueDisplay = maxWidthContainer.createDiv({
           cls: "max-width-value",
           attr: {
@@ -5356,7 +8641,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        maxWidthValueDisplay.setText(isMaxWidthUnset ? "unset" : `${this.currentMaxWidth}px`);
+        maxWidthValueDisplay.setText(isMaxWidthUnset ? "unset" : this.isMaxWidthReadable ? "readable" : `${this.currentMaxWidth}px`);
         const maxWidthSlider = maxWidthContainer.createEl("input", {
           type: "range",
           cls: "max-width-slider",
@@ -5365,7 +8650,7 @@ var init_targetPositionModal = __esm({
             max: "2560",
             step: "10",
             value: this.currentMaxWidth,
-            disabled: isMaxWidthUnset,
+            disabled: isMaxWidthSliderOff,
             draggable: false,
             style: `
                     width: 15px;
@@ -5373,16 +8658,19 @@ var init_targetPositionModal = __esm({
                     flex: 1;
                     writing-mode: vertical-lr;
                     direction: rtl;
-                    ${isMaxWidthUnset ? "opacity: 0.5;" : ""}
+                    ${isMaxWidthSliderOff ? "opacity: 0.5;" : ""}
                 `
           }
         });
-        if (!isMaxWidthUnset) {
+        if (!isMaxWidthSliderOff) {
           maxWidthSlider.disabled = false;
           maxWidthSlider.style.opacity = "1";
         }
         unsetCheckbox.addEventListener("change", () => {
           const isUnset = unsetCheckbox.checked;
+          if (isUnset) {
+            readableCheckbox.checked = false;
+          }
           maxWidthSlider.disabled = isUnset;
           maxWidthSlider.style.opacity = isUnset ? "0.5" : "1";
           maxWidthValueDisplay.style.color = isUnset ? "var(--text-muted)" : "";
@@ -5390,6 +8678,22 @@ var init_targetPositionModal = __esm({
           if (isUnset) {
             this.updateBannerMaxWidth("unset");
           } else {
+            this.updateBannerMaxWidth(this.currentMaxWidth);
+          }
+        });
+        readableCheckbox.addEventListener("change", () => {
+          if (readableCheckbox.checked) {
+            unsetCheckbox.checked = false;
+            maxWidthSlider.disabled = true;
+            maxWidthSlider.style.opacity = "0.5";
+            maxWidthValueDisplay.style.color = "";
+            maxWidthValueDisplay.setText("readable");
+            this.updateBannerMaxWidth("readable");
+          } else if (!unsetCheckbox.checked) {
+            maxWidthSlider.disabled = false;
+            maxWidthSlider.style.opacity = "1";
+            maxWidthValueDisplay.style.color = "";
+            maxWidthValueDisplay.setText(`${this.currentMaxWidth}px`);
             this.updateBannerMaxWidth(this.currentMaxWidth);
           }
         });
@@ -5411,6 +8715,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
+        markBannerOnly(heightContainer);
         const heightLabel = heightContainer.createEl("div", {
           text: "Height",
           cls: "height-label",
@@ -5461,6 +8766,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
+        markBannerOnly(targetContainer);
         const targetArea = targetContainer.createDiv({
           cls: "target-area",
           attr: {
@@ -5502,11 +8808,9 @@ var init_targetPositionModal = __esm({
           horizontalLine.style.top = `${y}%`;
           this.currentX = Math.round(x);
           this.currentY = Math.round(y);
-          const xField = Array.isArray(this.plugin.settings.customXPositionField) ? this.plugin.settings.customXPositionField[0].split(",")[0].trim() : this.plugin.settings.customXPositionField;
-          const yField = Array.isArray(this.plugin.settings.customYPositionField) ? this.plugin.settings.customYPositionField[0].split(",")[0].trim() : this.plugin.settings.customYPositionField;
           this.app.fileManager.processFrontMatter(this.app.workspace.getActiveFile(), (frontmatter2) => {
-            frontmatter2[xField] = this.currentX;
-            frontmatter2[yField] = this.currentY;
+            writeField(frontmatter2, this.plugin, "xPosition", this.currentX);
+            writeField(frontmatter2, this.plugin, "yPosition", this.currentY);
           });
           updatePositionIndicator();
         };
@@ -5581,6 +8885,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
+        markBannerOnly(bannerSettingsRow2);
         bannerSettingsRow2.createEl("div", {
           text: "Banner Alignment",
           attr: {
@@ -5737,11 +9042,10 @@ var init_targetPositionModal = __esm({
               const activeFile2 = this.app.workspace.getActiveFile();
               if (activeFile2) {
                 await this.plugin.app.fileManager.processFrontMatter(activeFile2, (frontmatter2) => {
-                  const iconField = this.plugin.settings.customBannerIconField[0];
                   if (emoji) {
-                    frontmatter2[iconField] = emoji;
+                    writeField(frontmatter2, this.plugin, "icon", emoji);
                   } else {
-                    delete frontmatter2[iconField];
+                    clearField(frontmatter2, this.plugin, "icon");
                   }
                 });
               }
@@ -5760,8 +9064,7 @@ var init_targetPositionModal = __esm({
               if (!activeFile2) return;
               if (file.isWebUrl) {
                 this.app.fileManager.processFrontMatter(activeFile2, (fm) => {
-                  const iconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
-                  fm[iconImageField] = file.path;
+                  writeField(fm, this.plugin, "iconImage", file.path);
                 });
                 new _TargetPositionModal(this.app, this.plugin).open();
                 return;
@@ -5789,7 +9092,6 @@ var init_targetPositionModal = __esm({
                 }
               }
               this.app.fileManager.processFrontMatter(activeFile2, (fm) => {
-                const iconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
                 const format = this.plugin.settings.imagePropertyFormat;
                 let iconImageValue;
                 if (format === "image") {
@@ -5799,15 +9101,15 @@ var init_targetPositionModal = __esm({
                 } else {
                   iconImageValue = `![[${filePath}]]`;
                 }
-                fm[iconImageField] = iconImageValue;
+                writeField(fm, this.plugin, "iconImage", iconImageValue);
               });
               new _TargetPositionModal(this.app, this.plugin).open();
             },
             defaultIconImageFolder
           ).open();
         };
-        const bannerIconField = Array.isArray(this.plugin.settings.customBannerIconField) ? this.plugin.settings.customBannerIconField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconField;
-        const bannerIconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
+        const bannerIconFields = getFieldNames(this.plugin, "icon");
+        const bannerIconImageFields = getFieldNames(this.plugin, "iconImage");
         const getStringValue = (value) => {
           if (value === void 0 || value === null) return "";
           if (typeof value === "string") return value;
@@ -5820,14 +9122,15 @@ var init_targetPositionModal = __esm({
           }
           return String(value);
         };
-        let hasBannerIcon = frontmatter && (frontmatter[bannerIconField] && getStringValue(frontmatter[bannerIconField]).trim() !== "" || frontmatter[bannerIconImageField] && getStringValue(frontmatter[bannerIconImageField]).trim() !== "");
-        const hasBannerIconImage = frontmatter && frontmatter[bannerIconImageField] && getStringValue(frontmatter[bannerIconImageField]).trim() !== "";
+        const hasValue = (fm, fieldNames) => getStringValue(getFrontmatterValue(fm, fieldNames)).trim() !== "";
+        let hasBannerIcon = hasValue(frontmatter, bannerIconFields) || hasValue(frontmatter, bannerIconImageFields);
+        const hasBannerIconImage = hasValue(frontmatter, bannerIconImageFields);
         if (!hasBannerIcon) {
           await new Promise((resolve) => {
             setTimeout(async () => {
               var _a2;
               const refreshedFrontmatter = (_a2 = this.app.metadataCache.getFileCache(activeFile)) == null ? void 0 : _a2.frontmatter;
-              if (refreshedFrontmatter && (refreshedFrontmatter[bannerIconField] && getStringValue(refreshedFrontmatter[bannerIconField]).trim() !== "" || refreshedFrontmatter[bannerIconImageField] && getStringValue(refreshedFrontmatter[bannerIconImageField]).trim() !== "")) {
+              if (hasValue(refreshedFrontmatter, bannerIconFields) || hasValue(refreshedFrontmatter, bannerIconImageFields)) {
                 hasBannerIcon = true;
               }
               resolve();
@@ -5887,7 +9190,7 @@ var init_targetPositionModal = __esm({
           }
         });
         bannerIconHeaderButtonIcon.addEventListener("click", openIconImagePicker);
-        const hasBannerIconText = frontmatter && frontmatter[bannerIconField] && getStringValue(frontmatter[bannerIconField]).trim() !== "";
+        const hasBannerIconText = hasValue(frontmatter, bannerIconFields);
         const bannerIconHeaderButtonText = bannerIconHeaderButtons.createEl("button", {
           text: hasBannerIconText ? "\u{1F4DD} Edit Icon Text & Emoji" : "\u{1F4F0} Add Icon Text & Emoji",
           cls: "banner-icon-header-button cursor-pointer",
@@ -6097,8 +9400,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
-        this.currentBannerIconVerticalOffset = (frontmatter == null ? void 0 : frontmatter[iconVerticalOffsetField]) || this.plugin.settings.bannerIconVerticalOffset;
+        this.currentBannerIconVerticalOffset = resolveField(this.plugin, "iconVerticalOffset", frontmatter);
         const bannerIconVerticalOffsetSlider = bannerIconVerticalOffsetContainer.createEl("input", {
           type: "range",
           cls: "banner-icon-vertical-offset-slider",
@@ -6153,8 +9455,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconSizeField = Array.isArray(this.plugin.settings.customBannerIconSizeField) ? this.plugin.settings.customBannerIconSizeField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconSizeField;
-        this.currentBannerIconSize = (frontmatter == null ? void 0 : frontmatter[iconSizeField]) || this.plugin.settings.bannerIconSize;
+        this.currentBannerIconSize = resolveField(this.plugin, "iconSize", frontmatter);
         const bannerIconSizeSlider = bannerIconSizeContainer.createEl("input", {
           type: "range",
           cls: "banner-icon-size-slider",
@@ -6209,8 +9510,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconImageSizeMultiplierField = Array.isArray(this.plugin.settings.customBannerIconImageSizeMultiplierField) ? this.plugin.settings.customBannerIconImageSizeMultiplierField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageSizeMultiplierField;
-        this.currentBannerIconImageSizeMultiplier = (frontmatter == null ? void 0 : frontmatter[iconImageSizeMultiplierField]) || this.plugin.settings.bannerIconImageSizeMultiplier;
+        this.currentBannerIconImageSizeMultiplier = resolveField(this.plugin, "iconImageSizeMultiplier", frontmatter);
         const bannerIconImageSizeMultiplierSlider = bannerIconImageSizeMultiplierContainer.createEl("input", {
           type: "range",
           cls: "banner-icon-image-size-multiplier-slider",
@@ -6265,8 +9565,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconTextVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconTextVerticalOffsetField) ? this.plugin.settings.customBannerIconTextVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconTextVerticalOffsetField;
-        this.currentBannerIconTextVerticalOffset = (frontmatter == null ? void 0 : frontmatter[iconTextVerticalOffsetField]) || this.plugin.settings.bannerIconTextVerticalOffset || 0;
+        this.currentBannerIconTextVerticalOffset = (_b = resolveField(this.plugin, "iconTextVerticalOffset", frontmatter)) != null ? _b : 0;
         const bannerIconTextVerticalOffsetSlider = bannerIconTextVerticalOffsetContainer.createEl("input", {
           type: "range",
           cls: "banner-icon-text-vertical-offset-slider",
@@ -6321,8 +9620,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconRotateField = Array.isArray(this.plugin.settings.customBannerIconRotateField) ? this.plugin.settings.customBannerIconRotateField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconRotateField;
-        this.currentBannerIconRotate = (frontmatter == null ? void 0 : frontmatter[iconRotateField]) || 0;
+        this.currentBannerIconRotate = resolveField(this.plugin, "iconRotate", frontmatter);
         const bannerIconRotateSlider = bannerIconRotateContainer.createEl("input", {
           type: "range",
           cls: "banner-icon-rotate-slider",
@@ -6375,10 +9673,10 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconColorField = Array.isArray(this.plugin.settings.customBannerIconColorField) ? this.plugin.settings.customBannerIconColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconColorField;
+        const iconColorValue = getFrontmatterValue(frontmatter, getFieldNames(this.plugin, "iconColor"));
         let currentIconColor = this.plugin.settings.bannerIconColor;
-        if ((frontmatter == null ? void 0 : frontmatter[iconColorField]) || this.plugin.settings.bannerIconColor) {
-          const colorValue = (frontmatter == null ? void 0 : frontmatter[iconColorField]) || this.plugin.settings.bannerIconColor;
+        if (iconColorValue || this.plugin.settings.bannerIconColor) {
+          const colorValue = iconColorValue || this.plugin.settings.bannerIconColor;
           if (typeof colorValue === "string" && colorValue.startsWith("#")) {
             currentIconColor = colorValue;
           } else if (typeof colorValue === "string" && colorValue.trim() !== "") {
@@ -6457,8 +9755,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconFontWeightField = Array.isArray(this.plugin.settings.customBannerIconFontWeightField) ? this.plugin.settings.customBannerIconFontWeightField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconFontWeightField;
-        this.currentBannerIconFontWeight = (frontmatter == null ? void 0 : frontmatter[iconFontWeightField]) || this.plugin.settings.bannerIconFontWeight;
+        this.currentBannerIconFontWeight = resolveField(this.plugin, "iconFontWeight", frontmatter);
         const bannerIconFontWeightSelect = bannerIconFontWeightContainer.createEl("select", {
           cls: "banner-icon-font-weight-select"
         });
@@ -6522,11 +9819,11 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconBgColorField = Array.isArray(this.plugin.settings.customBannerIconBackgroundColorField) ? this.plugin.settings.customBannerIconBackgroundColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBackgroundColorField;
+        const iconBgColorValue = getFrontmatterValue(frontmatter, getFieldNames(this.plugin, "iconBackgroundColor"));
         let currentColor = this.plugin.settings.bannerIconBackgroundColor;
         let currentAlpha = 100;
-        if ((frontmatter == null ? void 0 : frontmatter[iconBgColorField]) || this.plugin.settings.bannerIconBackgroundColor) {
-          const colorValue = (frontmatter == null ? void 0 : frontmatter[iconBgColorField]) || this.plugin.settings.bannerIconBackgroundColor;
+        if (iconBgColorValue || this.plugin.settings.bannerIconBackgroundColor) {
+          const colorValue = iconBgColorValue || this.plugin.settings.bannerIconBackgroundColor;
           const rgbaMatch = colorValue == null ? void 0 : colorValue.match(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([\d.]+)\s*\)/);
           if (rgbaMatch) {
             const r = parseInt(rgbaMatch[1]);
@@ -6679,8 +9976,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconPaddingXField = Array.isArray(this.plugin.settings.customBannerIconPaddingXField) ? this.plugin.settings.customBannerIconPaddingXField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingXField;
-        this.currentBannerIconPaddingX = (frontmatter == null ? void 0 : frontmatter[iconPaddingXField]) || this.plugin.settings.bannerIconPaddingX;
+        this.currentBannerIconPaddingX = resolveField(this.plugin, "iconPaddingX", frontmatter);
         const bannerIconPaddingXSlider = bannerIconPaddingXContainer.createEl("input", {
           type: "range",
           cls: "banner-icon-padding-x-slider",
@@ -6735,8 +10031,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconPaddingYField = Array.isArray(this.plugin.settings.customBannerIconPaddingYField) ? this.plugin.settings.customBannerIconPaddingYField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingYField;
-        this.currentBannerIconPaddingY = (frontmatter == null ? void 0 : frontmatter[iconPaddingYField]) || this.plugin.settings.bannerIconPaddingY;
+        this.currentBannerIconPaddingY = resolveField(this.plugin, "iconPaddingY", frontmatter);
         const bannerIconPaddingYSlider = bannerIconPaddingYContainer.createEl("input", {
           type: "range",
           cls: "banner-icon-padding-y-slider",
@@ -6791,11 +10086,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const iconBorderRadiusField = Array.isArray(this.plugin.settings.customBannerIconBorderRadiusField) ? this.plugin.settings.customBannerIconBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBorderRadiusField;
-        this.currentBannerIconBorderRadius = getValueWithZeroCheck([
-          frontmatter == null ? void 0 : frontmatter[iconBorderRadiusField],
-          this.plugin.settings.bannerIconBorderRadius
-        ]);
+        this.currentBannerIconBorderRadius = resolveField(this.plugin, "iconBorderRadius", frontmatter);
         const bannerIconBorderRadiusSlider = bannerIconBorderRadiusContainer.createEl("input", {
           type: "range",
           cls: "banner-icon-border-radius-slider",
@@ -6826,18 +10117,51 @@ var init_targetPositionModal = __esm({
           bannerIconBorderRadiusValue.setText(`${this.currentBannerIconBorderRadius}`);
           this.updateBannerIconBorderRadius(this.currentBannerIconBorderRadius);
         });
+        const confettiSection = contentEl.createDiv({
+          cls: "confetti-effect-section"
+        });
+        confettiSection.createEl("span", {
+          text: "\u{1F38A} Confetti Effect",
+          cls: "confetti-effect-title"
+        });
+        const currentConfettiValue = getFrontmatterValue(frontmatter || {}, this.plugin.settings.customBannerConfettiField);
+        const currentConfettiConfig = currentConfettiValue ? parseConfettiConfig(currentConfettiValue) : null;
+        const unknownConfettiPreset = currentConfettiValue && !currentConfettiConfig ? readPresetName(currentConfettiValue) || (typeof currentConfettiValue === "string" ? currentConfettiValue.trim() : "") || "no type" : null;
+        let confettiStatusText = "No effect";
+        let confettiStatusClass = "confetti-status-none";
+        if (currentConfettiConfig) {
+          confettiStatusText = `Active: ${currentConfettiConfig.presetName}`;
+          confettiStatusClass = "confetti-status-active";
+        } else if (unknownConfettiPreset) {
+          confettiStatusText = `Unknown preset: ${unknownConfettiPreset}`;
+          confettiStatusClass = "confetti-status-unknown";
+        }
+        const confettiStatus = confettiSection.createEl("span", {
+          text: confettiStatusText,
+          cls: `confetti-status ${confettiStatusClass}`
+        });
+        const confettiButton = confettiSection.createEl("button", {
+          text: currentConfettiConfig || unknownConfettiPreset ? "\u270F\uFE0F Edit Confetti" : "\u{1F38A} Add Confetti",
+          cls: "confetti-settings-button cursor-pointer"
+        });
+        confettiButton.addEventListener("click", () => {
+          this.close();
+          const modalConfig = currentConfettiConfig || (unknownConfettiPreset ? { presetName: unknownConfettiPreset, overrides: {} } : null);
+          new ConfettiModal(this.app, this.plugin, modalConfig).open();
+        });
         const flagColorSection = contentEl.createDiv({
           cls: "flag-color-section",
           attr: {
             style: `
                     display: flex;
                     flex-direction: row;
+                    justify-content: space-between;
                     gap: 5px;
                     margin-top: 20px;
                     padding: 15px;
                     border-radius: 5px;
                     background-color: var(--background-secondary);
-                    max-width: 600px;
+                    // max-width: 600px;
                 `
           }
         });
@@ -6922,10 +10246,9 @@ var init_targetPositionModal = __esm({
               const activeFile2 = this.app.workspace.getActiveFile();
               if (activeFile2) {
                 await this.plugin.app.fileManager.processFrontMatter(activeFile2, (frontmatter2) => {
-                  const flagColorField = this.plugin.settings.customFlagColorField[0];
-                  frontmatter2[flagColorField] = color;
+                  writeField(frontmatter2, this.plugin, "flagColor", color);
                 });
-                const view = this.plugin.app.workspace.getActiveViewOfType(import_obsidian17.MarkdownView);
+                const view = this.plugin.app.workspace.getActiveViewOfType(import_obsidian20.MarkdownView);
                 if (view) {
                   await this.plugin.updateBanner(view, true);
                 }
@@ -6960,8 +10283,7 @@ var init_targetPositionModal = __esm({
                 `
           }
         });
-        const titleColorField = Array.isArray(this.plugin.settings.customTitleColorField) ? this.plugin.settings.customTitleColorField[0].split(",")[0].trim() : this.plugin.settings.customTitleColorField;
-        let currentTitleColor = (frontmatter == null ? void 0 : frontmatter[titleColorField]) || this.plugin.settings.titleColor;
+        let currentTitleColor = getFrontmatterValue(frontmatter, getFieldNames(this.plugin, "titleColor")) || this.plugin.settings.titleColor;
         if (currentTitleColor && currentTitleColor.startsWith("var(--")) {
           const tempEl = document.createElement("div");
           tempEl.style.color = currentTitleColor;
@@ -7115,11 +10437,19 @@ var init_targetPositionModal = __esm({
           zoomValue.setText("100%");
           heightValue.setText(`${this.plugin.settings.bannerHeight}px`);
           contentStartPositionValue.setText(`${this.plugin.settings.contentStartPosition}px`);
+          if (this.isIconOnly) {
+            this.currentContentStartPosition = this.getIconOnlyContentStartPosition({});
+            contentStartPositionSlider.value = this.currentContentStartPosition;
+            contentStartPositionValue.setText(`${this.currentContentStartPosition}px`);
+          }
           bannerIconXPositionValue.setText(`${this.plugin.settings.bannerIconXPosition}`);
           if (unsetCheckbox) {
             unsetCheckbox.checked = true;
             maxWidthValueDisplay.style.color = "var(--text-muted)";
             maxWidthValueDisplay.setText("unset");
+          }
+          if (readableCheckbox) {
+            readableCheckbox.checked = false;
           }
           if (alignmentSelect) {
             alignmentSelect.value = "center";
@@ -7140,61 +10470,34 @@ var init_targetPositionModal = __esm({
           updatePositionIndicator();
           const activeFile2 = this.app.workspace.getActiveFile();
           this.app.fileManager.processFrontMatter(activeFile2, (frontmatter2) => {
-            const displayField = Array.isArray(this.plugin.settings.customImageDisplayField) ? this.plugin.settings.customImageDisplayField[0].split(",")[0].trim() : this.plugin.settings.customImageDisplayField;
-            const heightField = Array.isArray(this.plugin.settings.customBannerHeightField) ? this.plugin.settings.customBannerHeightField[0].split(",")[0].trim() : this.plugin.settings.customBannerHeightField;
-            const maxWidthField2 = Array.isArray(this.plugin.settings.customBannerMaxWidthField) ? this.plugin.settings.customBannerMaxWidthField[0].split(",")[0].trim() : this.plugin.settings.customBannerMaxWidthField;
-            const xField = Array.isArray(this.plugin.settings.customXPositionField) ? this.plugin.settings.customXPositionField[0].split(",")[0].trim() : this.plugin.settings.customXPositionField;
-            const yField = Array.isArray(this.plugin.settings.customYPositionField) ? this.plugin.settings.customYPositionField[0].split(",")[0].trim() : this.plugin.settings.customYPositionField;
-            const contentStartPositionField = Array.isArray(this.plugin.settings.customContentStartField) ? this.plugin.settings.customContentStartField[0].split(",")[0].trim() : this.plugin.settings.customContentStartField;
-            const bannerIconXPositionField = Array.isArray(this.plugin.settings.customBannerIconXPositionField) ? this.plugin.settings.customBannerIconXPositionField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconXPositionField;
-            const bannerIconImageAlignmentField = Array.isArray(this.plugin.settings.customBannerIconImageAlignmentField) ? this.plugin.settings.customBannerIconImageAlignmentField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageAlignmentField;
-            const repeatField = Array.isArray(this.plugin.settings.customImageRepeatField) ? this.plugin.settings.customImageRepeatField[0].split(",")[0].trim() : this.plugin.settings.customImageRepeatField;
-            const fadeField = Array.isArray(this.plugin.settings.customFadeField) ? this.plugin.settings.customFadeField[0].split(",")[0].trim() : this.plugin.settings.customFadeField;
-            const borderRadiusField = Array.isArray(this.plugin.settings.customBorderRadiusField) ? this.plugin.settings.customBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBorderRadiusField;
-            const bannerIconColorField = Array.isArray(this.plugin.settings.customBannerIconColorField) ? this.plugin.settings.customBannerIconColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconColorField;
-            const bannerIconFontWeightField = Array.isArray(this.plugin.settings.customBannerIconFontWeightField) ? this.plugin.settings.customBannerIconFontWeightField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconFontWeightField;
-            const bannerIconBgColorField = Array.isArray(this.plugin.settings.customBannerIconBackgroundColorField) ? this.plugin.settings.customBannerIconBackgroundColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBackgroundColorField;
-            const bannerIconPaddingXField = Array.isArray(this.plugin.settings.customBannerIconPaddingXField) ? this.plugin.settings.customBannerIconPaddingXField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingXField;
-            const bannerIconPaddingYField = Array.isArray(this.plugin.settings.customBannerIconPaddingYField) ? this.plugin.settings.customBannerIconPaddingYField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingYField;
-            const bannerIconBorderRadiusField = Array.isArray(this.plugin.settings.customBannerIconBorderRadiusField) ? this.plugin.settings.customBannerIconBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBorderRadiusField;
-            const bannerIconVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
-            const bannerIconSizeField = Array.isArray(this.plugin.settings.customBannerIconSizeField) ? this.plugin.settings.customBannerIconSizeField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconSizeField;
-            const bannerIconTextVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconTextVerticalOffsetField) ? this.plugin.settings.customBannerIconTextVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconTextVerticalOffsetField;
-            const bannerIconImageSizeMultiplierField = Array.isArray(this.plugin.settings.customBannerIconImageSizeMultiplierField) ? this.plugin.settings.customBannerIconImageSizeMultiplierField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageSizeMultiplierField;
-            const bannerIconRotateField = Array.isArray(this.plugin.settings.customBannerIconRotateField) ? this.plugin.settings.customBannerIconRotateField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconRotateField;
-            delete frontmatter2[displayField];
-            delete frontmatter2[heightField];
-            delete frontmatter2[maxWidthField2];
-            delete frontmatter2[xField];
-            delete frontmatter2[yField];
-            delete frontmatter2[contentStartPositionField];
-            delete frontmatter2[repeatField];
-            delete frontmatter2[fadeField];
-            delete frontmatter2[borderRadiusField];
-            delete frontmatter2[bannerIconXPositionField];
-            delete frontmatter2[bannerIconImageAlignmentField];
-            delete frontmatter2[bannerIconColorField];
-            delete frontmatter2[bannerIconFontWeightField];
-            delete frontmatter2[bannerIconBgColorField];
-            delete frontmatter2[bannerIconPaddingXField];
-            delete frontmatter2[bannerIconPaddingYField];
-            delete frontmatter2[bannerIconBorderRadiusField];
-            delete frontmatter2[bannerIconVerticalOffsetField];
-            delete frontmatter2[bannerIconSizeField];
-            delete frontmatter2[bannerIconTextVerticalOffsetField];
-            delete frontmatter2[bannerIconImageSizeMultiplierField];
-            delete frontmatter2[bannerIconRotateField];
-            const alignmentField = Array.isArray(this.plugin.settings.customBannerAlignmentField) ? this.plugin.settings.customBannerAlignmentField[0].split(",")[0].trim() : this.plugin.settings.customBannerAlignmentField;
-            delete frontmatter2[alignmentField];
-            const flagColorField = Array.isArray(this.plugin.settings.customFlagColorField) ? this.plugin.settings.customFlagColorField[0].split(",")[0].trim() : this.plugin.settings.customFlagColorField;
-            delete frontmatter2[flagColorField];
+            clearField(frontmatter2, this.plugin, "imageDisplay");
+            clearField(frontmatter2, this.plugin, "height");
+            clearField(frontmatter2, this.plugin, "maxWidth");
+            clearField(frontmatter2, this.plugin, "xPosition");
+            clearField(frontmatter2, this.plugin, "yPosition");
+            clearField(frontmatter2, this.plugin, "contentStart");
+            clearField(frontmatter2, this.plugin, "imageRepeat");
+            clearField(frontmatter2, this.plugin, "fade");
+            clearField(frontmatter2, this.plugin, "borderRadius");
+            clearField(frontmatter2, this.plugin, "iconXPosition");
+            clearField(frontmatter2, this.plugin, "iconImageAlignment");
+            clearField(frontmatter2, this.plugin, "iconColor");
+            clearField(frontmatter2, this.plugin, "iconFontWeight");
+            clearField(frontmatter2, this.plugin, "iconBackgroundColor");
+            clearField(frontmatter2, this.plugin, "iconPaddingX");
+            clearField(frontmatter2, this.plugin, "iconPaddingY");
+            clearField(frontmatter2, this.plugin, "iconBorderRadius");
+            clearField(frontmatter2, this.plugin, "iconVerticalOffset");
+            clearField(frontmatter2, this.plugin, "iconSize");
+            clearField(frontmatter2, this.plugin, "iconTextVerticalOffset");
+            clearField(frontmatter2, this.plugin, "iconImageSizeMultiplier");
+            clearField(frontmatter2, this.plugin, "iconRotate");
+            clearField(frontmatter2, this.plugin, "alignment");
+            clearField(frontmatter2, this.plugin, "flagColor");
             if (deleteBannerAndIcon) {
-              const bannerField2 = Array.isArray(this.plugin.settings.customBannerField) ? this.plugin.settings.customBannerField[0].split(",")[0].trim() : this.plugin.settings.customBannerField;
-              const bannerIconImageField2 = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
-              const bannerIconField2 = Array.isArray(this.plugin.settings.customBannerIconField) ? this.plugin.settings.customBannerIconField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconField;
-              delete frontmatter2[bannerField2];
-              delete frontmatter2[bannerIconImageField2];
-              delete frontmatter2[bannerIconField2];
+              clearField(frontmatter2, this.plugin, "banner");
+              clearField(frontmatter2, this.plugin, "iconImage");
+              clearField(frontmatter2, this.plugin, "icon");
             }
           });
           if (flagRadioContainer) {
@@ -7229,10 +10532,9 @@ var init_targetPositionModal = __esm({
               titleColorPicker.value = defaultTitleColor.startsWith("#") ? defaultTitleColor : getCurrentTheme_default() === "dark" ? "#ffffff" : "#000000";
             }
           }
-          const titleColorField2 = Array.isArray(this.plugin.settings.customTitleColorField) ? this.plugin.settings.customTitleColorField[0].split(",")[0].trim() : this.plugin.settings.customTitleColorField;
           if (activeFile2) {
             this.app.fileManager.processFrontMatter(activeFile2, (fm) => {
-              delete fm[titleColorField2];
+              clearField(fm, this.plugin, "titleColor");
             });
           }
           this.currentX = this.plugin.settings.xPosition;
@@ -7241,7 +10543,7 @@ var init_targetPositionModal = __esm({
           horizontalLine.style.top = `${this.currentY}%`;
           updatePositionIndicator();
           setTimeout(() => {
-            const view = this.app.workspace.getActiveViewOfType(import_obsidian17.MarkdownView);
+            const view = this.app.workspace.getActiveViewOfType(import_obsidian20.MarkdownView);
             if (view) {
               this.plugin.updateBanner(view, true);
             }
@@ -7357,6 +10659,7 @@ var init_targetPositionModal = __esm({
       }
       addStyle() {
         const style = document.createElement("style");
+        this.styleEl = style;
         style.textContent = `
             /* --------------------------- */
             /* -- Target Position Modal -- */
@@ -7657,9 +10960,9 @@ var init_targetPositionModal = __esm({
         document.head.appendChild(style);
       }
       onClose() {
-        const style = document.head.querySelector("style:last-child");
-        if (style) {
-          style.remove();
+        if (this.styleEl) {
+          this.styleEl.remove();
+          this.styleEl = null;
         }
       }
     };
@@ -7667,15 +10970,16 @@ var init_targetPositionModal = __esm({
 });
 
 // src/modal/modals/iconImageSelectionModal.js
-var import_obsidian18, IconImageSelectionModal;
+var import_obsidian21, IconImageSelectionModal;
 var init_iconImageSelectionModal = __esm({
   "src/modal/modals/iconImageSelectionModal.js"() {
-    import_obsidian18 = require("obsidian");
+    import_obsidian21 = require("obsidian");
     init_iconFolderSelectionModal();
     init_saveImageModal();
     init_modals();
     init_constants();
-    IconImageSelectionModal = class extends import_obsidian18.Modal {
+    init_fieldRegistry();
+    IconImageSelectionModal = class extends import_obsidian21.Modal {
       constructor(app, plugin, onChoose, defaultPath = "") {
         super(app);
         this.plugin = plugin;
@@ -7702,16 +11006,16 @@ var init_iconImageSelectionModal = __esm({
           originalOnChoose(file);
         };
       }
-      debounce(func, wait) {
+      debounce(func, wait2) {
         let timeout;
         return (...args) => {
           clearTimeout(timeout);
-          timeout = setTimeout(() => func.apply(this, args), wait);
+          timeout = setTimeout(() => func.apply(this, args), wait2);
         };
       }
       async confirmDelete(file) {
         return new Promise((resolve) => {
-          const modal = new import_obsidian18.Modal(this.app);
+          const modal = new import_obsidian21.Modal(this.app);
           modal.contentEl.createEl("h2", { text: "Delete Image" });
           modal.contentEl.createEl("p", { text: `Are you sure you want to delete "${file.name}"?` });
           const buttonContainer = modal.contentEl.createDiv();
@@ -7742,7 +11046,7 @@ var init_iconImageSelectionModal = __esm({
           this.imageFiles = this.imageFiles.filter((f) => f.path !== file.path);
           this.updateImageGrid();
         } catch (error) {
-          new import_obsidian18.Notice(`Failed to delete image: ${error.message}`);
+          new import_obsidian21.Notice(`Failed to delete image: ${error.message}`);
         }
       }
       onOpen() {
@@ -7751,11 +11055,6 @@ var init_iconImageSelectionModal = __esm({
         contentEl.empty();
         const style = document.createElement("style");
         style.textContent = `
-            .pixel-banner-image-modal {
-                width: var(--dialog-max-width);
-                top: unset !important;
-            }
-
             .pixel-banner-image-select-modal {
                 top: unset !important;
                 width: var(--dialog-max-width);
@@ -8022,43 +11321,30 @@ var init_iconImageSelectionModal = __esm({
           const activeFile = this.app.workspace.getActiveFile();
           if (activeFile) {
             await this.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-              const bannerIconField = Array.isArray(this.plugin.settings.customBannerIconField) ? this.plugin.settings.customBannerIconField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconField;
-              const bannerIconImageAlignmentField = Array.isArray(this.plugin.settings.customBannerIconImageAlignmentField) ? this.plugin.settings.customBannerIconImageAlignmentField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageAlignmentField;
-              const iconSizeField = Array.isArray(this.plugin.settings.customBannerIconSizeField) ? this.plugin.settings.customBannerIconSizeField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconSizeField;
-              const iconImageSizeMultiplierField = Array.isArray(this.plugin.settings.customBannerIconImageSizeMultiplierField) ? this.plugin.settings.customBannerIconImageSizeMultiplierField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageSizeMultiplierField;
-              const iconRotateField = Array.isArray(this.plugin.settings.customBannerIconRotateField) ? this.plugin.settings.customBannerIconRotateField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconRotateField;
-              const iconYPositionField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
-              const iconXPositionField = Array.isArray(this.plugin.settings.customBannerIconXPositionField) ? this.plugin.settings.customBannerIconXPositionField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconXPositionField;
-              const iconColorField = Array.isArray(this.plugin.settings.customBannerIconColorField) ? this.plugin.settings.customBannerIconColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconColorField;
-              const iconBgColorField = Array.isArray(this.plugin.settings.customBannerIconBackgroundColorField) ? this.plugin.settings.customBannerIconBackgroundColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBackgroundColorField;
-              const iconXPaddingField = Array.isArray(this.plugin.settings.customBannerIconPaddingXField) ? this.plugin.settings.customBannerIconPaddingXField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingXField;
-              const iconYPaddingField = Array.isArray(this.plugin.settings.customBannerIconPaddingYField) ? this.plugin.settings.customBannerIconPaddingYField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingYField;
-              const iconBorderRadiusField = Array.isArray(this.plugin.settings.customBannerIconBorderRadiusField) ? this.plugin.settings.customBannerIconBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBorderRadiusField;
-              const bannerIconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
-              const hasTextEmoji = frontmatter[bannerIconField] !== void 0 && frontmatter[bannerIconField] !== null && frontmatter[bannerIconField] !== "";
+              const hasTextEmoji = getFieldNames(this.plugin, "icon").some((name) => frontmatter[name] !== void 0 && frontmatter[name] !== null && frontmatter[name] !== "");
               if (!hasTextEmoji) {
-                delete frontmatter[bannerIconField];
-                delete frontmatter[bannerIconImageField];
-                delete frontmatter[bannerIconImageAlignmentField];
-                delete frontmatter[iconSizeField];
-                delete frontmatter[iconImageSizeMultiplierField];
-                delete frontmatter[iconRotateField];
-                delete frontmatter[iconYPositionField];
-                delete frontmatter[iconXPositionField];
-                delete frontmatter[iconColorField];
-                delete frontmatter[iconBgColorField];
-                delete frontmatter[iconXPaddingField];
-                delete frontmatter[iconYPaddingField];
-                delete frontmatter[iconBorderRadiusField];
+                clearField(frontmatter, this.plugin, "icon");
+                clearField(frontmatter, this.plugin, "iconImage");
+                clearField(frontmatter, this.plugin, "iconImageAlignment");
+                clearField(frontmatter, this.plugin, "iconSize");
+                clearField(frontmatter, this.plugin, "iconImageSizeMultiplier");
+                clearField(frontmatter, this.plugin, "iconRotate");
+                clearField(frontmatter, this.plugin, "iconVerticalOffset");
+                clearField(frontmatter, this.plugin, "iconXPosition");
+                clearField(frontmatter, this.plugin, "iconColor");
+                clearField(frontmatter, this.plugin, "iconBackgroundColor");
+                clearField(frontmatter, this.plugin, "iconPaddingX");
+                clearField(frontmatter, this.plugin, "iconPaddingY");
+                clearField(frontmatter, this.plugin, "iconBorderRadius");
               } else {
-                delete frontmatter[bannerIconImageField];
-                delete frontmatter[iconImageSizeMultiplierField];
-                delete frontmatter[bannerIconImageAlignmentField];
+                clearField(frontmatter, this.plugin, "iconImage");
+                clearField(frontmatter, this.plugin, "iconImageSizeMultiplier");
+                clearField(frontmatter, this.plugin, "iconImageAlignment");
               }
             });
             this.onChoose(null);
             this.close();
-            const activeView = this.app.workspace.getActiveViewOfType(import_obsidian18.MarkdownView);
+            const activeView = this.app.workspace.getActiveViewOfType(import_obsidian21.MarkdownView);
             if (activeView) {
               const contentEl2 = activeView.contentEl;
               if (contentEl2) {
@@ -8254,7 +11540,7 @@ var init_iconImageSelectionModal = __esm({
                 `
           }
         });
-        const shorPathToggle = new import_obsidian18.Setting(shorPathToggleContainer).addToggle((cb) => {
+        const shorPathToggle = new import_obsidian21.Setting(shorPathToggleContainer).addToggle((cb) => {
           cb.setValue(this.plugin.settings.useShortPath).onChange(async (value) => {
             this.plugin.settings.useShortPath = value;
             await this.plugin.saveSettings();
@@ -8284,7 +11570,7 @@ var init_iconImageSelectionModal = __esm({
                 }).open();
               });
               if (!folderPath) {
-                new import_obsidian18.Notice("No folder selected");
+                new import_obsidian21.Notice("No folder selected");
                 return;
               }
               if (!await this.app.vault.adapter.exists(folderPath)) {
@@ -8297,7 +11583,7 @@ var init_iconImageSelectionModal = __esm({
                 }).open();
               });
               if (!fileName) {
-                new import_obsidian18.Notice("No file name provided");
+                new import_obsidian21.Notice("No file name provided");
                 return;
               }
               try {
@@ -8306,7 +11592,7 @@ var init_iconImageSelectionModal = __esm({
                 this.onChoose(newFile);
                 this.close();
               } catch (error) {
-                new import_obsidian18.Notice(`Failed to save image: ${error.message}`);
+                new import_obsidian21.Notice(`Failed to save image: ${error.message}`);
               }
             };
             reader.readAsArrayBuffer(file);
@@ -8367,7 +11653,7 @@ var init_iconImageSelectionModal = __esm({
             });
             this.close();
           } else {
-            new import_obsidian18.Notice("Please enter a valid image URL");
+            new import_obsidian21.Notice("Please enter a valid image URL");
           }
         });
         const validateUrl = (url) => {
@@ -8433,7 +11719,7 @@ var init_iconImageSelectionModal = __esm({
             previewContainer.style.display = "flex";
             previewImage.onerror = () => {
               previewContainer.style.display = "none";
-              new import_obsidian18.Notice("Failed to load image preview");
+              new import_obsidian21.Notice("Failed to load image preview");
             };
           } else {
             previewContainer.style.display = "none";
@@ -8786,7 +12072,7 @@ var init_iconImageSelectionModal = __esm({
               }).open();
             });
             if (!folderPath) {
-              new import_obsidian18.Notice("No folder selected");
+              new import_obsidian21.Notice("No folder selected");
               return;
             }
             if (!await this.app.vault.adapter.exists(folderPath)) {
@@ -8799,7 +12085,7 @@ var init_iconImageSelectionModal = __esm({
               }).open();
             });
             if (!userFileName) {
-              new import_obsidian18.Notice("No file name provided");
+              new import_obsidian21.Notice("No file name provided");
               return;
             }
             let baseName = userFileName;
@@ -8820,12 +12106,12 @@ var init_iconImageSelectionModal = __esm({
               this.onChoose(newFile);
               this.close();
             } catch (error) {
-              new import_obsidian18.Notice(`Failed to save image: ${error.message}`);
+              new import_obsidian21.Notice(`Failed to save image: ${error.message}`);
             }
           }
         } catch (error) {
           console.error("Error selecting icon:", error);
-          new import_obsidian18.Notice(`Failed to select icon: ${error.message}`);
+          new import_obsidian21.Notice(`Failed to select icon: ${error.message}`);
         }
       }
       showCollectionsLoading() {
@@ -28506,6 +31792,52 @@ var init_emoji_en_US = __esm({
       ],
       "\u{1FADF}": [
         "splatter"
+      ],
+      "\u{1FAEA}": [
+        "distorted face",
+        "surprised",
+        "fluttered",
+        "wide-eyed"
+      ],
+      "\u{1FAEF}": [
+        "fight cloud",
+        "brawl",
+        "conflict"
+      ],
+      "\u{1FAC8}": [
+        "hairy creature",
+        "sasquatch",
+        "bigfoot",
+        "treeman"
+      ],
+      "\u{1F9D1}\u200D\u{1FA70}": [
+        "ballet dancer"
+      ],
+      "\u{1FACD}": [
+        "orca",
+        "ocean",
+        "whale",
+        "dolphin",
+        "animal"
+      ],
+      "\u{1F6D8}": [
+        "landslide",
+        "disaster",
+        "accident"
+      ],
+      "\u{1FA8A}": [
+        "trombone",
+        "music",
+        "instrument"
+      ],
+      "\u{1FA8E}": [
+        "treasure chest",
+        "gold",
+        "haul",
+        "mimic",
+        "crate",
+        "jewelry",
+        "riches"
       ]
     };
   }
@@ -28524,13 +31856,15 @@ var init_emojis = __esm({
 });
 
 // src/modal/modals/emojiSelectionModal.js
-var import_obsidian19, EmojiSelectionModal;
+var import_obsidian22, EmojiSelectionModal;
 var init_emojiSelectionModal = __esm({
   "src/modal/modals/emojiSelectionModal.js"() {
-    import_obsidian19 = require("obsidian");
+    import_obsidian22 = require("obsidian");
     init_emojis();
     init_modals();
-    EmojiSelectionModal = class extends import_obsidian19.Modal {
+    init_fieldRegistry();
+    init_frontmatterUtils();
+    EmojiSelectionModal = class extends import_obsidian22.Modal {
       constructor(app, plugin, onChoose, skipTargetingModal = false) {
         super(app);
         this.plugin = plugin;
@@ -28538,6 +31872,7 @@ var init_emojiSelectionModal = __esm({
         this.searchQuery = "";
         this.skipTargetingModal = skipTargetingModal;
         this.closedByButton = false;
+        this.savedIcon = false;
       }
       onOpen() {
         var _a;
@@ -28545,10 +31880,10 @@ var init_emojiSelectionModal = __esm({
         contentEl.empty();
         contentEl.addClass("pixel-banner-emoji-select-modal");
         this.closedByButton = false;
+        this.savedIcon = false;
         const activeFile = this.app.workspace.getActiveFile();
         const frontmatter = (_a = this.app.metadataCache.getFileCache(activeFile)) == null ? void 0 : _a.frontmatter;
-        const bannerIconField = Array.isArray(this.plugin.settings.customBannerIconField) ? this.plugin.settings.customBannerIconField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconField;
-        this.currentBannerIconField = (frontmatter == null ? void 0 : frontmatter[bannerIconField]) || "";
+        this.currentBannerIconField = getFrontmatterValue(frontmatter, getFieldNames(this.plugin, "icon")) || "";
         contentEl.createEl("h3", {
           text: "\u{1F4F0} Set Banner Icon Emoji & Text",
           cls: "banner-icon-title margin-top-0"
@@ -28605,45 +31940,33 @@ var init_emojiSelectionModal = __esm({
         const handleSetBannerButtonClick = async () => {
           this.closedByButton = true;
           const trimmedValue = this.bannerIconInput.value.trim();
+          this.savedIcon = trimmedValue !== "";
           await this.onChoose(trimmedValue === "" ? null : trimmedValue);
           if (trimmedValue === "") {
             const activeFile3 = this.app.workspace.getActiveFile();
             if (activeFile3) {
               await this.app.fileManager.processFrontMatter(activeFile3, (frontmatter2) => {
-                const bannerIconField2 = Array.isArray(this.plugin.settings.customBannerIconField) ? this.plugin.settings.customBannerIconField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconField;
-                const bannerIconImageAlignmentField = Array.isArray(this.plugin.settings.customBannerIconImageAlignmentField) ? this.plugin.settings.customBannerIconImageAlignmentField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageAlignmentField;
-                const iconSizeField = Array.isArray(this.plugin.settings.customBannerIconSizeField) ? this.plugin.settings.customBannerIconSizeField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconSizeField;
-                const iconTextVerticalOffsetField = Array.isArray(this.plugin.settings.customBannerIconTextVerticalOffsetField) ? this.plugin.settings.customBannerIconTextVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconTextVerticalOffsetField;
-                const iconRotateField = Array.isArray(this.plugin.settings.customBannerIconRotateField) ? this.plugin.settings.customBannerIconRotateField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconRotateField;
-                const iconYPositionField = Array.isArray(this.plugin.settings.customBannerIconVerticalOffsetField) ? this.plugin.settings.customBannerIconVerticalOffsetField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconVerticalOffsetField;
-                const iconXPositionField = Array.isArray(this.plugin.settings.customBannerIconXPositionField) ? this.plugin.settings.customBannerIconXPositionField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconXPositionField;
-                const iconColorField = Array.isArray(this.plugin.settings.customBannerIconColorField) ? this.plugin.settings.customBannerIconColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconColorField;
-                const iconBgColorField = Array.isArray(this.plugin.settings.customBannerIconBackgroundColorField) ? this.plugin.settings.customBannerIconBackgroundColorField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBackgroundColorField;
-                const iconXPaddingField = Array.isArray(this.plugin.settings.customBannerIconPaddingXField) ? this.plugin.settings.customBannerIconPaddingXField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingXField;
-                const iconYPaddingField = Array.isArray(this.plugin.settings.customBannerIconPaddingYField) ? this.plugin.settings.customBannerIconPaddingYField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconPaddingYField;
-                const iconBorderRadiusField = Array.isArray(this.plugin.settings.customBannerIconBorderRadiusField) ? this.plugin.settings.customBannerIconBorderRadiusField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconBorderRadiusField;
-                const bannerIconImageField = Array.isArray(this.plugin.settings.customBannerIconImageField) ? this.plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageField;
-                const iconImageSizeMultiplierField = Array.isArray(this.plugin.settings.customBannerIconImageSizeMultiplierField) ? this.plugin.settings.customBannerIconImageSizeMultiplierField[0].split(",")[0].trim() : this.plugin.settings.customBannerIconImageSizeMultiplierField;
-                const hasBannerIconImage = frontmatter2[bannerIconImageField] !== void 0 && frontmatter2[bannerIconImageField] !== null && frontmatter2[bannerIconImageField] !== "";
+                const iconImageValue = resolveField(this.plugin, "iconImage", frontmatter2);
+                const hasBannerIconImage = iconImageValue !== void 0;
                 if (!hasBannerIconImage) {
-                  delete frontmatter2[bannerIconField2];
-                  delete frontmatter2[bannerIconImageAlignmentField];
-                  delete frontmatter2[iconSizeField];
-                  delete frontmatter2[iconTextVerticalOffsetField];
-                  delete frontmatter2[iconRotateField];
-                  delete frontmatter2[iconYPositionField];
-                  delete frontmatter2[iconXPositionField];
-                  delete frontmatter2[iconColorField];
-                  delete frontmatter2[iconBgColorField];
-                  delete frontmatter2[iconXPaddingField];
-                  delete frontmatter2[iconYPaddingField];
-                  delete frontmatter2[iconBorderRadiusField];
-                  delete frontmatter2[iconImageSizeMultiplierField];
+                  clearField(frontmatter2, this.plugin, "icon");
+                  clearField(frontmatter2, this.plugin, "iconImageAlignment");
+                  clearField(frontmatter2, this.plugin, "iconSize");
+                  clearField(frontmatter2, this.plugin, "iconTextVerticalOffset");
+                  clearField(frontmatter2, this.plugin, "iconRotate");
+                  clearField(frontmatter2, this.plugin, "iconVerticalOffset");
+                  clearField(frontmatter2, this.plugin, "iconXPosition");
+                  clearField(frontmatter2, this.plugin, "iconColor");
+                  clearField(frontmatter2, this.plugin, "iconBackgroundColor");
+                  clearField(frontmatter2, this.plugin, "iconPaddingX");
+                  clearField(frontmatter2, this.plugin, "iconPaddingY");
+                  clearField(frontmatter2, this.plugin, "iconBorderRadius");
+                  clearField(frontmatter2, this.plugin, "iconImageSizeMultiplier");
                 } else {
-                  delete frontmatter2[bannerIconField2];
-                  delete frontmatter2[iconTextVerticalOffsetField];
-                  delete frontmatter2[iconColorField];
-                  delete frontmatter2[bannerIconImageAlignmentField];
+                  clearField(frontmatter2, this.plugin, "icon");
+                  clearField(frontmatter2, this.plugin, "iconTextVerticalOffset");
+                  clearField(frontmatter2, this.plugin, "iconColor");
+                  clearField(frontmatter2, this.plugin, "iconImageAlignment");
                 }
               });
             }
@@ -28651,7 +31974,7 @@ var init_emojiSelectionModal = __esm({
           this.close();
           const activeFile2 = this.app.workspace.getActiveFile();
           if (activeFile2) {
-            const activeView = this.app.workspace.getActiveViewOfType(import_obsidian19.MarkdownView);
+            const activeView = this.app.workspace.getActiveViewOfType(import_obsidian22.MarkdownView);
             if (activeView) {
               const contentEl2 = activeView.contentEl;
               if (contentEl2) {
@@ -28687,7 +32010,9 @@ var init_emojiSelectionModal = __esm({
                   resolve();
                 }, 500);
               });
-              new TargetPositionModal(this.app, this.plugin).open();
+              if (this.savedIcon || this.plugin.hasBannerOrIcon(activeFile3)) {
+                new TargetPositionModal(this.app, this.plugin).open();
+              }
             }
           }
         };
@@ -28797,8 +32122,8 @@ var init_emojiSelectionModal = __esm({
         const { contentEl } = this;
         contentEl.empty();
         const activeFile = this.app.workspace.getActiveFile();
-        const hasBanner = activeFile ? this.plugin.hasBannerFrontmatter(activeFile) : false;
-        if (!this.closedByButton && this.plugin.settings.openTargetingModalAfterSelectingBannerOrIcon && hasBanner) {
+        const hasBannerOrIcon2 = this.savedIcon || (activeFile ? this.plugin.hasBannerOrIcon(activeFile) : false);
+        if (!this.closedByButton && this.plugin.settings.openTargetingModalAfterSelectingBannerOrIcon && hasBannerOrIcon2) {
           const openTargetingModal = async () => {
             if (activeFile) {
               await new Promise((resolve) => {
@@ -28833,17 +32158,18 @@ var init_emojiSelectionModal = __esm({
 });
 
 // src/modal/modals/pixelBannerStoreModal.js
-var import_obsidian20, PixelBannerStoreModal, ConfirmPurchaseModal;
+var import_obsidian23, PixelBannerStoreModal, ConfirmPurchaseModal;
 var init_pixelBannerStoreModal = __esm({
   "src/modal/modals/pixelBannerStoreModal.js"() {
-    import_obsidian20 = require("obsidian");
+    import_obsidian23 = require("obsidian");
     init_constants();
     init_handlePinIconClick();
     init_fractionTextDisplay();
     init_modals();
     init_flags();
     init_selectPixelBannerModal();
-    PixelBannerStoreModal = class extends import_obsidian20.Modal {
+    init_openSettings();
+    PixelBannerStoreModal = class extends import_obsidian23.Modal {
       constructor(app, plugin) {
         super(app);
         this.plugin = plugin;
@@ -28924,14 +32250,15 @@ var init_pixelBannerStoreModal = __esm({
       // Download and save banner (handles both images and videos)
       async downloadAndSaveBanner(data, filename) {
         try {
+          const activeFile = this.plugin.app.workspace.getActiveFile();
           if (data.fileType === "video") {
             await this.saveVideoFileWithPrompts(data.base64Image, filename);
           } else {
-            await handlePinIconClick(data.base64Image, this.plugin, null, filename.replace(/\.[^/.]+$/, ""), false);
+            await handlePinIconClick(data.base64Image, this.plugin, null, filename.replace(/\.[^/.]+$/, ""), false, activeFile);
           }
         } catch (error) {
           console.error("Error saving banner:", error);
-          new import_obsidian20.Notice("Failed to save banner. Please try again.");
+          new import_obsidian23.Notice("Failed to save banner. Please try again.");
         }
       }
       // Save video file with user prompts (similar to handlePinIconClick flow)
@@ -28948,7 +32275,7 @@ var init_pixelBannerStoreModal = __esm({
           const finalPath = await this.waitForFileRename(file);
           if (!finalPath) {
             console.error("\u274C Failed to resolve valid file path");
-            new import_obsidian20.Notice("Failed to save video - file not found");
+            new import_obsidian23.Notice("Failed to save video - file not found");
             return null;
           }
           if (useAsBanner) {
@@ -28991,8 +32318,7 @@ var init_pixelBannerStoreModal = __esm({
         if (!userInput) {
           throw new Error("No filename provided");
         }
-        let finalBaseName = userInput.name.replace(/[^a-zA-Z0-9-_ ]/g, "").trim();
-        if (!finalBaseName) finalBaseName = "banner";
+        let finalBaseName = sanitizeImageFileName(userInput.name);
         if (!finalBaseName.toLowerCase().endsWith(`.${extension}`)) {
           finalBaseName += `.${extension}`;
         }
@@ -29302,22 +32628,7 @@ var init_pixelBannerStoreModal = __esm({
         });
         const openPlusSettings = async () => {
           this.close();
-          await this.app.setting.open();
-          await new Promise((resolve) => setTimeout(resolve, 300));
-          const settingsTabs = document.querySelectorAll(".vertical-tab-header-group .vertical-tab-nav-item");
-          for (const tab of settingsTabs) {
-            if (tab.textContent.includes("Pixel Banner")) {
-              tab.click();
-              break;
-            }
-          }
-          const pixelBannerSettingsTabs = document.querySelectorAll(".pixel-banner-settings-tabs > button.pixel-banner-settings-tab");
-          for (const tab of pixelBannerSettingsTabs) {
-            if (tab.textContent.includes("Plus")) {
-              tab.click();
-              break;
-            }
-          }
+          await openPluginSettings(this.app, { plusTab: true });
         };
         connectionStatusEl.addEventListener("click", openPlusSettings);
         tokenCountEl.addEventListener("click", openPlusSettings);
@@ -29412,7 +32723,7 @@ var init_pixelBannerStoreModal = __esm({
       async searchBanners(page = 1) {
         this.searchTerm = this.searchInput.value.trim();
         if (!this.searchTerm) {
-          new import_obsidian20.Notice("Please enter a search term");
+          new import_obsidian23.Notice("Please enter a search term");
           return;
         }
         this.isSearchMode = true;
@@ -29733,7 +33044,7 @@ var init_pixelBannerStoreModal = __esm({
                     }
                   } catch (error) {
                     console.error("Error purchasing banner:", error);
-                    new import_obsidian20.Notice("Failed to purchase banner. Please try again.");
+                    new import_obsidian23.Notice("Failed to purchase banner. Please try again.");
                   }
                 }, this.plugin, isVideo, image.fileType, image.file_extension).open();
               } else {
@@ -29843,7 +33154,7 @@ var init_pixelBannerStoreModal = __esm({
           }
         } catch (error) {
           console.error("Error upvoting banner:", error);
-          new import_obsidian20.Notice("Failed to upvote banner. Please try again.");
+          new import_obsidian23.Notice("Failed to upvote banner. Please try again.");
         }
       }
       // Downvote a banner
@@ -29873,7 +33184,7 @@ var init_pixelBannerStoreModal = __esm({
           }
         } catch (error) {
           console.error("Error downvoting banner:", error);
-          new import_obsidian20.Notice("Failed to downvote banner. Please try again.");
+          new import_obsidian23.Notice("Failed to downvote banner. Please try again.");
         }
       }
       // Toggle between search mode and category browsing mode
@@ -30345,7 +33656,7 @@ var init_pixelBannerStoreModal = __esm({
         }
       }
     };
-    ConfirmPurchaseModal = class extends import_obsidian20.Modal {
+    ConfirmPurchaseModal = class extends import_obsidian23.Modal {
       constructor(app, cost, prompt, previewImage, onConfirm, plugin, isVideo = false, fileType = "image", fileExtension = "jpg") {
         super(app);
         this.cost = cost;
@@ -30528,12 +33839,13 @@ var init_pixelBannerStoreModal = __esm({
 });
 
 // src/modal/modals/webAddressModal.js
-var import_obsidian21, WebAddressModal;
+var import_obsidian24, WebAddressModal;
 var init_webAddressModal = __esm({
   "src/modal/modals/webAddressModal.js"() {
-    import_obsidian21 = require("obsidian");
+    import_obsidian24 = require("obsidian");
     init_modals();
-    WebAddressModal = class extends import_obsidian21.Modal {
+    init_fieldRegistry();
+    WebAddressModal = class extends import_obsidian24.Modal {
       constructor(app, plugin) {
         super(app);
         this.plugin = plugin;
@@ -30696,8 +34008,7 @@ var init_webAddressModal = __esm({
               throw new Error("No active file to add banner to");
             }
             await this.plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-              const bannerField = this.plugin.settings.customBannerField[0];
-              frontmatter[bannerField] = url;
+              writeField(frontmatter, this.plugin, "banner", url);
             });
             if (this.plugin.settings.openTargetingModalAfterSelectingBannerOrIcon) {
               this.close();
@@ -30750,13 +34061,13 @@ var init_webAddressModal = __esm({
 });
 
 // src/modal/modals/dailyGame.js
-var import_obsidian22, DailyGameModal;
+var import_obsidian25, DailyGameModal;
 var init_dailyGame = __esm({
   "src/modal/modals/dailyGame.js"() {
-    import_obsidian22 = require("obsidian");
+    import_obsidian25 = require("obsidian");
     init_constants();
     init_selectPixelBannerModal();
-    DailyGameModal = class extends import_obsidian22.Modal {
+    DailyGameModal = class extends import_obsidian25.Modal {
       constructor(app, userEmail, apiKey, plugin) {
         super(app);
         this.userEmail = userEmail;
@@ -30859,6 +34170,7 @@ var init_dailyGame = __esm({
 // src/modal/modals.js
 var modals_exports = {};
 __export(modals_exports, {
+  ConfettiModal: () => ConfettiModal,
   DailyGameModal: () => DailyGameModal,
   EmojiSelectionModal: () => EmojiSelectionModal,
   FolderSelectionModal: () => FolderSelectionModal,
@@ -30892,6 +34204,7 @@ var init_modals = __esm({
     init_pixelBannerStoreModal();
     init_webAddressModal();
     init_dailyGame();
+    init_confettiModal();
   }
 });
 
@@ -30903,10 +34216,10 @@ __export(main_exports, {
 module.exports = __toCommonJS(main_exports);
 
 // src/core/pixelBannerPlugin.js
-var import_obsidian31 = require("obsidian");
+var import_obsidian36 = require("obsidian");
 
 // virtual-module:virtual:release-notes
-var releaseNotes = '<a href="https://www.youtube.com/watch?v=tfNqEAQuhXs">\n  <img src="https://pixel-banner.online/img/pixel-banner-v3.6.jpg" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n\n<h2>\u{1F389} What&#39;s New</h2>\n<h3>v3.6.0</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Support for \u{1F3AC} Video Banners!<ul>\n<li>Upload and choose Video files as banners from your vault</li>\n<li>Downloadable \u{1F3AC} Video Banners from the <code>Pixel Banner Plus Collection</code></li>\n</ul>\n</li>\n<li>Added paging controls to the <code>Pixel Banner Plus Collection</code></li>\n<li>New global <code>Banner Max Width</code> setting to control the default max width for all banners</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>Default Saved Banners Folder</code> setting to the <code>General</code> tab</li>\n<li>Renamed <code>Pixel Banner Plus Store</code> to <code>Pixel Banner Plus Collection</code> as many items are free</li>\n</ul>\n<h3>v3.6.1</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with Icon Image selection modal not setting the selected icon image</li>\n</ul>\n<h3>v3.6.2</h3>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Improved debounce logic to prevent multiple banner reloads when opening a note</li>\n</ul>\n<h3>v3.6.3</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Added <code>filesize</code> display to the store modal</li>\n</ul>\n<h3>v3.6.4</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Banner images now support local <code>file</code> protocol for images outside of your vault (e.g. <code>file:///C:\\path\\banner.jpg</code>)</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Allow commas in banner filenames</li>\n</ul>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Ensure pinned banner is the currently displayed image when saving API banners</li>\n<li>Ensure banner icons are only rendered when a main banner image is present</li>\n<li>Banner Icon Image not always rendered until the note was clicked/focused</li>\n</ul>\n<h3>v3.6.5</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fix refresh button to use original comma-separated keywords from frontmatter instead of the cached single keyword</li>\n<li>Resolved issue with the default x/y frontmatter fields not being hidden when the &quot;Hide Pixel Banner Fields&quot; option is enabled</li>\n<li>Updated API call for <code>Pexels</code> to conform to spec changes on their side</li>\n</ul>\n<h3>v3.6.6</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>New folder group entries now inherit the user&#39;s default Content Start Position setting instead of being hardcoded to 150px</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n</ul>\n<h3>v3.6.7</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed ImageViewModal to properly display banner images and videos when clicking the &quot;Show View Image Icon&quot;<ul>\n<li>Added support for MP4 and MOV video files in the ImageViewModal with proper video player controls</li>\n<li>Correctly display actual image URLs instead of keywords for 3rd party API banners in the ImageViewModal</li>\n<li>Local images, videos, and file:/// paths maintain original display behavior</li>\n</ul>\n</li>\n</ul>\n<h3>v3.6.8</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Pin Choice Modal</strong>: When pinning API images, users can now choose between saving locally or pinning the URL directly to frontmatter<ul>\n<li>New choice modal presents &quot;Save Image Locally&quot; vs &quot;Pin Image URL&quot; options</li>\n<li>URL pinning saves no storage space in vault but requires internet connection</li>\n<li>Local saving remains available for offline access and permanence</li>\n<li>Choice only appears for user-initiated pin actions (pin icon, command palette)</li>\n<li>AI generation and Pixel Banner Plus continue to save locally automatically</li>\n</ul>\n</li>\n<li><strong>Auto-Focus Enhancement</strong>: Folder selection modal now automatically focuses and selects the text input for improved workflow</li>\n<li><code>Enter</code> button support for submitting the save image form in the <code>Save Image Modal</code></li>\n<li>New <code>Pin Image URL</code> option to save API images directly as URL references in frontmatter without downloading to vault</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Replaced manual frontmatter string manipulation with Obsidian&#39;s native processFrontMatter API for more reliable metadata updates</li>\n</ul>\n<h3>v3.6.9</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>New <code>Icon Image Size Multiplier</code> setting to the <code>General</code> settings tab to control the global size of banner icon images</li>\n<li>Check for version updates when opening <code>General</code> settings and show update button if available</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Moved <code>AI Model</code> selection from radio buttons to a dropdown for better organization</li>\n<li>Changed default banner fade value from <code>-70</code> to <code>-40</code></li>\n</ul>\n<h3>v3.6.10</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Icon images and emojis not being displayed properly</li>\n</ul>\n<h3>v3.6.11</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>New toggle to turn on/off <code>Pixel Banner Plus</code> in the main Pixel Banner select modal</li>\n<li><strong>Plain image format support</strong>: Added <code>image</code> option to Image Property Format setting (without brackets), improving compatibility with Make.md and other plugins</li>\n</ul>\n<h4>\u{1F4E6} Updated</h4>\n<ul>\n<li>Added unquoted wiki-link support for Image Icons paths (e.g. <code>[[path/icon.png]]</code>)</li>\n<li>Misc code cleanup</li>\n</ul>\n<h3>v3.6.12</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved incorrect <code>Pixel Banner Plus Server</code> URL</li>\n</ul>\n<h3>v3.6.13</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li>Support for Multiple Image Reference for new AI Image Generation models<ul>\n<li><code>Nano Banana</code></li>\n<li><code>Seedream 4</code></li>\n</ul>\n</li>\n</ul>\n<h3>v3.6.14</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with <code>.webp</code> images not being displayed</li>\n</ul>\n<h3>v3.6.15</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Resolved issue with plain paths not working for video files (<code>.mp4</code>, <code>.mov</code>)</li>\n</ul>\n<h3>v3.6.16</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed an occasional error that could prevent banners from displaying correctly</li>\n</ul>\n<h3>v3.6.18 - 2026-03-08</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed banner flickering on every keystroke when a note contains frontmatter and uses folder group banners (issue #318)</li>\n</ul>\n<h3>v3.6.17 - 2026-03-08</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed content start position not applying correctly when changed in settings (issue #297)</li>\n</ul>\n<h3>v3.6.18 - 2026-03-08</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Fixed banner flickering on every keystroke when a note contains frontmatter and uses folder group banners (issue #318)</li>\n</ul>\n<a href="https://www.youtube.com/watch?v=pJFsMfrWak4">\n  <img src="https://pixel-banner.online/img/pixel-banner-transparent-bg.png" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n';
+var releaseNotes = '<a href="https://www.youtube.com/watch?v=GfuPHuOIbyo">\n  <img src="https://pixel-banner.online/img/pixel-banner-v3.7.jpg" alt="Pixel Banner" style="max-width: 400px;">\n</a>\n\n<h2>\u{1F389} What&#39;s New</h2>\n<h3>v3.7.4</h3>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li><strong>Hide Pixel Banner Fields in Live Preview</strong> (issue #346): the banner properties (<code>banner</code>, <code>banner-x</code>, <code>banner-y</code> and the rest) are now hidden in Live Preview as well as Reading mode when <strong>Hide Pixel Banner Fields</strong> is on, and <strong>Hide Properties Section</strong> hides the whole section there too when it only held banner fields<ul>\n<li>You can still change every banner property from the Pixel Banner modal, so nothing becomes uneditable</li>\n<li>With <strong>Hide Properties Section</strong> on (the default), a note that only has banner properties shows no Properties block in Live Preview, so no <strong>Add property</strong> either. Turn that toggle off if you want to add other properties there</li>\n</ul>\n</li>\n</ul>\n<h3>v3.7.3</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Icons without a banner</strong> (issues #322, #238): a note can now show just an icon, with no banner image at all<ul>\n<li>Add an emoji, text or an icon image to a note and the icon appears as a compact header, with the note&#39;s content starting just below it</li>\n<li>It works in reading view, editing view, notes embedded in other notes (unless <em>Hide Embedded Note Banners</em> is on) and Export to PDF (when <em>Include Banner in PDF Export</em> is on)</li>\n<li>A banner that cannot be loaded now falls back to the note&#39;s icon instead of leaving an empty gap</li>\n<li>The Select modal&#39;s <strong>Icon Image</strong> and <strong>Icon Emoji &amp; Text</strong> buttons, their commands, and <strong>Position, Size, &amp; Style</strong> work on a note that has only an icon; the banner-only controls are hidden there</li>\n<li>Set <strong>Content Start Position</strong> (in Position, Size, &amp; Style) on the note to change how far the content sits below the icon</li>\n</ul>\n</li>\n<li><strong>Match readable line length</strong> (issue #267): a new toggle in Settings \u2192 General that makes banners as wide as your note&#39;s text column, and a <code>readable</code> option for a single note<ul>\n<li>Per note: tick <strong>readable</strong> in Position, Size, &amp; Style, or set <code>banner-max-width: readable</code> in the note&#39;s properties</li>\n<li>While the toggle is on, the Banner Max Width slider is greyed out, and a note&#39;s own width still wins</li>\n<li>It needs Obsidian&#39;s <em>Readable line length</em> setting to be on; with it off, the banner uses the full width</li>\n</ul>\n</li>\n<li><strong>Animate banner position changes</strong> (issue #226): a new toggle in Settings \u2192 General for the half second slide that plays when a banner&#39;s focal point changes<ul>\n<li>On by default, as before; turn it off to make the banner jump straight to the new position</li>\n<li>It also stays off automatically if your system is set to reduce motion</li>\n</ul>\n</li>\n</ul>\n<h4>\u{1F4DD} Good to know</h4>\n<ul>\n<li>A note that kept its icon properties after the banner was removed now shows that icon on its own</li>\n<li>Icon style settings that you set for a folder (size, color, padding and so on) now take effect on the icon</li>\n</ul>\n<h3>v3.7.2</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Popover Banner Max Height</strong>: a new setting limits how tall a banner can be in hover previews, so a tall banner no longer fills the whole preview and covers the text (issue #342)<ul>\n<li>Find it in Settings \u2192 General \u2192 <strong>Popover Banner Max Height</strong> (default 150 pixels)</li>\n<li>Banners already shorter than the limit stay as they are, and notes outside hover previews are not affected</li>\n</ul>\n</li>\n</ul>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li><strong>Plugin Settings button</strong>: it opens the Pixel Banner settings again instead of the general Obsidian settings page, and the Plus and update shortcuts in the banner modal land on the right page too</li>\n</ul>\n<h3>v3.7.1</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Banners in Export to PDF</strong>: notes exported with Export to PDF now show their banner at the top of the first page, above the title, every time (issues #298, #323)<ul>\n<li>The PDF uses the same image the note shows, including keyword banners, with the same height, crop, rounded corners, fade and banner icon; very tall banners are capped at about 40% of the page</li>\n<li>Video banners print the frame the video is showing</li>\n<li>With <em>Include file name as title</em> turned on in the export dialog, that title uses your banner title color</li>\n<li>Notes without a banner, and notes embedded in the exported note, are exported as before</li>\n<li>Turn it off in Settings \u2192 General \u2192 <strong>Include Banner in PDF Export</strong></li>\n</ul>\n</li>\n</ul>\n<h4>\u{1F527} Changed</h4>\n<ul>\n<li><strong>Property names you set up are respected everywhere</strong>: if you gave a property more than one name in Settings \u2192 Custom Field Names, Pixel Banner now writes to the name a note already uses, and removes that property&#39;s other names so only one is left<ul>\n<li>This covers picking an image, pasting a web address, AI and store banners, the banner icon, icon images and the Target Position modal</li>\n<li>Names entered as one comma-separated entry (like <code>banner, image</code>) now work when Pixel Banner writes a property, instead of creating a property literally named <code>banner, image</code></li>\n<li>Removing an icon or an icon image now clears it under every name you set up, not just the first one</li>\n</ul>\n</li>\n</ul>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Notes embedded in another note now use their own <code>banner-fade</code>, and the fade and position values from your folder and global settings</li>\n<li>A value of <code>0</code>, such as <code>icon-opacity: 0</code> or an icon padding of <code>0</code>, now sticks instead of falling back to the default (an empty value still uses the default)</li>\n<li>Editing banner alignment, the icon image, the flag color or any other banner property by hand now updates the banner right away, without reopening the note</li>\n<li>New folder image settings without a saved fade now start at -40, the same as the global fade setting</li>\n<li>Video banners from a keyword keep your Image Display setting (like <code>contain</code>) when you refresh them</li>\n<li>The Select image command no longer reorders your properties, and works with property names that contain special characters</li>\n</ul>\n<h3>v3.7.0</h3>\n<h4>\u2728 Added</h4>\n<ul>\n<li><strong>Confetti/Particle Effects</strong>: Add animated effects to your notes!<ul>\n<li>Use <code>banner-confetti: &quot;type: snow&quot;</code> (or any preset) in frontmatter</li>\n<li>14 presets available: snow, snowflakes, leaves, rain_light, rain_heavy, fireworks, confetti, hearts, sparkles, and more</li>\n<li>Customize colors, speed, size, and other properties</li>\n<li>Live preview right in the settings modal: see your effect as you tweak it, before applying</li>\n<li>Access via the \u{1F38A} button in the Target Position modal</li>\n<li>Respects reduced motion preferences for accessibility</li>\n<li>Split panes each get their own effect, and effects pause while a tab is in the background or the banner is scrolled away</li>\n<li>The confetti settings modal saves exactly what you see and only when something changed</li>\n<li>Presets are easier to see, in both light and dark themes: snow, snowflakes, space and aliens switch to darker colours in light themes (unless you pick your own; after a theme change, from the next time the effect starts)</li>\n</ul>\n</li>\n<li><strong>Use Note Filename for Banner Images</strong>: New setting that automatically uses the current note&#39;s filename as the default filename when saving banner images<ul>\n<li>When enabled, saved banners will be named after the note they belong to (e.g., <code>My Project Note.jpg</code> instead of <code>pixel-banner-image.jpg</code>)</li>\n<li>Works with all save methods: pin icon, AI generation, and Plus Collection downloads</li>\n<li>Automatically falls back to default filename if the note is named &quot;Untitled&quot; or has no name</li>\n<li>Pre-fills the filename (still editable in the save dialog)</li>\n<li>Located in Settings \u2192 General tab</li>\n</ul>\n</li>\n</ul>\n<h4>\u{1F41B} Fixed</h4>\n<ul>\n<li>Collapsing and expanding headings in Reading view works again in long notes with a banner: headings no longer swallow the ones below or stay hidden after expanding (issue #315, thanks @Amvtxrvsu)</li>\n<li>Pixel Banner settings no longer shrink to a narrow column in wide settings windows on Obsidian 1.13+ (issue #337, thanks @zx2021210538)</li>\n<li>Linked tabs (&quot;Link with tab...&quot;) now show the banner of the note they follow, and a split pane opened without focus gets its banner right away (issue #207)</li>\n<li>If a banner link is typed without quotes (like <code>banner: [[image.jpg]]</code>), Pixel Banner now tells you once per note and shows the corrected line, <code>banner: &quot;[[image.jpg]]&quot;</code>. Unquoted links get mangled into <code>- - image.jpg</code> when properties are saved (issue #289)</li>\n<li>Banners set with Markdown links, such as <code>[](image.jpg)</code> (what Obsidian writes when &quot;Use [[Wikilinks]]&quot; is turned off), <code>[title](image.jpg)</code> or <code>![alt](image.jpg)</code>, now show their image (issue #310)</li>\n<li>Banners are visible again in themes that hid them, such as Mocha and RetroNotes (issue #311)</li>\n<li>Banners in hover previews and Hover Editor windows follow your Image Display and Image Repeat settings instead of repeating (issue #312)</li>\n<li>Banners no longer flicker when switching between notes, especially with large banner images (issue #327)</li>\n<li>The full-size image view (the \u{1F5BC}\uFE0F View Image icon on a banner) opens centered on screen again, including with themes that previously pushed it to the bottom right (issue #328)</li>\n<li>Embedded blocks and headings (<code>![[note#^block]]</code>, <code>![[note#heading]]</code>) no longer show a large empty space below them in notes with a banner (issue #331)</li>\n<li>Notes opened automatically at startup, such as a homepage set by the Homepage plugin, now show their banner and banner icon correctly on launch, instead of no banner or a banner with default styling (issue #333)</li>\n<li>On phones, the banner no longer hides under the top toolbar, and <code>content-start</code> places your note where it does on tablet and desktop (issue #335)</li>\n<li>Banners in hover previews now use your banner height, fade and corner radius settings</li>\n<li>Linked tabs showing the same note now show the same keyword banner image after you edit its properties</li>\n<li>The &quot;Refresh current banner image&quot; command now tells you when the refresh failed</li>\n<li>Banners set with a Markdown link to a file outside the vault, such as <code>[photo](file:///C:/Pictures/photo.jpg)</code>, now show their image on desktop</li>\n<li>Switching notes while a banner is still loading no longer puts the previous note&#39;s banner icon on the new note</li>\n<li>With &quot;Use Note Filename for Banner Images&quot;, notes with non-Latin or accented names (like &quot;\u65E5\u8A18&quot; or &quot;Caf\xE9&quot;) keep their name when saving a banner</li>\n<li>The confetti settings show the shape you picked when you reopen them, and say why the preview is hidden when reduced motion or the mobile setting turns it off</li>\n<li>Confetti with very high particle counts stays smooth: each pane keeps at most 1,500 particles on screen (the built-in presets are unchanged)</li>\n</ul>\n';
 
 // src/settings/settings.js
 var import_obsidian6 = require("obsidian");
@@ -31107,14 +34420,14 @@ function createAPISettings(containerEl, plugin) {
     refreshIconSetting.settingEl.style.display = value ? "flex" : "none";
     await plugin.saveSettings();
   }));
-  new import_obsidian.Setting(containerEl).setName("Pinned Image Filename").setDesc("Set the default filename for pinned images.").addText((text) => text.setPlaceholder("pixel-banner-image").setValue(plugin.settings.pinnedImageFilename).onChange(async (value) => {
+  const pinnedImageFilenameSetting = new import_obsidian.Setting(containerEl).setName("Pinned Image Filename").setDesc("Set the default filename for pinned images.").addText((text) => text.setPlaceholder("pixel-banner-image").setValue(plugin.settings.pinnedImageFilename).onChange(async (value) => {
     plugin.settings.pinnedImageFilename = value;
     await plugin.saveSettings();
   })).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
     plugin.settings.pinnedImageFilename = DEFAULT_SETTINGS.pinnedImageFilename;
     await plugin.saveSettings();
-    const textInput = button.extraSettingsEl.parentElement.querySelector("input");
-    textInput.value = DEFAULT_SETTINGS.pinnedImageFilename;
+    const textComponent = pinnedImageFilenameSetting.components[0];
+    if (textComponent) textComponent.setValue(DEFAULT_SETTINGS.pinnedImageFilename);
   }));
   const refreshIconSetting = new import_obsidian.Setting(containerEl).setName("Show Refresh Icon").setDesc("Show a refresh icon on random banner images that allows fetching a new random image.").addToggle((toggle) => toggle.setValue(plugin.settings.showRefreshIcon).onChange(async (value) => {
     plugin.settings.showRefreshIcon = value;
@@ -31252,13 +34565,14 @@ var FolderImageSetting = class extends import_obsidian2.Setting {
         this.folderImage.folder = value;
         await this.plugin.saveSettings();
       });
+      this.folderInputComponent = text;
       this.folderInputEl = text.inputEl;
       this.folderInputEl.style.width = "300px";
     });
     folderInput.addButton((button) => button.setButtonText("Browse").onClick(() => {
       new FolderSuggestModal(this.plugin.app, (chosenPath) => {
         this.folderImage.folder = chosenPath;
-        this.folderInputEl.value = chosenPath;
+        this.folderInputComponent.setValue(chosenPath);
         this.plugin.saveSettings();
       }).open();
     }));
@@ -31286,7 +34600,8 @@ var FolderImageSetting = class extends import_obsidian2.Setting {
     shuffleFolderInput.addButton((button) => button.setButtonText("Browse").onClick(() => {
       new FolderSuggestModal(this.plugin.app, (chosenPath) => {
         this.folderImage.shuffleFolder = chosenPath;
-        shuffleFolderInput.controlEl.querySelector("input").value = chosenPath;
+        const shuffleTextComponent = shuffleFolderInput.components[0];
+        if (shuffleTextComponent) shuffleTextComponent.setValue(chosenPath);
         this.plugin.saveSettings();
       }).open();
     }));
@@ -31440,7 +34755,7 @@ var FolderImageSetting = class extends import_obsidian2.Setting {
         step: "5"
       }
     });
-    slider.value = this.folderImage.fade !== void 0 ? this.folderImage.fade : "-75";
+    slider.value = this.folderImage.fade !== void 0 ? this.folderImage.fade : String(DEFAULT_SETTINGS.fade);
     slider.style.width = "100px";
     slider.style.marginLeft = "10px";
     const valueDisplay = sliderContainer.createEl("div", { cls: "slider-value" });
@@ -31461,7 +34776,7 @@ var FolderImageSetting = class extends import_obsidian2.Setting {
   }
   addColorSettings(containerEl) {
     const colorContainer = containerEl.createDiv("color-settings-container");
-    new import_obsidian2.Setting(colorContainer).setName("Inline Title Color").addColorPicker((color) => color.setValue((() => {
+    const titleColorSetting = new import_obsidian2.Setting(colorContainer).setName("Inline Title Color").addColorPicker((color) => color.setValue((() => {
       const currentColor = this.folderImage.titleColor || this.plugin.settings.titleColor;
       if (currentColor.startsWith("var(--")) {
         const temp = document.createElement("div");
@@ -31484,8 +34799,8 @@ var FolderImageSetting = class extends import_obsidian2.Setting {
     })).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
       this.folderImage.titleColor = this.plugin.settings.titleColor;
       await this.plugin.saveSettings();
-      const colorPickerEl = button.extraSettingsEl.parentElement.querySelector('input[type="color"]');
-      if (colorPickerEl) {
+      const colorComponent = titleColorSetting.components[0];
+      if (colorComponent) {
         const currentColor = this.plugin.settings.titleColor;
         if (currentColor.startsWith("var(--")) {
           const temp = document.createElement("div");
@@ -31497,10 +34812,10 @@ var FolderImageSetting = class extends import_obsidian2.Setting {
           if (rgbMatch) {
             const [_, r, g, b] = rgbMatch;
             const hexColor = "#" + parseInt(r).toString(16).padStart(2, "0") + parseInt(g).toString(16).padStart(2, "0") + parseInt(b).toString(16).padStart(2, "0");
-            colorPickerEl.value = hexColor;
+            colorComponent.setValue(hexColor);
           }
         } else {
-          colorPickerEl.value = currentColor;
+          colorComponent.setValue(currentColor);
         }
       }
     }));
@@ -31860,10 +35175,17 @@ function createCustomFieldsSettings(containerEl, plugin) {
       desc: "Set custom field names for the banner icon image alignment in frontmatter",
       values: "left, right",
       placeholder: "banner-icon-image-alignment, icon-image-alignment"
+    },
+    {
+      setting: "customBannerConfettiField",
+      name: "Banner Confetti Field Names",
+      desc: "Set custom field names for the banner confetti effect in frontmatter",
+      values: "type:snow, type:leaves, type:fireworks",
+      placeholder: "banner-confetti, confetti, banner-effect"
     }
   ];
   customFields.forEach((field) => {
-    new import_obsidian3.Setting(containerEl).setName(field.name).setDesc(createFragment((el) => {
+    const fieldSetting = new import_obsidian3.Setting(containerEl).setName(field.name).setDesc(createFragment((el) => {
       el.createEl("div", { text: field.desc });
       el.createEl("div", { cls: "setting-item-example" }).innerHTML = `Example frontmatter values: <code>${field.values}</code>`;
     })).addText((text) => {
@@ -31883,13 +35205,14 @@ function createCustomFieldsSettings(containerEl, plugin) {
       });
       text.inputEl.style.width = "300px";
     }).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
-      plugin.settings[field.setting] = DEFAULT_SETTINGS[field.setting];
+      plugin.settings[field.setting] = [...DEFAULT_SETTINGS[field.setting]];
+      const textComponent = fieldSetting.components[0];
+      if (textComponent) {
+        textComponent.setValue(arrayToString(DEFAULT_SETTINGS[field.setting]));
+        textComponent.inputEl.removeClass("is-invalid");
+        textComponent.inputEl.title = "";
+      }
       await plugin.saveSettings();
-      const settingEl = button.extraSettingsEl.parentElement;
-      const textInput = settingEl.querySelector('input[type="text"]');
-      textInput.value = arrayToString(DEFAULT_SETTINGS[field.setting]);
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      textInput.dispatchEvent(event);
     }));
   });
 }
@@ -31898,6 +35221,7 @@ function createCustomFieldsSettings(containerEl, plugin) {
 var import_obsidian4 = require("obsidian");
 init_flags();
 init_semver();
+init_openSettings();
 function addUpdateButtonIfNeeded(containerEl, plugin, insertAfterCallout = false) {
   if (!plugin.pixelBannerVersion) {
     console.log("[Pixel Banner] No cloud version available, skipping update button");
@@ -31936,23 +35260,7 @@ function addUpdateButtonIfNeeded(containerEl, plugin, insertAfterCallout = false
       containerEl.appendChild(updateContainer);
     }
     updateButton.addEventListener("click", async () => {
-      await plugin.app.setting.open();
-      await new Promise((resolve) => setTimeout(resolve, 300));
-      const settingsTabs = document.querySelectorAll(".vertical-tab-header-group .vertical-tab-nav-item");
-      for (const tab of settingsTabs) {
-        if (tab.textContent.includes("Community plugins")) {
-          tab.click();
-          break;
-        }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 500));
-      const allTheButtons = document.querySelectorAll("button.mod-cta");
-      for (const button of allTheButtons) {
-        if (button.textContent.includes("Check for updates")) {
-          button.click();
-          break;
-        }
-      }
+      await openCommunityPluginsSettings(plugin.app, { checkForUpdates: true });
     });
   }
 }
@@ -32004,9 +35312,8 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.selectImageIconOpacity = DEFAULT_SETTINGS.selectImageIconOpacity;
       await plugin.saveSettings();
-      const sliderEl = button.extraSettingsEl.parentElement.querySelector(".slider");
-      sliderEl.value = DEFAULT_SETTINGS.selectImageIconOpacity;
-      sliderEl.dispatchEvent(new Event("input"));
+      const sliderComponent = selectImageIconOpacitySetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.selectImageIconOpacity);
       plugin.updateAllBanners();
     } catch (error) {
       console.error("Failed to save settings:", error);
@@ -32121,6 +35428,25 @@ function createGeneralSettings(containerEl, plugin) {
       console.error("Failed to save settings:", error);
     }
   }));
+  const useNoteFilenameForBannerSetting = new import_obsidian4.Setting(SelectImageSettingsGroup).setName("Use Note Filename for Banner Images").setDesc("When saving banner images, automatically use the note's filename as the default image filename").addToggle((toggle) => toggle.setValue(plugin.settings.useNoteFilenameForBanner).onChange(async (value) => {
+    try {
+      plugin.settings.useNoteFilenameForBanner = value;
+      await plugin.saveSettings();
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  })).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
+    try {
+      plugin.settings.useNoteFilenameForBanner = DEFAULT_SETTINGS.useNoteFilenameForBanner;
+      await plugin.saveSettings();
+      const toggleComponent = useNoteFilenameForBannerSetting.components[0];
+      if (toggleComponent) {
+        toggleComponent.setValue(DEFAULT_SETTINGS.useNoteFilenameForBanner);
+      }
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  }));
   const defaultSelectImagePathSetting = new import_obsidian4.Setting(SelectImageSettingsGroup).setName("Default Select Image Path").setDesc("Set a default folder path to filter images when opening the Select Image modal").addText((text) => {
     text.setPlaceholder("Example: Images/Banners").setValue(plugin.settings.defaultSelectImagePath).onChange(async (value) => {
       try {
@@ -32204,7 +35530,7 @@ function createGeneralSettings(containerEl, plugin) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Banner Max Width").setDesc("Set the maximum width for banner images (100-2560 pixels)").addSlider((slider) => slider.setLimits(100, 2560, 10).setValue(plugin.settings.bannerMaxWidth).setDynamicTooltip().onChange(async (value) => {
+  const bannerMaxWidthSetting = new import_obsidian4.Setting(containerEl).setName("Banner Max Width").setDesc("Set the maximum width for banner images (100-2560 pixels)").addSlider((slider) => slider.setLimits(100, 2560, 10).setValue(plugin.settings.bannerMaxWidth).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.bannerMaxWidth = value;
       await plugin.saveSettings();
@@ -32216,16 +35542,30 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerMaxWidth = DEFAULT_SETTINGS.bannerMaxWidth;
       await plugin.saveSettings();
-      const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerMaxWidth;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      sliderInput.dispatchEvent(event);
+      const sliderComponent = bannerMaxWidthSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerMaxWidth);
       plugin.updateAllBanners();
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Image Horizontal Position").setDesc("Set the horizontal position of the image (0-100)").addSlider(
+  const setBannerMaxWidthSliderInactive = (inactive) => {
+    const sliderComponent = bannerMaxWidthSetting.components[0];
+    if (sliderComponent) sliderComponent.setDisabled(inactive);
+    bannerMaxWidthSetting.settingEl.toggleClass("pixel-banner-setting-inactive", inactive);
+  };
+  new import_obsidian4.Setting(containerEl).setName("Match readable line length").setDesc("Line the banner up with the note text: as wide as Obsidian's readable line length when that is on, full width when it is off. A note's own banner-max-width still wins.").addToggle((toggle) => toggle.setValue(plugin.settings.bannerMaxWidthReadable).onChange(async (value) => {
+    try {
+      plugin.settings.bannerMaxWidthReadable = value;
+      await plugin.saveSettings();
+      setBannerMaxWidthSliderInactive(value);
+      plugin.updateAllBanners();
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  }));
+  setBannerMaxWidthSliderInactive(plugin.settings.bannerMaxWidthReadable === true);
+  const imageHorizontalPositionSetting = new import_obsidian4.Setting(containerEl).setName("Image Horizontal Position").setDesc("Set the horizontal position of the image (0-100)").addSlider(
     (slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.xPosition).setDynamicTooltip().onChange(async (value) => {
       try {
         plugin.settings.xPosition = value;
@@ -32240,14 +35580,13 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.xPosition = DEFAULT_SETTINGS.xPosition;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const sliderEl = button.extraSettingsEl.parentElement.querySelector(".slider");
-      sliderEl.value = DEFAULT_SETTINGS.xPosition;
-      sliderEl.dispatchEvent(new Event("input"));
+      const sliderComponent = imageHorizontalPositionSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.xPosition);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Image Vertical Position").setDesc("Set the vertical position of the image (0-100)").addSlider(
+  const imageVerticalPositionSetting = new import_obsidian4.Setting(containerEl).setName("Image Vertical Position").setDesc("Set the vertical position of the image (0-100)").addSlider(
     (slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.yPosition).setDynamicTooltip().onChange(async (value) => {
       try {
         plugin.settings.yPosition = value;
@@ -32262,14 +35601,32 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.yPosition = DEFAULT_SETTINGS.yPosition;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const sliderEl = button.extraSettingsEl.parentElement.querySelector(".slider");
-      sliderEl.value = DEFAULT_SETTINGS.yPosition;
-      sliderEl.dispatchEvent(new Event("input"));
+      const sliderComponent = imageVerticalPositionSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.yPosition);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Content Start Position").setDesc("Set the default vertical position where the content starts (in pixels)").addText((text) => text.setPlaceholder("150").setValue(String(plugin.settings.contentStartPosition)).onChange(async (value) => {
+  const bannerPositionTransitionSetting = new import_obsidian4.Setting(containerEl).setName("Animate banner position changes").setDesc("Slide the banner image to a new focal point instead of jumping there. It never slides when your system asks for reduced motion.").addToggle((toggle) => toggle.setValue(plugin.settings.bannerPositionTransition).onChange(async (value) => {
+    try {
+      plugin.settings.bannerPositionTransition = value;
+      await plugin.saveSettings();
+      plugin.updateAllBanners();
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  })).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
+    try {
+      plugin.settings.bannerPositionTransition = DEFAULT_SETTINGS.bannerPositionTransition;
+      await plugin.saveSettings();
+      plugin.updateAllBanners();
+      const toggleComponent = bannerPositionTransitionSetting.components[0];
+      if (toggleComponent) toggleComponent.setValue(DEFAULT_SETTINGS.bannerPositionTransition);
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  }));
+  const contentStartPositionSetting = new import_obsidian4.Setting(containerEl).setName("Content Start Position").setDesc("Set the default vertical position where the content starts (in pixels)").addText((text) => text.setPlaceholder("150").setValue(String(plugin.settings.contentStartPosition)).onChange(async (value) => {
     try {
       const numValue = Number(value);
       if (!isNaN(numValue) && numValue >= 0) {
@@ -32290,14 +35647,13 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.contentStartPosition = DEFAULT_SETTINGS.contentStartPosition;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const inputEl = button.extraSettingsEl.parentElement.querySelector("input");
-      inputEl.value = DEFAULT_SETTINGS.contentStartPosition;
-      inputEl.dispatchEvent(new Event("input"));
+      const textComponent = contentStartPositionSetting.components[0];
+      if (textComponent) textComponent.setValue(String(DEFAULT_SETTINGS.contentStartPosition));
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Image Display").setDesc("Set how the banner image should be displayed").addDropdown((dropdown) => {
+  const imageDisplaySetting = new import_obsidian4.Setting(containerEl).setName("Image Display").setDesc("Set how the banner image should be displayed").addDropdown((dropdown) => {
     dropdown.addOption("auto", "Auto").addOption("cover", "Cover").addOption("contain", "Contain").setValue(plugin.settings.imageDisplay || "cover").onChange(async (value) => {
       try {
         plugin.settings.imageDisplay = value;
@@ -32312,14 +35668,14 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.imageDisplay = DEFAULT_SETTINGS.imageDisplay;
       await plugin.saveSettings();
-      const dropdownEl = button.extraSettingsEl.parentElement.querySelector("select");
-      dropdownEl.value = DEFAULT_SETTINGS.imageDisplay;
-      dropdownEl.dispatchEvent(new Event("change"));
+      const dropdownComponent = imageDisplaySetting.components[0];
+      if (dropdownComponent) dropdownComponent.setValue(DEFAULT_SETTINGS.imageDisplay);
+      plugin.updateAllBanners();
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Image Repeat").setDesc('Enable image repetition when "Contain" is selected').addToggle((toggle) => {
+  const imageRepeatSetting = new import_obsidian4.Setting(containerEl).setName("Image Repeat").setDesc('Enable image repetition when "Contain" is selected').addToggle((toggle) => {
     toggle.setValue(plugin.settings.imageRepeat).onChange(async (value) => {
       try {
         plugin.settings.imageRepeat = value;
@@ -32335,19 +35691,13 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.imageRepeat = DEFAULT_SETTINGS.imageRepeat;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const checkboxContainer = button.extraSettingsEl.parentElement.querySelector(".checkbox-container");
-      const toggleEl = checkboxContainer.querySelector("input");
-      if (toggleEl) {
-        toggleEl.checked = DEFAULT_SETTINGS.imageRepeat;
-        checkboxContainer.classList.toggle("is-enabled", DEFAULT_SETTINGS.imageRepeat);
-        const event = new Event("change", { bubbles: true });
-        toggleEl.dispatchEvent(event);
-      }
+      const toggleComponent = imageRepeatSetting.components[0];
+      if (toggleComponent) toggleComponent.setValue(DEFAULT_SETTINGS.imageRepeat);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Banner Height").setDesc("Set the default height of the banner image (0-1280 pixels)").addText((text) => {
+  const bannerHeightSetting = new import_obsidian4.Setting(containerEl).setName("Banner Height").setDesc("Set the default height of the banner image (0-1280 pixels)").addText((text) => {
     text.setPlaceholder("350").setValue(String(plugin.settings.bannerHeight)).onChange(async (value) => {
       try {
         if (value === "" || !isNaN(Number(value))) {
@@ -32382,14 +35732,13 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.bannerHeight = DEFAULT_SETTINGS.bannerHeight;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const inputEl = button.extraSettingsEl.parentElement.querySelector("input");
-      inputEl.value = DEFAULT_SETTINGS.bannerHeight;
-      inputEl.dispatchEvent(new Event("input"));
+      const textComponent = bannerHeightSetting.components[0];
+      if (textComponent) textComponent.setValue(String(DEFAULT_SETTINGS.bannerHeight));
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Banner Fade").setDesc("Set the default fade effect for the banner image (-300 to 100)").addSlider(
+  const bannerFadeSetting = new import_obsidian4.Setting(containerEl).setName("Banner Fade").setDesc("Set the default fade effect for the banner image (-300 to 100)").addSlider(
     (slider) => slider.setLimits(-300, 100, 5).setValue(plugin.settings.fade).setDynamicTooltip().onChange(async (value) => {
       try {
         plugin.settings.fade = value;
@@ -32404,14 +35753,13 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.fade = DEFAULT_SETTINGS.fade;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const sliderEl = button.extraSettingsEl.parentElement.querySelector(".slider");
-      sliderEl.value = DEFAULT_SETTINGS.fade;
-      sliderEl.dispatchEvent(new Event("input"));
+      const sliderComponent = bannerFadeSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.fade);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Banner Fade In Animation Duration").setDesc("Set the default fade in animation duration for the banner image (0-1000 milliseconds)").addSlider(
+  const bannerFadeInAnimationDurationSetting = new import_obsidian4.Setting(containerEl).setName("Banner Fade In Animation Duration").setDesc("Set the default fade in animation duration for the banner image (0-1000 milliseconds)").addSlider(
     (slider) => slider.setLimits(0, 1e3, 1).setValue(plugin.settings.bannerFadeInAnimationDuration).setDynamicTooltip().onChange(async (value) => {
       try {
         plugin.settings.bannerFadeInAnimationDuration = value;
@@ -32426,14 +35774,13 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.bannerFadeInAnimationDuration = DEFAULT_SETTINGS.bannerFadeInAnimationDuration;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const sliderEl = button.extraSettingsEl.parentElement.querySelector(".slider");
-      sliderEl.value = DEFAULT_SETTINGS.bannerFadeInAnimationDuration;
-      sliderEl.dispatchEvent(new Event("input"));
+      const sliderComponent = bannerFadeInAnimationDurationSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerFadeInAnimationDuration);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Border Radius").setDesc("Set the default border radius of the banner image (0-50 pixels)").addSlider((slider) => slider.setLimits(0, 50, 1).setValue(plugin.settings.borderRadius).setDynamicTooltip().onChange(async (value) => {
+  const borderRadiusSetting = new import_obsidian4.Setting(containerEl).setName("Border Radius").setDesc("Set the default border radius of the banner image (0-50 pixels)").addSlider((slider) => slider.setLimits(0, 50, 1).setValue(plugin.settings.borderRadius).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.borderRadius = value;
       await plugin.saveSettings();
@@ -32446,14 +35793,13 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.borderRadius = DEFAULT_SETTINGS.borderRadius;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const sliderEl = button.extraSettingsEl.parentElement.querySelector(".slider");
-      sliderEl.value = DEFAULT_SETTINGS.borderRadius;
-      sliderEl.dispatchEvent(new Event("input"));
+      const sliderComponent = borderRadiusSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.borderRadius);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Banner Gap").setDesc("Set the gap between the banner and the window edges (0-50 pixels)").addSlider(
+  const bannerGapSetting = new import_obsidian4.Setting(containerEl).setName("Banner Gap").setDesc("Set the gap between the banner and the window edges (0-50 pixels)").addSlider(
     (slider) => slider.setLimits(0, 50, 1).setValue(plugin.settings.bannerGap).setDynamicTooltip().onChange(async (value) => {
       try {
         plugin.settings.bannerGap = value;
@@ -32468,14 +35814,13 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.bannerGap = DEFAULT_SETTINGS.bannerGap;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const sliderEl = button.extraSettingsEl.parentElement.querySelector(".slider");
-      sliderEl.value = DEFAULT_SETTINGS.bannerGap;
-      sliderEl.dispatchEvent(new Event("input"));
+      const sliderComponent = bannerGapSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerGap);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Inline Title Color").setDesc("Set the default inline title color for all banners").addColorPicker((color) => color.setValue((() => {
+  const inlineTitleColorSetting = new import_obsidian4.Setting(containerEl).setName("Inline Title Color").setDesc("Set the default inline title color for all banners").addColorPicker((color) => color.setValue((() => {
     const currentColor = plugin.settings.titleColor;
     if (currentColor && currentColor.startsWith("var(--")) {
       const temp = document.createElement("div");
@@ -32504,8 +35849,8 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.titleColor = DEFAULT_SETTINGS.titleColor;
       await plugin.saveSettings();
-      const colorPickerEl = button.extraSettingsEl.parentElement.querySelector('input[type="color"]');
-      if (colorPickerEl) {
+      const colorComponent = inlineTitleColorSetting.components[0];
+      if (colorComponent) {
         const temp = document.createElement("div");
         temp.style.color = DEFAULT_SETTINGS.titleColor;
         document.body.appendChild(temp);
@@ -32515,7 +35860,7 @@ function createGeneralSettings(containerEl, plugin) {
         if (rgbMatch) {
           const [_, r, g, b] = rgbMatch;
           const hexColor = "#" + parseInt(r).toString(16).padStart(2, "0") + parseInt(g).toString(16).padStart(2, "0") + parseInt(b).toString(16).padStart(2, "0");
-          colorPickerEl.value = hexColor;
+          colorComponent.setValue(hexColor);
         }
       }
     } catch (error) {
@@ -32564,7 +35909,7 @@ function createGeneralSettings(containerEl, plugin) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Show Banner in Popover Previews").setDesc("Show banners in popover note previews").addToggle((toggle) => toggle.setValue(plugin.settings.showBannerInPopoverPreviews).onChange(async (value) => {
+  const showBannerInPopoverPreviewsSetting = new import_obsidian4.Setting(containerEl).setName("Show Banner in Popover Previews").setDesc("Show banners in popover note previews").addToggle((toggle) => toggle.setValue(plugin.settings.showBannerInPopoverPreviews).onChange(async (value) => {
     try {
       plugin.settings.showBannerInPopoverPreviews = value;
       await plugin.saveSettings();
@@ -32577,12 +35922,75 @@ function createGeneralSettings(containerEl, plugin) {
       plugin.settings.showBannerInPopoverPreviews = DEFAULT_SETTINGS.showBannerInPopoverPreviews;
       await plugin.saveSettings();
       plugin.updateAllBanners();
-      const checkboxContainer = button.extraSettingsEl.parentElement.querySelector(".checkbox-container");
-      const toggleEl = checkboxContainer.querySelector("input");
-      if (toggleEl) {
-        toggleEl.checked = DEFAULT_SETTINGS.showBannerInPopoverPreviews;
-        checkboxContainer.classList.toggle("is-enabled", DEFAULT_SETTINGS.showBannerInPopoverPreviews);
+      const toggleComponent = showBannerInPopoverPreviewsSetting.components[0];
+      if (toggleComponent) toggleComponent.setValue(DEFAULT_SETTINGS.showBannerInPopoverPreviews);
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  }));
+  const popoverBannerMaxHeightSetting = new import_obsidian4.Setting(containerEl).setName("Popover Banner Max Height").setDesc("Limit the height of banners in popover note previews (0-1280 pixels). A banner already shorter than this is unchanged").addText((text) => {
+    text.setPlaceholder("150").setValue(String(plugin.settings.popoverBannerMaxHeight));
+    text.inputEl.addEventListener("blur", async (event) => {
+      try {
+        let numValue = Number(event.target.value);
+        if (isNaN(numValue) || event.target.value === "") {
+          numValue = DEFAULT_SETTINGS.popoverBannerMaxHeight;
+        } else {
+          numValue = Math.max(0, Math.min(1280, numValue));
+        }
+        plugin.settings.popoverBannerMaxHeight = numValue;
+        text.setValue(String(numValue));
+        await plugin.saveSettings();
+        plugin.updateAllBanners();
+      } catch (error) {
+        console.error("Failed to save settings:", error);
       }
+    });
+    text.inputEl.type = "number";
+    text.inputEl.min = "0";
+    text.inputEl.max = "1280";
+    text.inputEl.style.width = "50px";
+  }).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
+    try {
+      plugin.settings.popoverBannerMaxHeight = DEFAULT_SETTINGS.popoverBannerMaxHeight;
+      await plugin.saveSettings();
+      plugin.updateAllBanners();
+      const textComponent = popoverBannerMaxHeightSetting.components[0];
+      if (textComponent) textComponent.setValue(String(DEFAULT_SETTINGS.popoverBannerMaxHeight));
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  }));
+  const includeBannerInPdfExportSetting = new import_obsidian4.Setting(containerEl).setName("Include Banner in PDF Export").setDesc("Add the banner to the top of notes exported with Export to PDF").addToggle((toggle) => toggle.setValue(plugin.settings.includeBannerInPdfExport).onChange(async (value) => {
+    try {
+      plugin.settings.includeBannerInPdfExport = value;
+      await plugin.saveSettings();
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  })).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
+    try {
+      plugin.settings.includeBannerInPdfExport = DEFAULT_SETTINGS.includeBannerInPdfExport;
+      await plugin.saveSettings();
+      const toggleComponent = includeBannerInPdfExportSetting.components[0];
+      if (toggleComponent) toggleComponent.setValue(DEFAULT_SETTINGS.includeBannerInPdfExport);
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  }));
+  const confettiDisableOnMobileSetting = new import_obsidian4.Setting(containerEl).setName("Disable Confetti on Mobile").setDesc("Turn off confetti effects on mobile devices for better performance").addToggle((toggle) => toggle.setValue(plugin.settings.confettiDisableOnMobile).onChange(async (value) => {
+    try {
+      plugin.settings.confettiDisableOnMobile = value;
+      await plugin.saveSettings();
+    } catch (error) {
+      console.error("Failed to save settings:", error);
+    }
+  })).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
+    try {
+      plugin.settings.confettiDisableOnMobile = DEFAULT_SETTINGS.confettiDisableOnMobile;
+      await plugin.saveSettings();
+      const toggleComponent = confettiDisableOnMobileSetting.components[0];
+      if (toggleComponent) toggleComponent.setValue(DEFAULT_SETTINGS.confettiDisableOnMobile);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
@@ -32608,7 +36016,7 @@ function createGeneralSettings(containerEl, plugin) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Image Property Format").setDesc("Set the format for the banner property value.").addDropdown((dropdown) => dropdown.addOption("image", "image").addOption("[[image]]", "[[image]]").addOption("![[image]]", "![[image]]").setValue(plugin.settings.imagePropertyFormat).onChange(async (value) => {
+  const imagePropertyFormatSetting = new import_obsidian4.Setting(containerEl).setName("Image Property Format").setDesc("Set the format for the banner property value.").addDropdown((dropdown) => dropdown.addOption("image", "image").addOption("[[image]]", "[[image]]").addOption("![[image]]", "![[image]]").setValue(plugin.settings.imagePropertyFormat).onChange(async (value) => {
     try {
       plugin.settings.imagePropertyFormat = value;
       await plugin.saveSettings();
@@ -32619,14 +36027,14 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.imagePropertyFormat = DEFAULT_SETTINGS.imagePropertyFormat;
       await plugin.saveSettings();
-      const dropdown = button.extraSettingsEl.parentElement.querySelector("select");
-      dropdown.value = DEFAULT_SETTINGS.imagePropertyFormat;
+      const dropdownComponent = imagePropertyFormatSetting.components[0];
+      if (dropdownComponent) dropdownComponent.setValue(DEFAULT_SETTINGS.imagePropertyFormat);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
   const hideSettingsGroup = containerEl.createDiv({ cls: "setting-group" });
-  const hidePixelBannerFieldsSetting = new import_obsidian4.Setting(hideSettingsGroup).setName("Hide Pixel Banner Fields").setDesc("Hide banner-related frontmatter fields in Reading mode").addToggle((toggle) => toggle.setValue(plugin.settings.hidePixelBannerFields).onChange(async (value) => {
+  const hidePixelBannerFieldsSetting = new import_obsidian4.Setting(hideSettingsGroup).setName("Hide Pixel Banner Fields").setDesc("Hide banner-related frontmatter fields in Reading mode and Live Preview").addToggle((toggle) => toggle.setValue(plugin.settings.hidePixelBannerFields).onChange(async (value) => {
     try {
       plugin.settings.hidePixelBannerFields = value;
       if (!value) {
@@ -32681,7 +36089,7 @@ function createGeneralSettings(containerEl, plugin) {
       console.error("Failed to save settings:", error);
     }
   }));
-  const hidePropertiesSection = new import_obsidian4.Setting(hideSettingsGroup).setName("Hide Properties Section").setDesc("Hide the entire Properties section in Reading mode if it only contains Pixel Banner fields").addToggle((toggle) => toggle.setValue(plugin.settings.hidePropertiesSectionIfOnlyBanner).setDisabled(!plugin.settings.hidePixelBannerFields).onChange(async (value) => {
+  const hidePropertiesSection = new import_obsidian4.Setting(hideSettingsGroup).setName("Hide Properties Section").setDesc("Hide the entire Properties section in Reading mode and Live Preview if it only contains Pixel Banner fields").addToggle((toggle) => toggle.setValue(plugin.settings.hidePropertiesSectionIfOnlyBanner).setDisabled(!plugin.settings.hidePixelBannerFields).onChange(async (value) => {
     try {
       plugin.settings.hidePropertiesSectionIfOnlyBanner = value;
       await plugin.saveSettings();
@@ -32706,7 +36114,7 @@ function createGeneralSettings(containerEl, plugin) {
   if (!plugin.settings.hidePixelBannerFields) {
     hidePropertiesSection.settingEl.addClass("is-disabled");
   }
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Size").setDesc("Set the default size for the banner icon").addSlider((slider) => slider.setLimits(10, 200, 1).setValue(plugin.settings.bannerIconSize).setDynamicTooltip().onChange(async (value) => {
+  const bannerIconSizeSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Size").setDesc("Set the default size for the banner icon").addSlider((slider) => slider.setLimits(10, 200, 1).setValue(plugin.settings.bannerIconSize).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.bannerIconSize = value;
       await plugin.saveSettings();
@@ -32717,15 +36125,13 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconSize = DEFAULT_SETTINGS.bannerIconSize;
       await plugin.saveSettings();
-      const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerIconSize;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      sliderInput.dispatchEvent(event);
+      const sliderComponent = bannerIconSizeSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerIconSize);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Image Size Multiplier").setDesc("Set the default size multiplier for banner icon images (0.1-5)").addSlider((slider) => slider.setLimits(0.1, 5, 0.1).setValue(plugin.settings.bannerIconImageSizeMultiplier).setDynamicTooltip().onChange(async (value) => {
+  const bannerIconImageSizeMultiplierSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Image Size Multiplier").setDesc("Set the default size multiplier for banner icon images (0.1-5)").addSlider((slider) => slider.setLimits(0.1, 5, 0.1).setValue(plugin.settings.bannerIconImageSizeMultiplier).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.bannerIconImageSizeMultiplier = value;
       await plugin.saveSettings();
@@ -32737,16 +36143,14 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconImageSizeMultiplier = DEFAULT_SETTINGS.bannerIconImageSizeMultiplier;
       await plugin.saveSettings();
-      const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerIconImageSizeMultiplier;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      sliderInput.dispatchEvent(event);
+      const sliderComponent = bannerIconImageSizeMultiplierSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerIconImageSizeMultiplier);
       plugin.updateAllBanners();
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon X Position").setDesc("Set the default X position for the banner icon (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconXPosition).setDynamicTooltip().onChange(async (value) => {
+  const bannerIconXPositionSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon X Position").setDesc("Set the default X position for the banner icon (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconXPosition).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.bannerIconXPosition = value;
       await plugin.saveSettings();
@@ -32757,15 +36161,13 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconXPosition = DEFAULT_SETTINGS.bannerIconXPosition;
       await plugin.saveSettings();
-      const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerIconXPosition;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      sliderInput.dispatchEvent(event);
+      const sliderComponent = bannerIconXPositionSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerIconXPosition);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Opacity").setDesc("Set the default opacity for the banner icon (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconOpacity).setDynamicTooltip().onChange(async (value) => {
+  const bannerIconOpacitySetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Opacity").setDesc("Set the default opacity for the banner icon (0-100)").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconOpacity).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.bannerIconOpacity = value;
       await plugin.saveSettings();
@@ -32776,15 +36178,13 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconOpacity = DEFAULT_SETTINGS.bannerIconOpacity;
       await plugin.saveSettings();
-      const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerIconOpacity;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      sliderInput.dispatchEvent(event);
+      const sliderComponent = bannerIconOpacitySetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerIconOpacity);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Text Color").setDesc("Set the default text color for the banner icon").addText((text) => text.setPlaceholder("Enter color (e.g., #ffffff or white)").setValue(plugin.settings.bannerIconColor).onChange(async (value) => {
+  const bannerIconColorSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Text Color").setDesc("Set the default text color for the banner icon").addText((text) => text.setPlaceholder("Enter color (e.g., #ffffff or white)").setValue(plugin.settings.bannerIconColor).onChange(async (value) => {
     try {
       plugin.settings.bannerIconColor = value;
       await plugin.saveSettings();
@@ -32795,15 +36195,13 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconColor = DEFAULT_SETTINGS.bannerIconColor;
       await plugin.saveSettings();
-      const textInput = button.extraSettingsEl.parentElement.querySelector('input[type="text"]');
-      textInput.value = DEFAULT_SETTINGS.bannerIconColor;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      textInput.dispatchEvent(event);
+      const textComponent = bannerIconColorSetting.components[0];
+      if (textComponent) textComponent.setValue(DEFAULT_SETTINGS.bannerIconColor);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Font Weight").setDesc("Set the default font weight for the banner icon").addDropdown((dropdown) => {
+  const bannerIconFontWeightSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Font Weight").setDesc("Set the default font weight for the banner icon").addDropdown((dropdown) => {
     dropdown.addOption("lighter", "Lighter").addOption("normal", "Normal").addOption("bold", "Bold").setValue(plugin.settings.bannerIconFontWeight || "normal").onChange(async (value) => {
       try {
         plugin.settings.bannerIconFontWeight = value;
@@ -32817,14 +36215,13 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconFontWeight = DEFAULT_SETTINGS.bannerIconFontWeight;
       await plugin.saveSettings();
-      const dropdownEl = button.extraSettingsEl.parentElement.querySelector("select");
-      dropdownEl.value = DEFAULT_SETTINGS.bannerIconFontWeight;
-      dropdownEl.dispatchEvent(new Event("change"));
+      const dropdownComponent = bannerIconFontWeightSetting.components[0];
+      if (dropdownComponent) dropdownComponent.setValue(DEFAULT_SETTINGS.bannerIconFontWeight);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Background Color").setDesc("Set the default background color for the banner icon").addText((text) => text.setPlaceholder("Enter color (e.g., #ffffff or transparent)").setValue(plugin.settings.bannerIconBackgroundColor).onChange(async (value) => {
+  const bannerIconBackgroundColorSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Background Color").setDesc("Set the default background color for the banner icon").addText((text) => text.setPlaceholder("Enter color (e.g., #ffffff or transparent)").setValue(plugin.settings.bannerIconBackgroundColor).onChange(async (value) => {
     try {
       plugin.settings.bannerIconBackgroundColor = value;
       await plugin.saveSettings();
@@ -32835,15 +36232,13 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconBackgroundColor = DEFAULT_SETTINGS.bannerIconBackgroundColor;
       await plugin.saveSettings();
-      const textInput = button.extraSettingsEl.parentElement.querySelector('input[type="text"]');
-      textInput.value = DEFAULT_SETTINGS.bannerIconBackgroundColor;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      textInput.dispatchEvent(event);
+      const textComponent = bannerIconBackgroundColorSetting.components[0];
+      if (textComponent) textComponent.setValue(DEFAULT_SETTINGS.bannerIconBackgroundColor);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Padding X").setDesc("Set the default padding X for the banner icon").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconPaddingX).setDynamicTooltip().onChange(async (value) => {
+  const bannerIconPaddingXSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Padding X").setDesc("Set the default padding X for the banner icon").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconPaddingX).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.bannerIconPaddingX = value;
       await plugin.saveSettings();
@@ -32854,15 +36249,13 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconPaddingX = DEFAULT_SETTINGS.bannerIconPaddingX;
       await plugin.saveSettings();
-      const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerIconPaddingX;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      sliderInput.dispatchEvent(event);
+      const sliderComponent = bannerIconPaddingXSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerIconPaddingX);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Padding Y").setDesc("Set the default padding Y for the banner icon").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconPaddingY).setDynamicTooltip().onChange(async (value) => {
+  const bannerIconPaddingYSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Padding Y").setDesc("Set the default padding Y for the banner icon").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconPaddingY).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.bannerIconPaddingY = value;
       await plugin.saveSettings();
@@ -32873,15 +36266,13 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconPaddingY = DEFAULT_SETTINGS.bannerIconPaddingY;
       await plugin.saveSettings();
-      const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerIconPaddingY;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      sliderInput.dispatchEvent(event);
+      const sliderComponent = bannerIconPaddingYSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerIconPaddingY);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Border Radius").setDesc("Set the default border radius for the banner icon").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconBorderRadius).setDynamicTooltip().onChange(async (value) => {
+  const bannerIconBorderRadiusSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Border Radius").setDesc("Set the default border radius for the banner icon").addSlider((slider) => slider.setLimits(0, 100, 1).setValue(plugin.settings.bannerIconBorderRadius).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.bannerIconBorderRadius = value;
       await plugin.saveSettings();
@@ -32892,15 +36283,13 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconBorderRadius = DEFAULT_SETTINGS.bannerIconBorderRadius;
       await plugin.saveSettings();
-      const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerIconBorderRadius;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      sliderInput.dispatchEvent(event);
+      const sliderComponent = bannerIconBorderRadiusSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerIconBorderRadius);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
   }));
-  new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Vertical Offset").setDesc("Set the default vertical offset for the banner icon").addSlider((slider) => slider.setLimits(-100, 100, 1).setValue(plugin.settings.bannerIconVerticalOffset).setDynamicTooltip().onChange(async (value) => {
+  const bannerIconVerticalOffsetSetting = new import_obsidian4.Setting(containerEl).setName("Default Banner Icon Vertical Offset").setDesc("Set the default vertical offset for the banner icon").addSlider((slider) => slider.setLimits(-100, 100, 1).setValue(plugin.settings.bannerIconVerticalOffset).setDynamicTooltip().onChange(async (value) => {
     try {
       plugin.settings.bannerIconVerticalOffset = value;
       await plugin.saveSettings();
@@ -32911,10 +36300,8 @@ function createGeneralSettings(containerEl, plugin) {
     try {
       plugin.settings.bannerIconVerticalOffset = DEFAULT_SETTINGS.bannerIconVerticalOffset;
       await plugin.saveSettings();
-      const sliderInput = button.extraSettingsEl.parentElement.querySelector('input[type="range"]');
-      sliderInput.value = DEFAULT_SETTINGS.bannerIconVerticalOffset;
-      const event = new Event("input", { bubbles: true, cancelable: true });
-      sliderInput.dispatchEvent(event);
+      const sliderComponent = bannerIconVerticalOffsetSetting.components[0];
+      if (sliderComponent) sliderComponent.setValue(DEFAULT_SETTINGS.bannerIconVerticalOffset);
     } catch (error) {
       console.error("Failed to save settings:", error);
     }
@@ -32997,7 +36384,7 @@ function createPixelBannerPlusSettings(containerEl, plugin) {
       plusDependentSettings.style.display = "none";
     }
   }
-  new import_obsidian5.Setting(pixelBannerPlusSettingsGroup).setName("Pixel Banner Plus Enabled").setDesc("Enable or disable Pixel Banner Plus features").addToggle((toggle) => toggle.setValue(plugin.settings.pixelBannerPlusEnabled !== false).onChange(async (value) => {
+  const pixelBannerPlusEnabledSetting = new import_obsidian5.Setting(pixelBannerPlusSettingsGroup).setName("Pixel Banner Plus Enabled").setDesc("Enable or disable Pixel Banner Plus features").addToggle((toggle) => toggle.setValue(plugin.settings.pixelBannerPlusEnabled !== false).onChange(async (value) => {
     plugin.pixelBannerPlusEnabled = value;
     plugin.settings.pixelBannerPlusEnabled = value;
     await plugin.saveSettings();
@@ -33006,12 +36393,8 @@ function createPixelBannerPlusSettings(containerEl, plugin) {
     plugin.settings.pixelBannerPlusEnabled = DEFAULT_SETTINGS.pixelBannerPlusEnabled;
     plugin.pixelBannerPlusEnabled = plugin.settings.pixelBannerPlusEnabled;
     await plugin.saveSettings();
-    const toggleComponent = button.extraSettingsEl.parentElement.querySelector(".checkbox-container input");
-    if (toggleComponent) {
-      toggleComponent.checked = plugin.settings.pixelBannerPlusEnabled;
-      toggleComponent.parentElement.classList.toggle("is-enabled", plugin.settings.pixelBannerPlusEnabled);
-      toggleComponent.dispatchEvent(new Event("change"));
-    }
+    const toggleComponent = pixelBannerPlusEnabledSetting.components[0];
+    if (toggleComponent) toggleComponent.setValue(plugin.settings.pixelBannerPlusEnabled);
     updatePlusDependentSettingsVisibility(plugin.settings.pixelBannerPlusEnabled);
   })).then((setting) => {
     const nameEl = setting.nameEl;
@@ -33102,18 +36485,14 @@ function createPixelBannerPlusSettings(containerEl, plugin) {
       button.setDisabled(false);
     });
   });
-  new import_obsidian5.Setting(accountSettingsGroup).setName("Show Daily Game").setDesc("Enable the daily game feature in the banner selection modal for a chance to win the daily jackpot's Tokens").addToggle((toggle) => toggle.setValue(plugin.settings.enableDailyGame).onChange(async (value) => {
+  const enableDailyGameSetting = new import_obsidian5.Setting(accountSettingsGroup).setName("Show Daily Game").setDesc("Enable the daily game feature in the banner selection modal for a chance to win the daily jackpot's Tokens").addToggle((toggle) => toggle.setValue(plugin.settings.enableDailyGame).onChange(async (value) => {
     plugin.settings.enableDailyGame = value;
     await plugin.saveSettings();
   })).addExtraButton((button) => button.setIcon("reset").setTooltip("Reset to default").onClick(async () => {
     plugin.settings.enableDailyGame = DEFAULT_SETTINGS.enableDailyGame;
     await plugin.saveSettings();
-    const toggleComponent = button.extraSettingsEl.parentElement.querySelector(".checkbox-container input");
-    if (toggleComponent) {
-      toggleComponent.checked = DEFAULT_SETTINGS.enableDailyGame;
-      toggleComponent.parentElement.classList.toggle("is-enabled", DEFAULT_SETTINGS.enableDailyGame);
-      toggleComponent.dispatchEvent(new Event("change"));
-    }
+    const toggleComponent = enableDailyGameSetting.components[0];
+    if (toggleComponent) toggleComponent.setValue(DEFAULT_SETTINGS.enableDailyGame);
   })).then((setting) => {
     const nameEl = setting.nameEl;
     if (nameEl) {
@@ -33280,18 +36659,22 @@ var DEFAULT_SETTINGS = {
   customBannerIconVerticalOffsetField: ["icon-y"],
   customBannerIconImageAlignmentField: ["banner-icon-image-alignment"],
   customFlagColorField: ["pixel-banner-flag-color"],
+  customBannerConfettiField: ["banner-confetti"],
   folderImages: [],
   contentStartPosition: 355,
   imageDisplay: "cover",
   imageRepeat: false,
   bannerHeight: 350,
   bannerMaxWidth: 2560,
+  bannerMaxWidthReadable: false,
+  bannerPositionTransition: true,
   fade: -40,
   bannerFadeInAnimationDuration: 300,
   borderRadius: 17,
   showPinIcon: false,
   pinnedImageFolder: "pixel-banner-images",
   pinnedImageFilename: "pixel-banner-image",
+  useNoteFilenameForBanner: false,
   imagePropertyFormat: "image",
   showReleaseNotes: true,
   lastVersion: null,
@@ -33304,6 +36687,8 @@ var DEFAULT_SETTINGS = {
   hideEmbeddedNoteTitles: false,
   hideEmbeddedNoteBanners: false,
   showBannerInPopoverPreviews: true,
+  popoverBannerMaxHeight: 150,
+  includeBannerInPdfExport: true,
   showSelectImageIcon: true,
   selectImageIconOpacity: 40,
   selectImageIconFlag: "red",
@@ -33325,7 +36710,8 @@ var DEFAULT_SETTINGS = {
   bannerIconVerticalOffset: "0",
   bannerIconImageAlignment: "left",
   openTargetingModalAfterSelectingBannerOrIcon: true,
-  enableDailyGame: false
+  enableDailyGame: false,
+  confettiDisableOnMobile: false
 };
 var FolderSuggestModal = class extends import_obsidian6.FuzzySuggestModal {
   constructor(app, onChoose) {
@@ -33386,7 +36772,7 @@ var PixelBannerSettingTab = class extends import_obsidian6.PluginSettingTab {
     return { tabsEl, tabContentContainer };
   }
 };
-function debounce(func, wait) {
+function debounce(func, wait2) {
   let timeout;
   return function executedFunction(...args) {
     const later = () => {
@@ -33394,7 +36780,7 @@ function debounce(func, wait) {
       func(...args);
     };
     clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
+    timeout = setTimeout(later, wait2);
   };
 }
 
@@ -33403,7 +36789,7 @@ init_modals();
 init_handlePinIconClick();
 
 // src/core/settings.js
-var import_obsidian23 = require("obsidian");
+var import_obsidian26 = require("obsidian");
 async function loadSettings(plugin) {
   plugin.settings = Object.assign({}, DEFAULT_SETTINGS, await plugin.loadData());
   if (!Array.isArray(plugin.settings.folderImages)) {
@@ -33433,25 +36819,32 @@ async function saveSettings(plugin) {
   plugin.imageCache.clear();
   plugin.lastFrontmatter.clear();
   plugin.app.workspace.iterateAllLeaves((leaf) => {
-    if (leaf.view instanceof import_obsidian23.MarkdownView) {
+    if (leaf.view instanceof import_obsidian26.MarkdownView) {
       plugin.updateBanner(leaf.view, true);
       if (plugin.settings.hidePixelBannerFields) {
         plugin.updateFieldVisibility(leaf.view);
       }
     }
   });
+  if (typeof plugin.runConfettiPass === "function") {
+    plugin.runConfettiPass();
+  }
 }
 
 // src/core/bannerIconHelpers.js
-var import_obsidian24 = require("obsidian");
+var import_obsidian27 = require("obsidian");
 init_modals();
+init_fieldRegistry();
 function normalizeColor(color) {
   if (!color || color === "transparent" || color === "none") return "transparent";
   return color.toLowerCase().replace(/\s+/g, "");
 }
 function getIconOverlay(plugin) {
   if (plugin.iconOverlayPool.length > 0) {
-    return plugin.iconOverlayPool.pop();
+    const pooled = plugin.iconOverlayPool.pop();
+    pooled.removeAttribute("style");
+    pooled._pixelBannerIconState = null;
+    return pooled;
   }
   const overlay = document.createElement("div");
   overlay.className = "banner-icon-overlay";
@@ -33471,6 +36864,9 @@ function shouldUpdateIconOverlay(plugin, existingOverlay, newIconState, viewType
   if (!existingOverlay || !newIconState) return true;
   if (!existingOverlay._isPersistentBannerIcon || existingOverlay.dataset.viewType !== viewType || existingOverlay.textContent !== newIconState.icon) {
     return true;
+  }
+  if (existingOverlay._pixelBannerIconState) {
+    return JSON.stringify(existingOverlay._pixelBannerIconState) !== JSON.stringify(newIconState);
   }
   const computedStyle = window.getComputedStyle(existingOverlay);
   const styleChecks = {
@@ -33497,7 +36893,7 @@ function shouldUpdateIconOverlay(plugin, existingOverlay, newIconState, viewType
 async function handleSetBannerIcon(plugin) {
   const activeFile = plugin.app.workspace.getActiveFile();
   if (!activeFile) {
-    new import_obsidian24.Notice("No active file");
+    new import_obsidian27.Notice("No active file");
     return;
   }
   new EmojiSelectionModal(
@@ -33506,25 +36902,20 @@ async function handleSetBannerIcon(plugin) {
     async (selectedEmoji) => {
       if (!selectedEmoji) {
         await plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-          const bannerIconField2 = Array.isArray(plugin.settings.customBannerIconField) && plugin.settings.customBannerIconField.length > 0 ? plugin.settings.customBannerIconField[0] : "banner-icon";
-          delete frontmatter[bannerIconField2];
+          clearField(frontmatter, plugin, "icon");
         });
         await new Promise((resolve) => setTimeout(resolve, 300));
-        const view = plugin.app.workspace.getActiveViewOfType(import_obsidian24.MarkdownView);
+        const view = plugin.app.workspace.getActiveViewOfType(import_obsidian27.MarkdownView);
         if (view) {
           await plugin.updateBanner(view, true);
         }
-        new import_obsidian24.Notice("Banner icon removed");
+        new import_obsidian27.Notice("Banner icon removed");
         return;
       }
-      const bannerIconField = Array.isArray(plugin.settings.customBannerIconField) && plugin.settings.customBannerIconField.length > 0 ? plugin.settings.customBannerIconField[0] : "banner-icon";
+      let bannerIconField;
       await plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-        plugin.settings.customBannerIconField.forEach((field) => {
-          if (field in frontmatter) {
-            delete frontmatter[field];
-          }
-        });
-        frontmatter[bannerIconField] = selectedEmoji;
+        writeField(frontmatter, plugin, "icon", selectedEmoji);
+        bannerIconField = getFieldNames(plugin, "icon").find((name) => Object.prototype.hasOwnProperty.call(frontmatter, name));
       });
       const metadataUpdated = new Promise((resolve) => {
         let eventRef = null;
@@ -33556,7 +36947,7 @@ async function handleSetBannerIcon(plugin) {
       const retryDelay = 150;
       let success = false;
       for (let i = 0; i < maxRetries && !success; i++) {
-        const view = plugin.app.workspace.getActiveViewOfType(import_obsidian24.MarkdownView);
+        const view = plugin.app.workspace.getActiveViewOfType(import_obsidian27.MarkdownView);
         if (view) {
           try {
             const cache = plugin.app.metadataCache.getFileCache(activeFile);
@@ -33575,12 +36966,12 @@ async function handleSetBannerIcon(plugin) {
       }
       if (!success) {
         await new Promise((resolve) => setTimeout(resolve, 500));
-        const view = plugin.app.workspace.getActiveViewOfType(import_obsidian24.MarkdownView);
+        const view = plugin.app.workspace.getActiveViewOfType(import_obsidian27.MarkdownView);
         if (view) {
           await plugin.updateBanner(view, true);
         }
       }
-      new import_obsidian24.Notice("Banner icon updated");
+      new import_obsidian27.Notice("Banner icon updated");
       if (plugin.settings.openTargetingModalAfterSelectingBannerOrIcon) {
         await new Promise((resolve) => setTimeout(resolve, 200));
         const { TargetPositionModal: TargetPositionModal2 } = (init_modals(), __toCommonJS(modals_exports));
@@ -33603,7 +36994,7 @@ function cleanupIconOverlay(plugin, view) {
 async function handleSetBannerIconImage(plugin) {
   const activeFile = plugin.app.workspace.getActiveFile();
   if (!activeFile) {
-    new import_obsidian24.Notice("No active file");
+    new import_obsidian27.Notice("No active file");
     return;
   }
   new IconImageSelectionModal(
@@ -33614,20 +37005,10 @@ async function handleSetBannerIconImage(plugin) {
         return;
       }
       const imagePath = selectedImage.path ? selectedImage.path : selectedImage;
-      const bannerIconImageField = Array.isArray(plugin.settings.customBannerIconImageField) && plugin.settings.customBannerIconImageField.length > 0 ? plugin.settings.customBannerIconImageField[0].split(",")[0].trim() : "icon-image";
+      let bannerIconImageField;
+      let iconValue;
       await plugin.app.fileManager.processFrontMatter(activeFile, (frontmatter) => {
-        if (Array.isArray(plugin.settings.customBannerIconImageField)) {
-          plugin.settings.customBannerIconImageField.forEach((field) => {
-            const fieldNames = field.split(",").map((f) => f.trim());
-            fieldNames.forEach((fieldName) => {
-              if (fieldName in frontmatter) {
-                delete frontmatter[fieldName];
-              }
-            });
-          });
-        }
         const format = plugin.settings.imagePropertyFormat;
-        let iconValue;
         if (format === "image") {
           iconValue = imagePath;
         } else if (format === "[[image]]") {
@@ -33635,7 +37016,8 @@ async function handleSetBannerIconImage(plugin) {
         } else {
           iconValue = `![[${imagePath}]]`;
         }
-        frontmatter[bannerIconImageField] = iconValue;
+        writeField(frontmatter, plugin, "iconImage", iconValue);
+        bannerIconImageField = getFieldNames(plugin, "iconImage").find((name) => Object.prototype.hasOwnProperty.call(frontmatter, name));
       });
       const metadataUpdated = new Promise((resolve) => {
         let eventRef = null;
@@ -33667,17 +37049,17 @@ async function handleSetBannerIconImage(plugin) {
       const retryDelay = 150;
       let success = false;
       for (let i = 0; i < maxRetries && !success; i++) {
-        const view = plugin.app.workspace.getActiveViewOfType(import_obsidian24.MarkdownView);
+        const view = plugin.app.workspace.getActiveViewOfType(import_obsidian27.MarkdownView);
         if (view) {
           try {
             const cache = plugin.app.metadataCache.getFileCache(activeFile);
-            if (!cache || !cache.frontmatter || cache.frontmatter[bannerIconImageField] !== imagePath) {
+            if (!cache || !cache.frontmatter || cache.frontmatter[bannerIconImageField] !== iconValue) {
               await new Promise((resolve) => setTimeout(resolve, 100));
               continue;
             }
             await plugin.updateBanner(view, true);
             success = true;
-            new import_obsidian24.Notice(`Banner icon image updated: ${imagePath.split("/").pop()}`);
+            new import_obsidian27.Notice(`Banner icon image updated: ${imagePath.split("/").pop()}`);
           } catch (error) {
             if (i < maxRetries - 1) {
               await new Promise((resolve) => setTimeout(resolve, retryDelay));
@@ -33686,14 +37068,344 @@ async function handleSetBannerIconImage(plugin) {
         }
       }
       if (!success) {
-        new import_obsidian24.Notice("Banner icon image set, but banner update failed. Try reopening the note.");
+        new import_obsidian27.Notice("Banner icon image set, but banner update failed. Try reopening the note.");
       }
     }
   ).open();
 }
 
 // src/core/cacheHelpers.js
-var import_obsidian25 = require("obsidian");
+var import_obsidian29 = require("obsidian");
+
+// src/core/bannerUtils.js
+var import_obsidian28 = require("obsidian");
+init_fieldRegistry();
+var MARKDOWN_LINK_PATTERN = /^!?\[(?:[^\[\]]|\[[^\[\]]*\])*\]\((.*)\)$/;
+function isMarkdownLink(input) {
+  if (typeof input !== "string") return false;
+  return MARKDOWN_LINK_PATTERN.test(input.trim().replace(/^["'](.*)["']$/, "$1"));
+}
+function getMarkdownLinkTarget(input) {
+  if (typeof input !== "string") return null;
+  const cleaned = input.trim().replace(/^["'](.*)["']$/, "$1");
+  const match = cleaned.match(MARKDOWN_LINK_PATTERN);
+  if (!match) return null;
+  let target = match[1].trim();
+  const angled = target.match(/^<([^>]*)>(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?$/);
+  if (angled) {
+    target = angled[1];
+  } else {
+    target = target.replace(/\s+(?:"[^"]*"|'[^']*'|\([^)]*\))$/, "");
+  }
+  if (!target) return null;
+  try {
+    new URL(target);
+    return target;
+  } catch (_) {
+    try {
+      return decodeURIComponent(target);
+    } catch (_2) {
+      return target;
+    }
+  }
+}
+function getInputType(input, sourcePath = "") {
+  if (Array.isArray(input)) {
+    input = input.flat()[0];
+  }
+  if (typeof input !== "string") {
+    return "invalid";
+  }
+  let cleanedInput = input.trim().replace(/^["'](.*)["']$/, "$1");
+  cleanedInput = cleanedInput.replace(/^!\[\[(.*)\]\]$/, "$1").replace(/^\[\[(.*)\]\]$/, "$1");
+  if (cleanedInput.includes("file:///")) {
+    return "fileUrl";
+  }
+  if (input.match(/^!?\[{2}.*\]{2}$/) || input.match(/^"?!?\[{2}.*\]{2}"?$/)) {
+    return "obsidianLink";
+  }
+  if (isMarkdownLink(input)) {
+    return "markdownImage";
+  }
+  try {
+    new URL(cleanedInput);
+    return "url";
+  } catch (_) {
+    const file = this.app.vault.getAbstractFileByPath(cleanedInput);
+    if (file && "extension" in file) {
+      if (file.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/i)) {
+        return "vaultPath";
+      }
+    }
+    const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(cleanedInput, sourcePath);
+    if (resolvedFile && "extension" in resolvedFile) {
+      if (resolvedFile.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/i)) {
+        return "vaultPath";
+      }
+    }
+    return "keyword";
+  }
+}
+function getPathFromObsidianLink(link) {
+  let cleanLink = link.replace(/^["'](.*)["']$/, "$1");
+  cleanLink = cleanLink.startsWith("!") ? cleanLink.slice(1) : cleanLink;
+  let innerLink = cleanLink.startsWith("[[") ? cleanLink.slice(2) : cleanLink;
+  innerLink = innerLink.endsWith("]]") ? innerLink.slice(0, -2) : innerLink;
+  const path = innerLink.split("|")[0];
+  return this.app.metadataCache.getFirstLinkpathDest(path, "");
+}
+function getPathFromMarkdownImage(link, sourcePath = "") {
+  const path = getMarkdownLinkTarget(link);
+  if (path) {
+    try {
+      new URL(path);
+      return path;
+    } catch (_) {
+      const exact = this.app.vault.getAbstractFileByPath(path);
+      if (exact && "extension" in exact) {
+        return exact;
+      }
+      return this.app.metadataCache.getFirstLinkpathDest(path, sourcePath);
+    }
+  }
+  return null;
+}
+var vaultImageBlobUrls = /* @__PURE__ */ new Map();
+function getCachedVaultImageUrl(file) {
+  var _a;
+  const cached = vaultImageBlobUrls.get(file.path);
+  return cached && cached.mtime === ((_a = file.stat) == null ? void 0 : _a.mtime) ? cached.url : null;
+}
+function isVaultImageBlobUrl(url) {
+  if (typeof url !== "string") return false;
+  for (const entry2 of vaultImageBlobUrls.values()) {
+    if (entry2.url === url) return true;
+  }
+  return false;
+}
+function releaseVaultImageBlobUrl(url) {
+  for (const [path, entry2] of vaultImageBlobUrls) {
+    if (entry2.url === url) {
+      vaultImageBlobUrls.delete(path);
+      URL.revokeObjectURL(url);
+    }
+  }
+}
+function releaseAllVaultImageUrls() {
+  for (const entry2 of vaultImageBlobUrls.values()) {
+    URL.revokeObjectURL(entry2.url);
+  }
+  vaultImageBlobUrls.clear();
+}
+async function getVaultImageUrl(path) {
+  var _a;
+  const file = this.app.vault.getAbstractFileByPath(path);
+  if (file && "extension" in file) {
+    try {
+      const fileExt = file.extension.toLowerCase();
+      const videoExtensions = ["mp4", "mov"];
+      if (videoExtensions.includes(fileExt)) {
+        const resourcePath = this.app.vault.getResourcePath(file);
+        return {
+          url: resourcePath,
+          isVideo: true,
+          fileType: fileExt,
+          // Store original path to help with caching
+          originalPath: path
+        };
+      }
+      const cachedUrl = getCachedVaultImageUrl(file);
+      if (cachedUrl) {
+        return { url: cachedUrl, isVideo: false, fileType: fileExt };
+      }
+      const arrayBuffer = await this.app.vault.readBinary(file);
+      const racedUrl = getCachedVaultImageUrl(file);
+      if (racedUrl) {
+        return { url: racedUrl, isVideo: false, fileType: fileExt };
+      }
+      const mimeType = fileExt === "svg" ? "image/svg+xml" : `image/${fileExt}`;
+      const blob = new Blob([arrayBuffer], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      const previous = vaultImageBlobUrls.get(file.path);
+      if (previous) {
+        URL.revokeObjectURL(previous.url);
+      }
+      vaultImageBlobUrls.set(file.path, { url, mtime: (_a = file.stat) == null ? void 0 : _a.mtime });
+      return {
+        url,
+        isVideo: false,
+        fileType: fileExt
+      };
+    } catch (error) {
+      console.error("Error reading vault file:", error);
+      return null;
+    }
+  }
+  return null;
+}
+function preloadImage(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(url);
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+function getIconImageInputType(input, sourcePath = "") {
+  if (Array.isArray(input)) {
+    input = input.flat()[0];
+  }
+  if (typeof input !== "string") {
+    return "invalid";
+  }
+  let cleanedInput = input.trim().replace(/^["'](.*)["']$/, "$1");
+  cleanedInput = cleanedInput.replace(/^!\[\[(.*)\]\]$/, "$1").replace(/^\[\[(.*)\]\]$/, "$1");
+  if (cleanedInput.includes("file:///")) {
+    return "fileUrl";
+  }
+  if (input.match(/^!?\[{2}.*\]{2}$/) || input.match(/^"?!?\[{2}.*\]{2}"?$/)) {
+    return "obsidianLink";
+  }
+  if (isMarkdownLink(input)) {
+    return "markdownImage";
+  }
+  try {
+    new URL(cleanedInput);
+    return "url";
+  } catch (_) {
+    const file = this.app.vault.getAbstractFileByPath(cleanedInput);
+    if (file && "extension" in file) {
+      if (file.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/i)) {
+        return "vaultPath";
+      }
+    }
+    const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(cleanedInput, sourcePath);
+    if (resolvedFile && "extension" in resolvedFile) {
+      if (resolvedFile.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/i)) {
+        return "vaultPath";
+      }
+    }
+    return "keyword";
+  }
+}
+function getFolderPath(filePath) {
+  if (!filePath) return "/";
+  if (!filePath.includes("/")) {
+    return "/";
+  }
+  const lastSlashIndex = filePath.lastIndexOf("/");
+  return lastSlashIndex !== -1 ? filePath.substring(0, lastSlashIndex) : "";
+}
+function getFolderSpecificImage(filePath) {
+  if (!filePath) return null;
+  const folderPath = this.getFolderPath(filePath);
+  const sortedFolderImages = [...this.settings.folderImages].sort(
+    (a, b) => {
+      var _a, _b;
+      return (((_a = b.folder) == null ? void 0 : _a.length) || 0) - (((_b = a.folder) == null ? void 0 : _b.length) || 0);
+    }
+  );
+  for (const folderImage of sortedFolderImages) {
+    if (!folderImage.folder) continue;
+    if (folderImage.folder === "/") {
+      if (folderImage.directChildrenOnly) {
+        if (!filePath.includes("/")) {
+          return this.createFolderImageSettings(folderImage);
+        }
+      } else {
+        return this.createFolderImageSettings(folderImage);
+      }
+      continue;
+    }
+    const normalizedFolderPath = folderImage.folder.startsWith("/") ? folderImage.folder : "/" + folderImage.folder;
+    const normalizedFileFolderPath = "/" + folderPath;
+    if (folderImage.directChildrenOnly) {
+      if (normalizedFileFolderPath === normalizedFolderPath) {
+        return this.createFolderImageSettings(folderImage);
+      }
+    } else {
+      if (normalizedFileFolderPath.startsWith(normalizedFolderPath)) {
+        return this.createFolderImageSettings(folderImage);
+      }
+    }
+  }
+  return null;
+}
+function getRandomImageFromFolder(folderPath) {
+  if (typeof folderPath !== "string" || !folderPath) return null;
+  try {
+    const folder = this.app.vault.getAbstractFileByPath(folderPath);
+    if (!folder || !folder.children) return null;
+    const imageFiles = folder.children.filter(
+      (file) => file.extension && ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"].includes(file.extension.toLowerCase())
+    );
+    if (imageFiles.length === 0) return null;
+    const randomImage = imageFiles[Math.floor(Math.random() * imageFiles.length)];
+    return randomImage.path;
+  } catch (error) {
+    console.error("Error getting random image:", error);
+    return null;
+  }
+}
+function getActiveApiProvider() {
+  if (this.settings.apiProvider !== "all") {
+    return this.settings.apiProvider;
+  }
+  if (this.settings.apiProviders && Array.isArray(this.settings.apiProviders)) {
+    for (const provider of this.settings.apiProviders) {
+      const hasKey = provider === "pexels" && this.settings.pexelsApiKey || provider === "pixabay" && this.settings.pixabayApiKey || provider === "flickr" && this.settings.flickrApiKey || provider === "unsplash" && this.settings.unsplashApiKey;
+      if (hasKey) {
+        return provider;
+      }
+    }
+  }
+  const availableProviders = [];
+  if (this.settings.pexelsApiKey) availableProviders.push("pexels");
+  if (this.settings.pixabayApiKey) availableProviders.push("pixabay");
+  if (this.settings.flickrApiKey) availableProviders.push("flickr");
+  if (this.settings.unsplashApiKey) availableProviders.push("unsplash");
+  if (availableProviders.length === 0) {
+    return null;
+  }
+  return availableProviders[Math.floor(Math.random() * availableProviders.length)];
+}
+function hasBannerFrontmatter(file) {
+  const metadata = this.app.metadataCache.getFileCache(file);
+  if (!(metadata == null ? void 0 : metadata.frontmatter)) return false;
+  return this.settings.customBannerField.some(
+    (fieldName) => metadata.frontmatter[fieldName] !== void 0
+  );
+}
+function hasBannerSource(file) {
+  var _a;
+  if (this.hasBannerFrontmatter(file)) return true;
+  const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
+  if (frontmatter && getFieldNames(this, "shuffle").some((field) => frontmatter[field])) return true;
+  const folderImage = this.getFolderSpecificImage(file.path);
+  return !!(folderImage && (folderImage.image || folderImage.enableImageShuffle && folderImage.shuffleFolder));
+}
+function hasBannerOrIcon(file) {
+  var _a;
+  if (this.hasBannerSource(file)) return true;
+  const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
+  if (!frontmatter) return false;
+  return ["icon", "iconImage"].some((id) => getFieldNames(this, id).some((field) => {
+    const value = frontmatter[field];
+    return typeof value === "string" ? value.trim().length > 0 : value !== void 0 && value !== null && value !== false;
+  }));
+}
+function createFolderImageSettings(folderImage) {
+  const settings = { ...folderImage };
+  if (folderImage.enableImageShuffle && folderImage.shuffleFolder) {
+    const randomImagePath = this.getRandomImageFromFolder(folderImage.shuffleFolder);
+    if (randomImagePath) {
+      settings.image = randomImagePath;
+    }
+  }
+  return settings;
+}
+
+// src/core/cacheHelpers.js
 function generateCacheKey(filePath, leafId, isShuffled = false) {
   const encodedPath = encodeURIComponent(filePath);
   return `${encodedPath}-${leafId}${isShuffled ? "-shuffle" : ""}`;
@@ -33705,13 +37417,13 @@ function getCacheEntriesForFile(filePath) {
 function cleanupCache(force = false) {
   var _a, _b;
   const now = Date.now();
-  for (const [key, entry] of this.bannerStateCache) {
-    const maxAge = entry.isShuffled ? this.SHUFFLE_CACHE_AGE : this.MAX_CACHE_AGE;
-    const isOrphaned = entry.leafId && !this.app.workspace.getLeafById(entry.leafId);
-    if (force || now - entry.timestamp > maxAge || isOrphaned) {
-      if (entry.leafId) {
-        const leaf = this.app.workspace.getLeafById(entry.leafId);
-        if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian25.MarkdownView) {
+  for (const [key, entry2] of this.bannerStateCache) {
+    const maxAge = entry2.isShuffled ? this.SHUFFLE_CACHE_AGE : this.MAX_CACHE_AGE;
+    const isOrphaned = entry2.leafId && !this.app.workspace.getLeafById(entry2.leafId);
+    if (force || now - entry2.timestamp > maxAge || isOrphaned) {
+      if (entry2.leafId) {
+        const leaf = this.app.workspace.getLeafById(entry2.leafId);
+        if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian29.MarkdownView) {
           const contentEl = leaf.view.contentEl;
           ["cm-sizer", "markdown-preview-sizer"].forEach((selector) => {
             const container = contentEl.querySelector(`.${selector}`);
@@ -33722,8 +37434,8 @@ function cleanupCache(force = false) {
           });
         }
       }
-      if (((_a = entry.state) == null ? void 0 : _a.imageUrl) && typeof entry.state.imageUrl === "string" && entry.state.imageUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(entry.state.imageUrl);
+      if (((_a = entry2.state) == null ? void 0 : _a.imageUrl) && typeof entry2.state.imageUrl === "string" && entry2.state.imageUrl.startsWith("blob:") && !isVaultImageBlobUrl(entry2.state.imageUrl)) {
+        URL.revokeObjectURL(entry2.state.imageUrl);
       }
       this.bannerStateCache.delete(key);
     }
@@ -33731,10 +37443,10 @@ function cleanupCache(force = false) {
   if (!force && this.bannerStateCache.size > this.MAX_CACHE_ENTRIES) {
     const entries = Array.from(this.bannerStateCache.entries()).sort(([, a], [, b]) => a.timestamp - b.timestamp);
     while (entries.length > this.MAX_CACHE_ENTRIES) {
-      const [key, entry] = entries.shift();
-      if (entry.leafId) {
-        const leaf = this.app.workspace.getLeafById(entry.leafId);
-        if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian25.MarkdownView) {
+      const [key, entry2] = entries.shift();
+      if (entry2.leafId) {
+        const leaf = this.app.workspace.getLeafById(entry2.leafId);
+        if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian29.MarkdownView) {
           const contentEl = leaf.view.contentEl;
           ["cm-sizer", "markdown-preview-sizer"].forEach((selector) => {
             const container = contentEl.querySelector(`.${selector}`);
@@ -33745,8 +37457,8 @@ function cleanupCache(force = false) {
           });
         }
       }
-      if (((_b = entry.state) == null ? void 0 : _b.imageUrl) && typeof entry.state.imageUrl === "string" && entry.state.imageUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(entry.state.imageUrl);
+      if (((_b = entry2.state) == null ? void 0 : _b.imageUrl) && typeof entry2.state.imageUrl === "string" && entry2.state.imageUrl.startsWith("blob:") && !isVaultImageBlobUrl(entry2.state.imageUrl)) {
+        URL.revokeObjectURL(entry2.state.imageUrl);
       }
       this.bannerStateCache.delete(key);
     }
@@ -33754,10 +37466,10 @@ function cleanupCache(force = false) {
 }
 function invalidateLeafCache(leafId) {
   var _a;
-  for (const [key, entry] of this.bannerStateCache) {
+  for (const [key, entry2] of this.bannerStateCache) {
     if (key && typeof key === "string" && key.includes(`-${leafId}`)) {
       const leaf = this.app.workspace.getLeafById(leafId);
-      if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian25.MarkdownView) {
+      if ((leaf == null ? void 0 : leaf.view) instanceof import_obsidian29.MarkdownView) {
         const contentEl = leaf.view.contentEl;
         ["cm-sizer", "markdown-preview-sizer"].forEach((selector) => {
           const container = contentEl.querySelector(`.${selector}`);
@@ -33767,8 +37479,8 @@ function invalidateLeafCache(leafId) {
           }
         });
       }
-      if (((_a = entry.state) == null ? void 0 : _a.imageUrl) && typeof entry.state.imageUrl === "string" && entry.state.imageUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(entry.state.imageUrl);
+      if (((_a = entry2.state) == null ? void 0 : _a.imageUrl) && typeof entry2.state.imageUrl === "string" && entry2.state.imageUrl.startsWith("blob:") && !isVaultImageBlobUrl(entry2.state.imageUrl)) {
+        URL.revokeObjectURL(entry2.state.imageUrl);
       }
       this.bannerStateCache.delete(key);
     }
@@ -33776,7 +37488,7 @@ function invalidateLeafCache(leafId) {
 }
 
 // src/services/apiService.js
-var import_obsidian26 = require("obsidian");
+var import_obsidian30 = require("obsidian");
 var rateLimiter = {
   lastRequestTime: 0,
   // Use shorter interval in test environment to speed up tests
@@ -33790,7 +37502,7 @@ async function makeRequest(url, options = {}) {
   }
   rateLimiter.lastRequestTime = Date.now();
   try {
-    const response = await (0, import_obsidian26.requestUrl)({
+    const response = await (0, import_obsidian30.requestUrl)({
       url,
       headers: options.headers || {},
       ...options
@@ -34049,29 +37761,18 @@ async function getPixelBannerInfo() {
 }
 
 // src/core/bannerManager.js
-var import_obsidian27 = require("obsidian");
+var import_obsidian31 = require("obsidian");
 init_modals();
 init_frontmatterUtils();
 init_handlePinIconClick();
 init_flags();
 
 // src/utils/debounce.js
-function debounceFunction(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-function debounceAndSwallow(func, wait) {
+function debounceAndSwallow(func, wait2) {
   let lastCallTime = 0;
   return function executedFunction(...args) {
     const now = Date.now();
-    if (now - lastCallTime >= wait) {
+    if (now - lastCallTime >= wait2) {
       lastCallTime = now;
       return func(...args);
     }
@@ -34079,24 +37780,88 @@ function debounceAndSwallow(func, wait) {
 }
 
 // src/core/bannerManager.js
-var markdownPostProcessorDebounceMap = /* @__PURE__ */ new Map();
-var MARKDOWN_PROCESSOR_DEBOUNCE_DELAY = 200;
-var updateBannerDebounceMap = /* @__PURE__ */ new Map();
+init_fieldRegistry();
+init_headerMode();
+var updateBannerDebounceMap = /* @__PURE__ */ new WeakMap();
 var UPDATE_BANNER_DEBOUNCE_DELAY = 250;
 var SUPPORTED_IMAGE_EXTENSIONS = ["png", "jpg", "jpeg", "gif", "bmp", "webp", "svg", "avif"];
 var SUPPORTED_MOVIE_EXTENSIONS = ["mp4", "mov"];
 var SUPPORTED_EXTENSIONS = [...SUPPORTED_IMAGE_EXTENSIONS, ...SUPPORTED_MOVIE_EXTENSIONS];
+var PERSISTENT_ELEMENT_CLASSES = [
+  "pixel-banner-image",
+  "banner-icon-overlay",
+  "select-image-icon",
+  "view-image-icon",
+  "pin-icon",
+  "refresh-icon"
+];
+function isPersistentElement(child) {
+  return PERSISTENT_ELEMENT_CLASSES.some((cls) => {
+    var _a;
+    return (_a = child.classList) == null ? void 0 : _a.contains(cls);
+  });
+}
+function insertPersistentElement(container, el) {
+  let ref = container.firstChild;
+  while (ref && (ref === el || ref.nodeType === 1 && isPersistentElement(ref))) {
+    ref = ref.nextSibling;
+  }
+  container.insertBefore(el, ref);
+}
+function installPersistentChildrenOverride(container) {
+  if (typeof container.setChildrenInPlace !== "function" || container._hasOverriddenSetChildrenInPlace) {
+    return;
+  }
+  const originalSetChildrenInPlace = container.setChildrenInPlace;
+  container.setChildrenInPlace = function(children) {
+    try {
+      const ours = PERSISTENT_ELEMENT_CLASSES.map((cls) => this.querySelector(`:scope > .${cls}`)).filter(Boolean);
+      if (ours.length === 0) {
+        return originalSetChildrenInPlace.call(this, children);
+      }
+      const filtered = Array.from(children).filter((child) => !isPersistentElement(child));
+      return originalSetChildrenInPlace.call(this, [...ours, ...filtered]);
+    } catch (e) {
+      console.error("Pixel Banner: setChildrenInPlace override failed; using original", e);
+      return originalSetChildrenInPlace.call(this, children);
+    }
+  };
+  container._hasOverriddenSetChildrenInPlace = true;
+}
+function setBannerVideoSource(videoEl, fileUrl) {
+  if (typeof fileUrl === "string" && fileUrl.startsWith("app://")) {
+    videoEl.crossOrigin = "anonymous";
+  }
+  videoEl.src = fileUrl;
+}
+function setBannerBackground(bannerDiv, fileUrl) {
+  const backgroundImage = `url('${fileUrl}')`;
+  bannerDiv._pixelBannerPendingUrl = fileUrl;
+  const img = typeof Image === "function" ? new Image() : null;
+  if (!bannerDiv.style.backgroundImage || !img || typeof img.decode !== "function") {
+    bannerDiv.style.backgroundImage = backgroundImage;
+    return;
+  }
+  img.src = fileUrl;
+  img.decode().catch(() => {
+  }).then(() => {
+    if (bannerDiv._pixelBannerPendingUrl !== fileUrl || !bannerDiv.style.backgroundImage) {
+      return;
+    }
+    bannerDiv.style.backgroundImage = backgroundImage;
+  });
+}
 var debouncedAddPixelBanner = debounceAndSwallow(addPixelBanner, 350);
 async function addPixelBanner(plugin, el, ctx) {
-  var _a, _b, _c, _d, _e;
+  var _a, _b, _c, _d, _e, _f;
   const { frontmatter, file, isContentChange, yPosition, xPosition, contentStartPosition, bannerImage, isReadingView, updateMode } = ctx;
   const viewContent = el;
   const isEmbedded = viewContent.classList.contains("internal-embed") && viewContent.classList.contains("markdown-embed");
   const isHoverPopover = viewContent.closest(".hover-popover") !== null;
-  const hideEmbeddedNoteBanners = getFrontmatterValue(frontmatter, plugin.settings.customHideEmbeddedNoteBannersField) || ((_a = plugin.getFolderSpecificImage(file.path)) == null ? void 0 : _a.hideEmbeddedNoteBanners) || plugin.settings.hideEmbeddedNoteBanners || false;
+  const hideEmbeddedNoteBanners = resolveHideEmbeddedBanners(plugin, frontmatter, plugin.getFolderSpecificImage(file.path));
   if (!isEmbedded && !isHoverPopover && viewContent.classList.contains("view-content")) {
     const frontmatterContentStartRaw = getFrontmatterValue(frontmatter, plugin.settings.customContentStartField);
-    const initialContentStart = (_c = (_b = frontmatterContentStartRaw !== null ? Number(frontmatterContentStartRaw) : null) != null ? _b : contentStartPosition) != null ? _c : plugin.settings.contentStartPosition;
+    const initialContentStart = (_b = (_a = frontmatterContentStartRaw !== null ? Number(frontmatterContentStartRaw) : null) != null ? _a : contentStartPosition) != null ? _b : plugin.settings.contentStartPosition;
     applyContentStartPosition(plugin, viewContent, initialContentStart);
     const sourceEl = viewContent.querySelector(":scope > .markdown-source-view .cm-sizer");
     if (sourceEl) {
@@ -34119,79 +37884,27 @@ async function addPixelBanner(plugin, el, ctx) {
       const previewViewEl = embedContentDiv.querySelector(":scope > .markdown-preview-view");
       if (previewViewEl) {
         const folderSpecific = plugin.getFolderSpecificImage(file.path);
-        const maxWidth = getFrontmatterValue(frontmatter, plugin.settings.customBannerMaxWidthField) || (folderSpecific == null ? void 0 : folderSpecific.bannerMaxWidth) || plugin.settings.bannerMaxWidth || "unset";
-        const maxWidthValue = maxWidth === "unset" ? "unset" : `${maxWidth}px`;
-        const bannerYPosition = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customYPositionField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerYPosition,
-          plugin.settings.bannerYPosition,
-          0
-        ]);
-        const bannerXPosition = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customXPositionField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerXPosition,
-          plugin.settings.bannerXPosition,
-          0
-        ]);
-        const bannerTitleColor = getFrontmatterValue(frontmatter, plugin.settings.customTitleColorField) || (folderSpecific == null ? void 0 : folderSpecific.titleColor) || plugin.settings.titleColor || "var(--inline-title-color)";
+        const maxWidthValue = maxWidthCssValue(resolveMaxWidth(plugin, frontmatter));
+        const bannerYPosition = resolveField(plugin, "yPosition", frontmatter, folderSpecific);
+        const bannerXPosition = resolveField(plugin, "xPosition", frontmatter, folderSpecific);
+        const bannerTitleColor = resolveField(plugin, "titleColor", frontmatter, folderSpecific);
         previewViewEl.style.setProperty("--pixel-banner-y-position", `${bannerYPosition}%`);
         previewViewEl.style.setProperty("--pixel-banner-x-position", `${bannerXPosition}%`);
         previewViewEl.style.setProperty("--pixel-banner-max-width", maxWidthValue);
         previewViewEl.style.setProperty("--pixel-banner-title-color", bannerTitleColor);
-        const bannerIconSize = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconSizeField) || (folderSpecific == null ? void 0 : folderSpecific.bannerIconSize) || plugin.settings.bannerIconSize || 70;
-        const bannerIconXPosition = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconXPositionField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerIconXPosition,
-          plugin.settings.bannerIconXPosition,
-          25
-        ]);
-        const bannerIconOpacity = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconOpacityField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerIconOpacity,
-          plugin.settings.bannerIconOpacity,
-          100
-        ]);
-        const bannerIconColor = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconColorField) || (folderSpecific == null ? void 0 : folderSpecific.bannerIconColor) || plugin.settings.bannerIconColor || "var(--text-normal)";
-        const bannerIconFontWeight = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconFontWeightField) || (folderSpecific == null ? void 0 : folderSpecific.bannerIconFontWeight) || plugin.settings.bannerIconFontWeight || "normal";
-        const bannerIconBackgroundColor = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconBackgroundColorField) || (folderSpecific == null ? void 0 : folderSpecific.bannerIconBackgroundColor) || plugin.settings.bannerIconBackgroundColor || "transparent";
-        const bannerIconPaddingX = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconPaddingXField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerIconPaddingX,
-          plugin.settings.bannerIconPaddingX,
-          10
-        ]);
-        const bannerIconPaddingY = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconPaddingYField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerIconPaddingY,
-          plugin.settings.bannerIconPaddingY,
-          10
-        ]);
-        const bannerIconBorderRadius = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconBorderRadiusField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerIconBorderRadius,
-          plugin.settings.bannerIconBorderRadius,
-          17
-        ]);
-        const bannerIconVerticalOffset = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVerticalOffsetField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerIconVerticalOffset,
-          plugin.settings.bannerIconVerticalOffset,
-          0
-        ]);
-        const bannerIconRotate = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconRotateField),
-          0
-        ]);
-        const bannerIconImageSizeMultiplier = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconImageSizeMultiplierField),
-          plugin.settings.bannerIconImageSizeMultiplier,
-          1
-        ]);
-        const bannerIconTextVerticalOffset = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconTextVerticalOffsetField),
-          plugin.settings.bannerIconTextVerticalOffset,
-          0
-        ]);
+        const bannerIconSize = resolveField(plugin, "iconSize", frontmatter, folderSpecific);
+        const bannerIconXPosition = resolveField(plugin, "iconXPosition", frontmatter, folderSpecific);
+        const bannerIconOpacity = resolveField(plugin, "iconOpacity", frontmatter, folderSpecific);
+        const bannerIconColor = resolveField(plugin, "iconColor", frontmatter, folderSpecific);
+        const bannerIconFontWeight = resolveField(plugin, "iconFontWeight", frontmatter, folderSpecific);
+        const bannerIconBackgroundColor = (_c = resolveField(plugin, "iconBackgroundColor", frontmatter, folderSpecific)) != null ? _c : "transparent";
+        const bannerIconPaddingX = resolveField(plugin, "iconPaddingX", frontmatter, folderSpecific);
+        const bannerIconPaddingY = resolveField(plugin, "iconPaddingY", frontmatter, folderSpecific);
+        const bannerIconBorderRadius = resolveField(plugin, "iconBorderRadius", frontmatter, folderSpecific);
+        const bannerIconVerticalOffset = resolveField(plugin, "iconVerticalOffset", frontmatter, folderSpecific);
+        const bannerIconRotate = resolveField(plugin, "iconRotate", frontmatter, folderSpecific);
+        const bannerIconImageSizeMultiplier = resolveField(plugin, "iconImageSizeMultiplier", frontmatter, folderSpecific);
+        const bannerIconTextVerticalOffset = resolveField(plugin, "iconTextVerticalOffset", frontmatter, folderSpecific);
         previewViewEl.style.setProperty("--pixel-banner-icon-size", `${bannerIconSize}px`);
         previewViewEl.style.setProperty("--pixel-banner-icon-x", `${bannerIconXPosition}%`);
         previewViewEl.style.setProperty("--pixel-banner-icon-opacity", `${bannerIconOpacity}%`);
@@ -34205,25 +37918,15 @@ async function addPixelBanner(plugin, el, ctx) {
         previewViewEl.style.setProperty("--pixel-banner-icon-rotate", `${bannerIconRotate}deg`);
         previewViewEl.style.setProperty("--pixel-banner-icon-image-size-multiplier", `${bannerIconImageSizeMultiplier}em`);
         previewViewEl.style.setProperty("--pixel-banner-icon-text-vertical-offset", `${bannerIconTextVerticalOffset}px`);
-        const bannerHeight = getFrontmatterValue(frontmatter, plugin.settings.customBannerHeightField) || (folderSpecific == null ? void 0 : folderSpecific.bannerHeight) || plugin.settings.bannerHeight || 150;
+        const bannerHeight = resolveField(plugin, "height", frontmatter, folderSpecific);
         const embedMinHeight = `${parseInt(bannerHeight) + parseInt(bannerIconSize) / 2}px`;
         previewViewEl.style.setProperty("--pixel-banner-embed-min-height", embedMinHeight);
         previewViewEl.style.setProperty("--pixel-banner-height", `${bannerHeight}px`);
-        const bannerFade = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerFadeField),
-          folderSpecific == null ? void 0 : folderSpecific.bannerFade,
-          plugin.settings.fade,
-          -75
-        ]);
+        const bannerFade = resolveField(plugin, "fade", frontmatter, folderSpecific);
         previewViewEl.style.setProperty("--pixel-banner-fade", `${bannerFade}%`);
-        const bannerRadius = getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBorderRadiusField),
-          folderSpecific == null ? void 0 : folderSpecific.borderRadius,
-          plugin.settings.borderRadius,
-          17
-        ]);
+        const bannerRadius = resolveField(plugin, "borderRadius", frontmatter, folderSpecific);
         previewViewEl.style.setProperty("--pixel-banner-radius", `${bannerRadius}px`);
-        const bannerAlignment = getFrontmatterValue(frontmatter, plugin.settings.customBannerAlignmentField) || "center";
+        const bannerAlignment = resolveField(plugin, "alignment", frontmatter, folderSpecific);
         let alignmentValue = "0 auto";
         if (bannerAlignment === "left") {
           alignmentValue = "0 auto 0 0";
@@ -34277,6 +37980,9 @@ async function addPixelBanner(plugin, el, ctx) {
     container.insertBefore(bannerDiv, container.firstChild);
     bannerDiv._isPersistentBanner = true;
   }
+  const renderToken = {};
+  bannerDiv._pixelBannerRender = renderToken;
+  const isStaleRender = () => bannerDiv._pixelBannerRender !== renderToken;
   const oldViewIcons = container.querySelectorAll(".view-image-icon");
   const oldPinIcons = container.querySelectorAll(".pin-icon");
   const oldRefreshIcons = container.querySelectorAll(".refresh-icon");
@@ -34301,11 +38007,11 @@ async function addPixelBanner(plugin, el, ctx) {
                     `
         }
       });
-      const flagColor = getFrontmatterValue(frontmatter, plugin.settings.customFlagColorField) || plugin.settings.selectImageIconFlag;
+      const flagColor = resolveField(plugin, "flagColor", frontmatter);
       selectImageIcon.innerHTML = `<img src="${flags[flagColor] || flags["red"]}" alt="Select Banner" style="width: 25px; height: 30px;">`;
       selectImageIcon._isPersistentSelectImage = true;
       selectImageIcon.onclick = () => plugin.handleBannerIconClick();
-      container.appendChild(selectImageIcon);
+      insertPersistentElement(container, selectImageIcon);
       leftOffset += 35;
     }
     if (bannerImage && plugin.settings.showViewImageIcon && !isEmbedded) {
@@ -34333,49 +38039,33 @@ async function addPixelBanner(plugin, el, ctx) {
           };
         }
       };
-      container.appendChild(viewImageIcon);
+      insertPersistentElement(container, viewImageIcon);
       leftOffset += 35;
     }
     const activeFile = plugin.app.workspace.getActiveFile();
     const hasBanner = activeFile && plugin.hasBannerFrontmatter(activeFile);
   }
-  if (!container._hasOverriddenSetChildrenInPlace) {
-    const originalSetChildrenInPlace = container.setChildrenInPlace;
-    container.setChildrenInPlace = function(children) {
-      const bannerElement = this.querySelector(":scope > .pixel-banner-image");
-      const viewImageElement = this.querySelector(":scope > .view-image-icon");
-      const pinElement = this.querySelector(":scope > .pin-icon");
-      const refreshElement = this.querySelector(":scope > .refresh-icon");
-      const selectImageElement = this.querySelector(":scope > .select-image-icon");
-      const bannerIconOverlay = this.querySelector(":scope > .banner-icon-overlay");
-      children = Array.from(children).filter(
-        (child) => {
-          var _a2, _b2, _c2, _d2, _e2, _f;
-          return !((_a2 = child.classList) == null ? void 0 : _a2.contains("pixel-banner-image")) && !((_b2 = child.classList) == null ? void 0 : _b2.contains("view-image-icon")) && !((_c2 = child.classList) == null ? void 0 : _c2.contains("pin-icon")) && !((_d2 = child.classList) == null ? void 0 : _d2.contains("refresh-icon")) && !((_e2 = child.classList) == null ? void 0 : _e2.contains("select-image-icon")) && !((_f = child.classList) == null ? void 0 : _f.contains("banner-icon-overlay"));
-        }
-      );
-      if (bannerElement == null ? void 0 : bannerElement._isPersistentBanner) {
-        children.unshift(bannerElement);
-      }
-      if (bannerIconOverlay == null ? void 0 : bannerIconOverlay._isPersistentBannerIcon) {
-        children.push(bannerIconOverlay);
-      }
-      if (selectImageElement == null ? void 0 : selectImageElement._isPersistentSelectImage) {
-        children.push(selectImageElement);
-      }
-      if (viewImageElement == null ? void 0 : viewImageElement._isPersistentViewImage) {
-        children.push(viewImageElement);
-      }
-      if (pinElement == null ? void 0 : pinElement._isPersistentPin) {
-        children.push(pinElement);
-      }
-      if (refreshElement == null ? void 0 : refreshElement._isPersistentRefresh) {
-        children.push(refreshElement);
-      }
-      return originalSetChildrenInPlace.call(this, children);
-    };
-    container._hasOverriddenSetChildrenInPlace = true;
-  }
+  installPersistentChildrenOverride(container);
+  const buildBannerVideo = (bannerDiv2, fileUrl, imageDisplay) => {
+    const existingVideo = bannerDiv2.querySelector("video");
+    if (existingVideo) {
+      existingVideo.remove();
+    }
+    const videoEl = document.createElement("video");
+    videoEl.className = "pixel-banner-video";
+    setBannerVideoSource(videoEl, fileUrl);
+    videoEl.autoplay = true;
+    videoEl.loop = true;
+    videoEl.muted = true;
+    videoEl.playsInline = true;
+    videoEl.style.width = "100%";
+    videoEl.style.height = "100%";
+    videoEl.style.objectFit = imageDisplay || "cover";
+    videoEl.style.position = "absolute";
+    videoEl.style.top = "0";
+    videoEl.style.left = "0";
+    bannerDiv2.appendChild(videoEl);
+  };
   if (bannerImage) {
     let imageUrl = plugin.loadedImages.get(file.path);
     const lastInput = plugin.lastKeywords.get(file.path);
@@ -34396,10 +38086,11 @@ async function addPixelBanner(plugin, el, ctx) {
         plugin.loadedImages.set(file.path, imageUrl);
         plugin.lastKeywords.set(file.path, bannerImage);
       }
+      if (isStaleRender()) return;
     }
     if (imageUrl) {
-      const imageDisplay = getFrontmatterValue(frontmatter, plugin.settings.customImageDisplayField) || (folderSpecific == null ? void 0 : folderSpecific.imageDisplay) || plugin.settings.imageDisplay;
-      const imageRepeat = getFrontmatterValue(frontmatter, plugin.settings.customImageRepeatField) || (folderSpecific == null ? void 0 : folderSpecific.imageRepeat) || plugin.settings.imageRepeat;
+      const imageDisplay = resolveField(plugin, "imageDisplay", frontmatter, folderSpecific);
+      const imageRepeat = resolveField(plugin, "imageRepeat", frontmatter, folderSpecific);
       let isVideoFile = false;
       let fileUrl = "";
       if (typeof imageUrl === "object" && imageUrl !== null) {
@@ -34421,6 +38112,7 @@ async function addPixelBanner(plugin, el, ctx) {
         } catch (error) {
           console.log("Blob URL invalid, refreshing file:", error);
           plugin.loadedImages.delete(file.path);
+          releaseVaultImageBlobUrl(fileUrl);
           URL.revokeObjectURL(fileUrl);
           const inputType2 = plugin.getInputType(bannerImage, file.path);
           const freshResult = await plugin.getImageUrl(inputType2, bannerImage, file.path);
@@ -34434,33 +38126,17 @@ async function addPixelBanner(plugin, el, ctx) {
             plugin.loadedImages.set(file.path, fileUrl);
           }
         }
+        if (isStaleRender()) return;
       }
       if (isVideoFile) {
         bannerDiv.style.backgroundImage = "";
-        const existingVideo = bannerDiv.querySelector("video");
-        if (existingVideo) {
-          existingVideo.remove();
-        }
-        const videoEl = document.createElement("video");
-        videoEl.className = "pixel-banner-video";
-        videoEl.src = fileUrl;
-        videoEl.autoplay = true;
-        videoEl.loop = true;
-        videoEl.muted = true;
-        videoEl.playsInline = true;
-        videoEl.style.width = "100%";
-        videoEl.style.height = "100%";
-        videoEl.style.objectFit = imageDisplay || "cover";
-        videoEl.style.position = "absolute";
-        videoEl.style.top = "0";
-        videoEl.style.left = "0";
-        bannerDiv.appendChild(videoEl);
+        buildBannerVideo(bannerDiv, fileUrl, imageDisplay);
       } else {
         const existingVideo = bannerDiv.querySelector("video");
         if (existingVideo) {
           existingVideo.remove();
         }
-        bannerDiv.style.backgroundImage = `url('${fileUrl}')`;
+        setBannerBackground(bannerDiv, fileUrl);
         if (isSvg) {
           bannerDiv.style.backgroundSize = imageDisplay === "contain" ? "contain" : "100% 100%";
         } else {
@@ -34486,12 +38162,17 @@ async function addPixelBanner(plugin, el, ctx) {
         viewImageIcon._updateVisibility(imageUrl, displayUrl);
       }
       plugin.applyBannerSettings(bannerDiv, ctx, isEmbedded);
-      const hideEmbeddedNoteBanners2 = getFrontmatterValue(frontmatter, plugin.settings.customHideEmbeddedNoteBannersField) || (folderSpecific == null ? void 0 : folderSpecific.hideEmbeddedNoteBanners) || plugin.settings.hideEmbeddedNoteBanners || false;
+      const hideEmbeddedNoteBanners2 = resolveHideEmbeddedBanners(plugin, frontmatter, folderSpecific);
       let effectiveContentStart = 0;
       if (!hideEmbeddedNoteBanners2 || !isEmbedded) {
         const frontmatterContentStart = getFrontmatterValue(frontmatter, plugin.settings.customContentStartField);
         const parsedFrontmatterStart = frontmatterContentStart ? Number(frontmatterContentStart) : null;
         effectiveContentStart = (_e = (_d = parsedFrontmatterStart != null ? parsedFrontmatterStart : contentStartPosition) != null ? _d : folderSpecific == null ? void 0 : folderSpecific.contentStartPosition) != null ? _e : plugin.settings.contentStartPosition;
+      }
+      if (isHoverPopover) {
+        const fullHeight = Number((_f = ctx.bannerHeight) != null ? _f : resolveField(plugin, "height", frontmatter, folderSpecific));
+        const cutHeight = fullHeight - capPopoverBannerHeight(plugin, fullHeight, true);
+        if (cutHeight > 0) effectiveContentStart = Math.max(0, effectiveContentStart - cutHeight);
       }
       plugin.applyContentStartPosition(viewContent, effectiveContentStart);
       plugin.applyBannerWidth(viewContent);
@@ -34514,18 +38195,18 @@ async function addPixelBanner(plugin, el, ctx) {
           try {
             const currentImage = plugin.loadedImages.get(file.path);
             if (!currentImage) {
-              new import_obsidian27.Notice("Could not find the current image URL to pin.");
+              new import_obsidian31.Notice("Could not find the current image URL to pin.");
               console.error("Error pinning image: currentImage is null or undefined for file.path:", file.path);
               return;
             }
             const imageUrlToPin = typeof currentImage === "object" && currentImage.url ? currentImage.url : currentImage;
-            await handlePinIconClick(imageUrlToPin, plugin);
+            await handlePinIconClick(imageUrlToPin, plugin, null, null, true, file);
           } catch (error) {
             console.error("Error pinning image:", error);
-            new import_obsidian27.Notice("Failed to pin the image.");
+            new import_obsidian31.Notice("Failed to pin the image.");
           }
         };
-        container.appendChild(pinIcon);
+        insertPersistentElement(container, pinIcon);
         leftOffset += 35;
         if (inputType === "keyword" && plugin.settings.showRefreshIcon) {
           const refreshIcon = createDiv({
@@ -34543,6 +38224,8 @@ async function addPixelBanner(plugin, el, ctx) {
           refreshIcon.innerHTML = "\u{1F504}";
           refreshIcon._isPersistentRefresh = true;
           refreshIcon.onclick = async () => {
+            const refreshToken = {};
+            bannerDiv._pixelBannerRender = refreshToken;
             try {
               plugin.loadedImages.delete(file.path);
               plugin.lastKeywords.delete(file.path);
@@ -34559,28 +38242,12 @@ async function addPixelBanner(plugin, el, ctx) {
                 }
                 plugin.loadedImages.set(file.path, fileUrl2);
                 plugin.lastKeywords.set(file.path, bannerImage);
+                if (bannerDiv._pixelBannerRender !== refreshToken) return;
                 if (isVideoFile2) {
                   bannerDiv.style.backgroundImage = "";
-                  const existingVideo = bannerDiv.querySelector("video");
-                  if (existingVideo) {
-                    existingVideo.remove();
-                  }
-                  const videoEl = document.createElement("video");
-                  videoEl.className = "pixel-banner-video";
-                  videoEl.src = fileUrl2;
-                  videoEl.autoplay = true;
-                  videoEl.loop = true;
-                  videoEl.muted = true;
-                  videoEl.playsInline = true;
-                  videoEl.style.width = "100%";
-                  videoEl.style.height = "100%";
-                  videoEl.style.objectFit = "cover";
-                  videoEl.style.position = "absolute";
-                  videoEl.style.top = "0";
-                  videoEl.style.left = "0";
-                  bannerDiv.appendChild(videoEl);
+                  buildBannerVideo(bannerDiv, fileUrl2, resolveField(plugin, "imageDisplay", frontmatter, folderSpecific));
                 } else {
-                  bannerDiv.style.backgroundImage = `url('${fileUrl2}')`;
+                  setBannerBackground(bannerDiv, fileUrl2);
                   const existingVideo = bannerDiv.querySelector("video");
                   if (existingVideo) {
                     existingVideo.remove();
@@ -34600,39 +38267,77 @@ async function addPixelBanner(plugin, el, ctx) {
                   }
                   viewImageIcon2._updateVisibility(fileUrl2, displayUrl);
                 }
-                new import_obsidian27.Notice("\u{1F504} Refreshed banner");
+                new import_obsidian31.Notice("\u{1F504} Refreshed banner");
               }
             } catch (error) {
               console.error("Error refreshing banner:", error);
-              new import_obsidian27.Notice("Failed to refresh the banner.");
+              new import_obsidian31.Notice("Failed to refresh the banner.");
             }
           };
-          container.appendChild(refreshIcon);
+          insertPersistentElement(container, refreshIcon);
         }
       }
+      return true;
     } else {
       bannerDiv.style.display = "none";
+      bannerDiv.style.backgroundImage = "";
       plugin.loadedImages.delete(file.path);
       plugin.lastKeywords.delete(file.path);
       if (!isEmbedded) {
         viewContent.classList.remove("pixel-banner");
       }
+      return false;
     }
   }
 }
-var debouncedUpdateBanner = debounceFunction(updateBanner, 50);
+var updateBannerPending = /* @__PURE__ */ new WeakMap();
+function debouncedUpdateBanner(plugin, view, isContentChange = false, updateMode = plugin.UPDATE_MODE.FULL_UPDATE) {
+  const key = (view == null ? void 0 : view.contentEl) || view;
+  if (!key || typeof key !== "object") {
+    return Promise.resolve(false);
+  }
+  const pending = updateBannerPending.get(key);
+  const resolvers = pending ? pending.resolvers : [];
+  if (pending) {
+    clearTimeout(pending.timer);
+    isContentChange = isContentChange || pending.isContentChange;
+    if (updateMode === plugin.UPDATE_MODE.ENSURE_VISIBILITY) {
+      updateMode = pending.updateMode;
+    }
+  }
+  const done = new Promise((resolve) => resolvers.push(resolve));
+  const timer = setTimeout(() => {
+    updateBannerPending.delete(key);
+    updateBanner(plugin, view, isContentChange, updateMode).then((result) => result !== false, (error) => {
+      var _a;
+      console.error("Pixel Banner: banner update failed", error);
+      if (view.contentEl && view.contentEl._pixelBannerFilePath === ((_a = view.file) == null ? void 0 : _a.path)) {
+        delete view.contentEl._pixelBannerFilePath;
+      }
+      return false;
+    }).then((ok) => resolvers.forEach((resolve) => resolve(ok)));
+  }, 50);
+  updateBannerPending.set(key, { timer, isContentChange, updateMode, resolvers });
+  return done;
+}
 async function updateBanner(plugin, view, isContentChange, updateMode = plugin.UPDATE_MODE.FULL_UPDATE) {
-  var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
+  var _a, _b, _c, _d, _e, _f, _g;
   if (!view || !view.file) {
-    return;
+    return false;
   }
   const filePath = view.file.path;
   const currentTime = Date.now();
-  const lastUpdateTime = updateBannerDebounceMap.get(filePath);
-  if (lastUpdateTime && currentTime - lastUpdateTime < UPDATE_BANNER_DEBOUNCE_DELAY) {
-    return;
+  const debounceKey = view.contentEl || view;
+  const isEnsureVisibility = updateMode === plugin.UPDATE_MODE.ENSURE_VISIBILITY;
+  const lastUpdate = updateBannerDebounceMap.get(debounceKey);
+  const isStronger = !!lastUpdate && (isContentChange && !lastUpdate.isContentChange || !isEnsureVisibility && lastUpdate.isEnsureVisibility);
+  if (lastUpdate && !isStronger && lastUpdate.filePath === filePath && currentTime - lastUpdate.time < UPDATE_BANNER_DEBOUNCE_DELAY) {
+    return false;
   }
-  updateBannerDebounceMap.set(filePath, currentTime);
+  updateBannerDebounceMap.set(debounceKey, { filePath, time: currentTime, isContentChange: !!isContentChange, isEnsureVisibility });
+  if (view.contentEl) {
+    view.contentEl._pixelBannerFilePath = filePath;
+  }
   if (!isContentChange) {
     await new Promise((resolve) => setTimeout(resolve, 50));
   }
@@ -34641,26 +38346,28 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
   const isEmbedded = contentEl.classList.contains("internal-embed") && contentEl.classList.contains("markdown-embed");
   const isHoverPopover = contentEl.closest(".hover-popover") !== null;
   const viewContent = contentEl;
+  const isMainPane = !isEmbedded && contentEl.classList.contains("view-content");
   const nonPersistentOverlays = viewContent.querySelectorAll('.banner-icon-overlay:not([data-persistent="true"])');
   nonPersistentOverlays.forEach((overlay) => overlay.remove());
-  ["markdown-preview-sizer", "cm-sizer"].forEach((container) => {
-    const containerEl = viewContent.querySelector(`.${container}`);
+  Object.values(getOverlaySizers(viewContent, isMainPane)).forEach((containerEl) => {
     if (containerEl) {
-      const bannerImage2 = containerEl.querySelector(":scope > .pixel-banner-image");
-      if (bannerImage2) {
-        const allOverlays = containerEl.querySelectorAll(':scope > .banner-icon-overlay[data-persistent="true"]');
-        allOverlays.forEach((overlay) => {
-          if (overlay.previousElementSibling !== bannerImage2) {
-            overlay.remove();
-          }
-        });
-      }
+      const allOverlays = containerEl.querySelectorAll(':scope > .banner-icon-overlay[data-persistent="true"]');
+      Array.from(allOverlays).slice(1).forEach((overlay) => overlay.remove());
     }
   });
   const existingBanner = contentEl.querySelector(".pixel-banner-image");
   const folderSpecific = plugin.getFolderSpecificImage(view.file.path);
   let bannerImage = null;
-  const shufflePath = getFrontmatterValue(frontmatter, plugin.settings.customBannerShuffleField) || (folderSpecific == null ? void 0 : folderSpecific.enableImageShuffle);
+  const bannerIcon = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconField);
+  let bannerIconImage = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconImageField);
+  if (Array.isArray(bannerIconImage)) {
+    bannerIconImage = bannerIconImage.flat()[0];
+    if (bannerIconImage && !bannerIconImage.startsWith("[[") && !bannerIconImage.startsWith("![[")) {
+      bannerIconImage = `[[${bannerIconImage}]]`;
+    }
+  }
+  const frontmatterShuffle = getFrontmatterValue(frontmatter, plugin.settings.customBannerShuffleField);
+  const shufflePath = typeof frontmatterShuffle === "string" && frontmatterShuffle.trim() || (folderSpecific == null ? void 0 : folderSpecific.enableImageShuffle) && folderSpecific.shuffleFolder || null;
   if (shufflePath && updateMode !== plugin.UPDATE_MODE.ENSURE_VISIBILITY) {
     const randomImagePath = await plugin.getRandomImageFromFolder(shufflePath);
     if (randomImagePath) {
@@ -34681,21 +38388,7 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
   if (!bannerImage) {
     bannerImage = getFrontmatterValue(frontmatter, plugin.settings.customBannerField) || (folderSpecific == null ? void 0 : folderSpecific.image);
   }
-  if (!isEmbedded && !bannerImage) {
-    contentEl.classList.remove("pixel-banner");
-    const previewSizer = contentEl.querySelector(".markdown-preview-sizer");
-    if (previewSizer) {
-      previewSizer.style.removeProperty("padding-top");
-    }
-    const sourceSizer = contentEl.querySelector(".cm-sizer");
-    if (sourceSizer) {
-      sourceSizer.style.removeProperty("padding-top");
-    }
-    if (existingBanner) {
-      existingBanner.style.backgroundImage = "";
-      existingBanner.style.display = "none";
-    }
-  } else if (isEmbedded && !bannerImage) {
+  if (isEmbedded && !bannerImage) {
     const embedRoot = viewContent.closest(".internal-embed.markdown-embed");
     if (embedRoot) {
       embedRoot.style.setProperty("--pixel-banner-embed-min-height", "1%");
@@ -34737,14 +38430,15 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
       }
     }
   }
-  let imageDisplay = getFrontmatterValue(frontmatter, plugin.settings.customImageDisplayField) || (folderSpecific == null ? void 0 : folderSpecific.imageDisplay) || plugin.settings.imageDisplay;
-  let imageRepeat = (_g = (_f = getFrontmatterValue(frontmatter, plugin.settings.customImageRepeatField)) != null ? _f : folderSpecific == null ? void 0 : folderSpecific.imageRepeat) != null ? _g : plugin.settings.imageRepeat;
-  let bannerHeight = (_i = (_h = getFrontmatterValue(frontmatter, plugin.settings.customBannerHeightField)) != null ? _h : folderSpecific == null ? void 0 : folderSpecific.bannerHeight) != null ? _i : plugin.settings.bannerHeight;
-  let fade = (_k = (_j = getFrontmatterValue(frontmatter, plugin.settings.customFadeField)) != null ? _j : folderSpecific == null ? void 0 : folderSpecific.fade) != null ? _k : plugin.settings.fade;
-  let borderRadius = (_m = (_l = getFrontmatterValue(frontmatter, plugin.settings.customBorderRadiusField)) != null ? _l : folderSpecific == null ? void 0 : folderSpecific.borderRadius) != null ? _m : plugin.settings.borderRadius;
-  let maxWidth = getFrontmatterValue(frontmatter, plugin.settings.customBannerMaxWidthField) || (folderSpecific == null ? void 0 : folderSpecific.bannerMaxWidth) || "unset";
+  let imageDisplay = resolveField(plugin, "imageDisplay", frontmatter, folderSpecific);
+  let imageRepeat = resolveField(plugin, "imageRepeat", frontmatter, folderSpecific);
+  let bannerHeight = resolveField(plugin, "height", frontmatter, folderSpecific);
+  let fade = resolveField(plugin, "fade", frontmatter, folderSpecific);
+  let borderRadius = resolveField(plugin, "borderRadius", frontmatter, folderSpecific);
+  let maxWidth = resolveMaxWidth(plugin, frontmatter);
+  let imageShown;
   if (bannerImage) {
-    await addPixelBanner(plugin, contentEl, {
+    imageShown = await addPixelBanner(plugin, contentEl, {
       frontmatter,
       file: view.file,
       isContentChange,
@@ -34761,9 +38455,36 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
       isReadingView: view.getMode && view.getMode() === "preview",
       updateMode
     });
-    plugin.lastYPositions.set(view.file.path, yPosition);
-  } else if (existingBanner) {
+    if (((_f = view.file) == null ? void 0 : _f.path) !== filePath) {
+      return false;
+    }
+  } else if (existingBanner && !isMainPane) {
+    existingBanner._pixelBannerRender = null;
     existingBanner.style.display = "none";
+  }
+  let headerMode = null;
+  if (isMainPane) {
+    headerMode = getHeaderMode({
+      hasBannerSource: !!bannerImage,
+      imageFailed: imageShown === false,
+      icon: bannerIcon,
+      iconImage: bannerIconImage
+    });
+    clearHeaderLayout(contentEl, headerMode);
+    if (headerMode === "icon-only") {
+      applyIconOnlyLayout(plugin, contentEl, { frontmatter, folderSpecific });
+    }
+  }
+  let embedIconOnly = false;
+  if (isEmbedded) {
+    const hideEmbeddedNoteBanners = resolveHideEmbeddedBanners(plugin, frontmatter, folderSpecific);
+    embedIconOnly = !hideEmbeddedNoteBanners && getHeaderMode({
+      hasBannerSource: !!bannerImage,
+      imageFailed: imageShown === false,
+      icon: bannerIcon,
+      iconImage: bannerIconImage
+    }) === "icon-only";
+    applyEmbedIconOnlyLayout(plugin, contentEl, { iconOnly: embedIconOnly, frontmatter, folderSpecific });
   }
   if (!isEmbedded) {
     const embeddedNotes = contentEl.querySelectorAll(".internal-embed.markdown-embed");
@@ -34812,11 +38533,11 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
                         `
           }
         });
-        const flagColor = getFrontmatterValue(frontmatter, plugin.settings.customFlagColorField) || plugin.settings.selectImageIconFlag;
+        const flagColor = resolveField(plugin, "flagColor", frontmatter);
         selectImageIcon.innerHTML = `<img src="${flags[flagColor] || flags["red"]}" alt="Select Banner" style="width: 25px; height: 30px;">`;
         selectImageIcon._isPersistentSelectImage = true;
         selectImageIcon.onclick = () => plugin.handleBannerIconClick();
-        container.insertBefore(selectImageIcon, container.firstChild);
+        insertPersistentElement(container, selectImageIcon);
       }
     }
     if (container) {
@@ -34826,16 +38547,8 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
       }
     }
   }
-  if (plugin.settings.hidePixelBannerFields && view.getMode() === "preview") {
+  if (plugin.settings.hidePixelBannerFields) {
     plugin.updateFieldVisibility(view);
-  }
-  const bannerIcon = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconField);
-  let bannerIconImage = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconImageField);
-  if (Array.isArray(bannerIconImage)) {
-    bannerIconImage = bannerIconImage.flat()[0];
-    if (bannerIconImage && !bannerIconImage.startsWith("[[") && !bannerIconImage.startsWith("![[")) {
-      bannerIconImage = `[[${bannerIconImage}]]`;
-    }
   }
   if (isEmbedded) {
     const embedContainer = contentEl.querySelector(".markdown-preview-sizer") || contentEl.querySelector(".markdown-embed-content") || contentEl;
@@ -34859,8 +38572,7 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
         overlay.remove();
       });
     } else {
-      const previewContainer = contentEl.querySelector("div.markdown-preview-sizer");
-      const sourceContainer = contentEl.querySelector("div.cm-sizer");
+      const { preview: previewContainer, source: sourceContainer } = getOverlaySizers(contentEl, isMainPane);
       if (previewContainer) {
         const previewOverlays = previewContainer.querySelectorAll(':scope > .banner-icon-overlay[data-persistent="true"]');
         previewOverlays.forEach((overlay) => {
@@ -34881,46 +38593,29 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
     const cleanIcon = bannerIcon ? bannerIcon.trim() : "";
     const cacheKey = plugin.generateCacheKey(view.file.path, plugin.app.workspace.activeLeaf.id);
     const cachedState = plugin.bannerStateCache.get(cacheKey);
-    const cachedIconState = (_n = cachedState == null ? void 0 : cachedState.state) == null ? void 0 : _n.iconState;
-    const createOrUpdateIconOverlay = async (banner, viewType) => {
-      var _a2, _b2;
-      if (!banner) {
+    const cachedIconState = (_g = cachedState == null ? void 0 : cachedState.state) == null ? void 0 : _g.iconState;
+    const createOrUpdateIconOverlay = async (sizer, viewType) => {
+      var _a2;
+      if (!sizer) {
         return;
       }
       const currentIconState = {
         icon: cleanIcon,
-        size: getFrontmatterValue(frontmatter, plugin.settings.customBannerIconSizeField) || plugin.settings.bannerIconSize,
-        xPosition: getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconXPositionField),
-          plugin.settings.bannerIconXPosition
-        ]),
-        opacity: getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconOpacityField),
-          plugin.settings.bannerIconOpacity
-        ]),
-        color: getFrontmatterValue(frontmatter, plugin.settings.customBannerIconColorField) || plugin.settings.bannerIconColor,
-        fontWeight: getFrontmatterValue(frontmatter, plugin.settings.customBannerIconFontWeightField) || plugin.settings.bannerIconFontWeight,
-        backgroundColor: getFrontmatterValue(frontmatter, plugin.settings.customBannerIconBackgroundColorField) || plugin.settings.bannerIconBackgroundColor,
-        paddingX: getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconPaddingXField),
-          plugin.settings.bannerIconPaddingX
-        ]),
-        paddingY: getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconPaddingYField),
-          plugin.settings.bannerIconPaddingY
-        ]),
-        borderRadius: getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconBorderRadiusField),
-          plugin.settings.bannerIconBorderRadius
-        ]),
-        verticalOffset: getValueWithZeroCheck([
-          getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVerticalOffsetField),
-          plugin.settings.bannerIconVerticalOffset
-        ]),
-        imageAlignment: getFrontmatterValue(frontmatter, plugin.settings.customBannerIconImageAlignmentField) || plugin.settings.bannerIconImageAlignment,
+        iconImage: typeof bannerIconImage === "string" ? bannerIconImage.trim() : "",
+        size: resolveField(plugin, "iconSize", frontmatter, folderSpecific),
+        xPosition: resolveField(plugin, "iconXPosition", frontmatter, folderSpecific),
+        opacity: resolveField(plugin, "iconOpacity", frontmatter, folderSpecific),
+        color: resolveField(plugin, "iconColor", frontmatter, folderSpecific),
+        fontWeight: resolveField(plugin, "iconFontWeight", frontmatter, folderSpecific),
+        backgroundColor: (_a2 = resolveField(plugin, "iconBackgroundColor", frontmatter, folderSpecific)) != null ? _a2 : "transparent",
+        paddingX: resolveField(plugin, "iconPaddingX", frontmatter, folderSpecific),
+        paddingY: resolveField(plugin, "iconPaddingY", frontmatter, folderSpecific),
+        borderRadius: resolveField(plugin, "iconBorderRadius", frontmatter, folderSpecific),
+        verticalOffset: resolveField(plugin, "iconVerticalOffset", frontmatter, folderSpecific),
+        imageAlignment: resolveField(plugin, "iconImageAlignment", frontmatter, folderSpecific),
         viewType
       };
-      const existingOverlay = ((_b2 = (_a2 = banner.nextElementSibling) == null ? void 0 : _a2.classList) == null ? void 0 : _b2.contains("banner-icon-overlay")) ? banner.nextElementSibling : null;
+      const existingOverlay = sizer.querySelector(':scope > .banner-icon-overlay[data-persistent="true"]');
       if (existingOverlay) {
         if (!plugin.shouldUpdateIconOverlay(existingOverlay, currentIconState, viewType)) {
           return existingOverlay;
@@ -34932,6 +38627,7 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
       bannerIconOverlay.dataset.persistent = "true";
       bannerIconOverlay.textContent = "";
       bannerIconOverlay._isPersistentBannerIcon = true;
+      bannerIconOverlay._pixelBannerIconState = currentIconState;
       bannerIconOverlay.innerHTML = "";
       const imageAlignment = currentIconState.imageAlignment === "right" ? "right" : "left";
       let imgElement = null;
@@ -34954,7 +38650,7 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
               }
               break;
             case "markdownImage":
-              const mdPath = plugin.getPathFromMarkdownImage(bannerIconImage);
+              const mdPath = plugin.getPathFromMarkdownImage(bannerIconImage, view.file.path);
               if (typeof mdPath === "string") {
                 try {
                   new URL(mdPath);
@@ -35022,109 +38718,135 @@ async function updateBanner(plugin, view, isContentChange, updateMode = plugin.U
         if (imgElement) bannerIconOverlay.appendChild(imgElement);
         if (textElement) bannerIconOverlay.appendChild(textElement);
       }
-      bannerIconOverlay.style.display = "block";
-      bannerIconOverlay.style.fontSize = `${currentIconState.size}px`;
-      bannerIconOverlay.style.left = `${currentIconState.xPosition}%`;
-      bannerIconOverlay.style.opacity = `${currentIconState.opacity}%`;
-      bannerIconOverlay.style.color = currentIconState.color;
-      bannerIconOverlay.style.fontWeight = currentIconState.fontWeight;
-      bannerIconOverlay.style.backgroundColor = currentIconState.backgroundColor;
-      bannerIconOverlay.style.padding = `${currentIconState.paddingY}px ${currentIconState.paddingX}px`;
-      bannerIconOverlay.style.borderRadius = `${currentIconState.borderRadius}px`;
-      bannerIconOverlay.style.marginTop = `${currentIconState.verticalOffset}px`;
-      banner.insertAdjacentElement("afterend", bannerIconOverlay);
+      installPersistentChildrenOverride(sizer);
+      insertPersistentElement(sizer, bannerIconOverlay);
       return bannerIconOverlay;
     };
     if (isEmbedded) {
       const embedContainer = contentEl.querySelector(".markdown-preview-sizer") || contentEl.querySelector(".markdown-embed-content") || contentEl;
-      const previewBanner = embedContainer.querySelector(":scope > .pixel-banner-image");
-      await createOrUpdateIconOverlay(previewBanner, "preview");
-    } else {
-      const previewContainer = contentEl.querySelector("div.markdown-preview-sizer");
-      const sourceContainer = contentEl.querySelector("div.cm-sizer");
-      if (previewContainer) {
-        const previewBanner = previewContainer.querySelector(":scope > .pixel-banner-image");
-        await createOrUpdateIconOverlay(previewBanner, "preview");
+      if (embedIconOnly || embedContainer.querySelector(":scope > .pixel-banner-image")) {
+        await createOrUpdateIconOverlay(embedContainer, "preview");
       }
-      if (sourceContainer) {
-        const sourceBanner = sourceContainer.querySelector(":scope > .pixel-banner-image");
-        await createOrUpdateIconOverlay(sourceBanner, "source");
+    } else {
+      const sizers = getOverlaySizers(contentEl, isMainPane);
+      for (const [sizer, viewType] of [[sizers.preview, "preview"], [sizers.source, "source"]]) {
+        if (!sizer) continue;
+        if (headerMode === "icon-only" || sizer.querySelector(":scope > .pixel-banner-image")) {
+          await createOrUpdateIconOverlay(sizer, viewType);
+        } else if (isMainPane) {
+          sizer.querySelectorAll(':scope > .banner-icon-overlay[data-persistent="true"]').forEach((overlay) => {
+            plugin.returnIconOverlay(overlay);
+            overlay.remove();
+          });
+        }
       }
     }
   }
 }
-var debouncedApplyBannerSettings = debounceAndSwallow(applyBannerSettings, 350);
+function getMainViewEls(contentEl) {
+  return [
+    contentEl.querySelector(":scope > .markdown-reading-view > .markdown-preview-view"),
+    contentEl.querySelector(":scope > .markdown-source-view")
+  ].filter(Boolean);
+}
+function getMainSizers(contentEl) {
+  return {
+    preview: contentEl.querySelector(":scope > .markdown-reading-view .markdown-preview-sizer"),
+    source: contentEl.querySelector(":scope > .markdown-source-view .cm-sizer")
+  };
+}
+function getOverlaySizers(contentEl, isMainPane) {
+  if (isMainPane) return getMainSizers(contentEl);
+  return {
+    preview: contentEl.querySelector("div.markdown-preview-sizer"),
+    source: contentEl.querySelector("div.cm-sizer")
+  };
+}
+function applyIconOnlyLayout(plugin, contentEl, { frontmatter, folderSpecific }) {
+  contentEl.classList.add("pixel-banner-icon-only");
+  contentEl.classList.remove("pixel-banner");
+  const cssVars = {
+    ...getIconLayoutVars(plugin, frontmatter, folderSpecific, { mode: "icon-only" }),
+    "--pixel-banner-content-start": `${getIconOnlyContentStart(plugin, frontmatter, folderSpecific)}px`
+  };
+  [contentEl, ...getMainViewEls(contentEl)].forEach((el) => el.setCssProps(cssVars));
+  applyBannerWidth(plugin, contentEl);
+  plugin.setupResizeObserver(contentEl);
+}
+function applyEmbedIconOnlyLayout(plugin, embedRoot, { iconOnly, frontmatter, folderSpecific }) {
+  var _a;
+  embedRoot.classList.toggle("pixel-banner-icon-only", iconOnly);
+  if (!iconOnly) return;
+  embedRoot.classList.remove("pixel-banner");
+  const sizer = embedRoot.querySelector(".markdown-preview-sizer");
+  const failedBanner = sizer == null ? void 0 : sizer.querySelector(":scope > .pixel-banner-image");
+  if (failedBanner) {
+    failedBanner._pixelBannerRender = null;
+    failedBanner.style.display = "none";
+  }
+  const contentStart = `${getIconOnlyContentStart(plugin, frontmatter, folderSpecific)}px`;
+  (_a = embedRoot.querySelector(":scope > .markdown-embed-content > .markdown-preview-view")) == null ? void 0 : _a.setCssProps({
+    ...getIconLayoutVars(plugin, frontmatter, folderSpecific, { mode: "icon-only" }),
+    "--pixel-banner-content-start": contentStart,
+    "--pixel-banner-embed-min-height": contentStart
+  });
+  embedRoot.setCssProps({
+    "--pixel-banner-content-start": contentStart,
+    "--pixel-banner-embed-min-height": contentStart
+  });
+}
+function clearHeaderLayout(contentEl, mode) {
+  const isHeaderVar = (name) => name.startsWith("--pixel-banner-icon-") || name === "--pixel-banner-content-start";
+  const removeVars = (el, test) => Array.from(el.style).filter(test).forEach((name) => el.style.removeProperty(name));
+  if (mode !== "icon-only") {
+    contentEl.classList.remove("pixel-banner-icon-only");
+  }
+  if (mode === "banner") {
+    removeVars(contentEl, (name) => name.startsWith("--pixel-banner-icon-"));
+    getMainViewEls(contentEl).forEach((el) => {
+      const isIconOnlyStyled = el.style.getPropertyValue("--pixel-banner-icon-translate-y") === "0%";
+      removeVars(el, (name) => name === "--pixel-banner-content-start" || isIconOnlyStyled && name.startsWith("--pixel-banner-icon-"));
+    });
+  }
+  if (mode !== "banner") {
+    contentEl.classList.remove("pixel-banner");
+    Object.values(getMainSizers(contentEl)).forEach((sizer) => {
+      if (!sizer) return;
+      sizer.style.removeProperty("padding-top");
+      const existingBanner = sizer.querySelector(":scope > .pixel-banner-image");
+      if (existingBanner) {
+        existingBanner._pixelBannerRender = null;
+        existingBanner.style.backgroundImage = "";
+        existingBanner.style.display = "none";
+      }
+    });
+  }
+  if (mode === "none") {
+    [contentEl, ...getMainViewEls(contentEl)].forEach((el) => removeVars(el, isHeaderVar));
+  }
+}
+function capPopoverBannerHeight(plugin, bannerHeight, isHoverPopover) {
+  const maxHeight = Number(plugin.settings.popoverBannerMaxHeight);
+  if (!isHoverPopover || !Number.isFinite(maxHeight) || isNaN(Number(bannerHeight))) return bannerHeight;
+  return Math.min(Number(bannerHeight), maxHeight);
+}
 function applyBannerSettings(plugin, bannerDiv, ctx, isEmbedded) {
-  const { frontmatter, imageDisplay, imageRepeat, bannerHeight, fade, borderRadius, maxWidth } = ctx;
+  var _a, _b, _c, _d;
+  const { frontmatter, imageDisplay, imageRepeat, maxWidth } = ctx;
   const folderSpecific = plugin.getFolderSpecificImage(ctx.file.path);
-  let pixelBannerYPosition = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customYPositionField),
-    folderSpecific == null ? void 0 : folderSpecific.yPosition,
-    plugin.settings.yPosition
-  ]);
-  let pixelBannerXPosition = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customXPositionField),
-    folderSpecific == null ? void 0 : folderSpecific.xPosition,
-    plugin.settings.xPosition
-  ]);
-  const pixelBannerMaxWidth = getFrontmatterValue(frontmatter, plugin.settings.customBannerMaxWidthField) || (folderSpecific == null ? void 0 : folderSpecific.bannerMaxWidth) || plugin.settings.bannerMaxWidth || "unset";
-  const titleColor = getFrontmatterValue(frontmatter, plugin.settings.customTitleColorField) || (folderSpecific == null ? void 0 : folderSpecific.titleColor) || plugin.settings.titleColor;
-  const bannerIconSize = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconSizeField) || (folderSpecific == null ? void 0 : folderSpecific.bannerIconSize) || plugin.settings.bannerIconSize || 70;
-  const bannerIconXPosition = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customBannerIconXPositionField),
-    folderSpecific == null ? void 0 : folderSpecific.bannerIconXPosition,
-    plugin.settings.bannerIconXPosition,
-    25
-  ]);
-  const bannerIconOpacity = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customBannerIconOpacityField),
-    folderSpecific == null ? void 0 : folderSpecific.bannerIconOpacity,
-    plugin.settings.bannerIconOpacity,
-    100
-  ]);
-  const bannerIconColor = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconColorField) || (folderSpecific == null ? void 0 : folderSpecific.bannerIconColor) || plugin.settings.bannerIconColor || "var(--text-normal)";
-  const bannerIconFontWeight = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconFontWeightField) || (folderSpecific == null ? void 0 : folderSpecific.bannerIconFontWeight) || plugin.settings.bannerIconFontWeight || "normal";
-  const bannerIconBackgroundColor = getFrontmatterValue(frontmatter, plugin.settings.customBannerIconBackgroundColorField) || (folderSpecific == null ? void 0 : folderSpecific.bannerIconBackgroundColor) || plugin.settings.bannerIconBackgroundColor || "transparent";
-  const bannerIconPaddingX = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customBannerIconPaddingXField),
-    folderSpecific == null ? void 0 : folderSpecific.bannerIconPaddingX,
-    plugin.settings.bannerIconPaddingX,
-    10
-  ]);
-  const bannerIconPaddingY = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customBannerIconPaddingYField),
-    folderSpecific == null ? void 0 : folderSpecific.bannerIconPaddingY,
-    plugin.settings.bannerIconPaddingY,
-    10
-  ]);
-  const bannerIconBorderRadius = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customBannerIconBorderRadiusField),
-    folderSpecific == null ? void 0 : folderSpecific.bannerIconBorderRadius,
-    plugin.settings.bannerIconBorderRadius,
-    17
-  ]);
-  const bannerIconVerticalOffset = getValueWithZeroCheck([
-    Number(getFrontmatterValue(frontmatter, plugin.settings.customBannerIconVerticalOffsetField)),
-    folderSpecific == null ? void 0 : folderSpecific.bannerIconVerticalOffset,
-    plugin.settings.bannerIconVerticalOffset,
-    0
-  ]);
-  const bannerIconRotate = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customBannerIconRotateField),
-    0
-  ]);
-  const bannerIconImageSizeMultiplier = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customBannerIconImageSizeMultiplierField),
-    plugin.settings.bannerIconImageSizeMultiplier,
-    1
-  ]);
-  const bannerIconTextVerticalOffset = getValueWithZeroCheck([
-    getFrontmatterValue(frontmatter, plugin.settings.customBannerIconTextVerticalOffsetField),
-    plugin.settings.bannerIconTextVerticalOffset,
-    0
-  ]);
-  const hideEmbeddedNoteBanners = getFrontmatterValue(frontmatter, plugin.settings.customHideEmbeddedNoteBannersField) || (folderSpecific == null ? void 0 : folderSpecific.hideEmbeddedNoteBanners) || plugin.settings.hideEmbeddedNoteBanners || false;
-  const bannerAlignment = getFrontmatterValue(frontmatter, plugin.settings.customBannerAlignmentField) || "center";
+  const isHoverPopover = ((_a = bannerDiv.closest) == null ? void 0 : _a.call(bannerDiv, ".hover-popover")) != null;
+  const bannerHeight = capPopoverBannerHeight(plugin, (_b = ctx.bannerHeight) != null ? _b : resolveField(plugin, "height", frontmatter, folderSpecific), isHoverPopover);
+  const fade = (_c = ctx.fade) != null ? _c : resolveField(plugin, "fade", frontmatter, folderSpecific);
+  const borderRadius = (_d = ctx.borderRadius) != null ? _d : resolveField(plugin, "borderRadius", frontmatter, folderSpecific);
+  let pixelBannerYPosition = resolveField(plugin, "yPosition", frontmatter, folderSpecific);
+  let pixelBannerXPosition = resolveField(plugin, "xPosition", frontmatter, folderSpecific);
+  const pixelBannerMaxWidth = maxWidthCssValue(resolveMaxWidth(plugin, frontmatter));
+  const titleColor = resolveField(plugin, "titleColor", frontmatter, folderSpecific);
+  const bannerIconSize = resolveField(plugin, "iconSize", frontmatter, folderSpecific);
+  const bannerIconPaddingY = resolveField(plugin, "iconPaddingY", frontmatter, folderSpecific);
+  const bannerIconVerticalOffset = resolveField(plugin, "iconVerticalOffset", frontmatter, folderSpecific);
+  const hideEmbeddedNoteBanners = resolveHideEmbeddedBanners(plugin, frontmatter, folderSpecific);
+  const bannerAlignment = resolveField(plugin, "alignment", frontmatter, folderSpecific);
   let alignmentValue = "0 auto";
   if (bannerAlignment === "left") {
     alignmentValue = "0 auto 0 0";
@@ -35136,24 +38858,11 @@ function applyBannerSettings(plugin, bannerDiv, ctx, isEmbedded) {
     "--pixel-banner-fade": `${fade}%`,
     "--pixel-banner-fade-in-animation-duration": `${plugin.settings.bannerFadeInAnimationDuration}ms`,
     "--pixel-banner-radius": `${borderRadius}px`,
-    "--pixel-banner-max-width": pixelBannerMaxWidth === "unset" ? "unset" : `${pixelBannerMaxWidth}px`,
+    "--pixel-banner-max-width": pixelBannerMaxWidth,
     "--pixel-banner-y-position": `${pixelBannerYPosition}%`,
     "--pixel-banner-x-position": `${pixelBannerXPosition}%`,
     "--pixel-banner-title-color": titleColor,
-    "--pixel-banner-icon-size": `${bannerIconSize}px`,
-    "--pixel-banner-icon-start": `${bannerHeight - bannerIconSize / 2}px`,
-    "--pixel-banner-icon-x": `${bannerIconXPosition}%`,
-    "--pixel-banner-icon-opacity": `${bannerIconOpacity}%`,
-    "--pixel-banner-icon-color": bannerIconColor,
-    "--pixel-banner-icon-font-weight": bannerIconFontWeight,
-    "--pixel-banner-icon-background-color": bannerIconBackgroundColor,
-    "--pixel-banner-icon-padding-x": `${bannerIconPaddingX}px`,
-    "--pixel-banner-icon-padding-y": `${bannerIconPaddingY}px`,
-    "--pixel-banner-icon-border-radius": `${bannerIconBorderRadius}px`,
-    "--pixel-banner-icon-vertical-offset": `${bannerIconVerticalOffset}px`,
-    "--pixel-banner-icon-rotate": `${bannerIconRotate}deg`,
-    "--pixel-banner-icon-image-size-multiplier": `${bannerIconImageSizeMultiplier}em`,
-    "--pixel-banner-icon-text-vertical-offset": `${bannerIconTextVerticalOffset}px`,
+    ...getIconLayoutVars(plugin, frontmatter, folderSpecific, { mode: "banner", bannerHeight }),
     "--pixel-banner-embed-min-height": !hideEmbeddedNoteBanners ? `${parseInt(bannerHeight) + parseInt(bannerIconSize) / 2 + parseInt(bannerIconVerticalOffset) + parseInt(bannerIconPaddingY)}px` : "0px",
     "--pixel-banner-alignment": alignmentValue
   };
@@ -35162,6 +38871,7 @@ function applyBannerSettings(plugin, bannerDiv, ctx, isEmbedded) {
   Object.entries(cssVars).forEach(([property, value]) => {
     bannerDiv.style.setProperty(property, value);
   });
+  bannerDiv.classList.toggle("pixel-banner-no-position-transition", plugin.settings.bannerPositionTransition === false);
   const container = bannerDiv.closest(".markdown-preview-view, .markdown-source-view");
   if (container) {
     Object.entries(cssVars).forEach(([property, value]) => {
@@ -35211,7 +38921,7 @@ var debouncedUpdateAllBanners = debounceAndSwallow(updateAllBanners, 350);
 function updateAllBanners(plugin) {
   plugin.app.workspace.iterateAllLeaves((leaf) => {
     if (leaf.view.getViewType() === "markdown") {
-      updateBanner(plugin, leaf.view, true);
+      debouncedUpdateBanner(plugin, leaf.view, true);
     }
   });
 }
@@ -35225,332 +38935,134 @@ async function updateBannerPosition(plugin, file, position) {
     frontmatter.banner_y = position.y;
   });
 }
-function registerMarkdownPostProcessor(plugin) {
-  plugin.registerMarkdownPostProcessor((el, ctx) => {
-    var _a;
-    const isPreview = ctx.containerEl.classList.contains("markdown-preview-view");
-    const isHoverPopover = ctx.containerEl.closest(".hover-popover");
-    const debounceFile = ctx.sourcePath ? plugin.app.vault.getAbstractFileByPath(ctx.sourcePath) : null;
-    if (debounceFile) {
-      const currentTime = Date.now();
-      const lastProcessTime = markdownPostProcessorDebounceMap.get(debounceFile.path);
-      if (lastProcessTime && currentTime - lastProcessTime < MARKDOWN_PROCESSOR_DEBOUNCE_DELAY) {
-        return;
-      }
-      markdownPostProcessorDebounceMap.set(debounceFile.path, currentTime);
-    }
-    if (!isPreview && !isHoverPopover) return;
-    const file = ctx.sourcePath ? plugin.app.vault.getAbstractFileByPath(ctx.sourcePath) : null;
-    if (!file) return;
-    const frontmatter = (_a = plugin.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
-    let bannerImage = null;
-    for (const field of plugin.settings.customBannerField) {
-      if (frontmatter == null ? void 0 : frontmatter[field]) {
-        bannerImage = frontmatter[field];
-        break;
-      }
-    }
-    if (!bannerImage) {
-      const folderSpecific2 = plugin.getFolderSpecificImage(file.path);
-      if (folderSpecific2 == null ? void 0 : folderSpecific2.image) {
-        bannerImage = folderSpecific2.image;
-      }
-    }
-    if (!bannerImage) return;
-    const folderSpecific = plugin.getFolderSpecificImage(file.path);
-    const yPosition = getFrontmatterValue(frontmatter, plugin.settings.customYPositionField) || (folderSpecific == null ? void 0 : folderSpecific.yPosition) || plugin.settings.yPosition;
-    const xPosition = getFrontmatterValue(frontmatter, plugin.settings.customXPositionField) || (folderSpecific == null ? void 0 : folderSpecific.xPosition) || plugin.settings.xPosition;
-    const contentStartPosition = getFrontmatterValue(frontmatter, plugin.settings.customContentStartField) || (folderSpecific == null ? void 0 : folderSpecific.contentStartPosition) || plugin.settings.contentStartPosition;
-    addPixelBanner(plugin, ctx.containerEl, {
-      frontmatter,
-      file,
-      isContentChange: false,
-      yPosition,
-      xPosition,
-      contentStartPosition,
-      bannerImage,
-      isReadingView: true,
-      updateMode: plugin.UPDATE_MODE.FULL_UPDATE
-    });
-  });
-}
 
-// src/core/bannerUtils.js
-var import_obsidian28 = require("obsidian");
-function getInputType(input, sourcePath = "") {
-  if (Array.isArray(input)) {
-    input = input.flat()[0];
-  }
-  if (typeof input !== "string") {
-    return "invalid";
-  }
-  let cleanedInput = input.trim().replace(/^["'](.*)["']$/, "$1");
-  cleanedInput = cleanedInput.replace(/^!\[\[(.*)\]\]$/, "$1").replace(/^\[\[(.*)\]\]$/, "$1");
-  if (cleanedInput.includes("file:///")) {
-    return "fileUrl";
-  }
-  if (input.match(/^!?\[{2}.*\]{2}$/) || input.match(/^"?!?\[{2}.*\]{2}"?$/)) {
-    return "obsidianLink";
-  }
-  if (input.match(/^!\[\]\(.*\)$/) || input.match(/^"?!\[\]\(.*\)"?$/)) {
-    return "markdownImage";
-  }
-  try {
-    new URL(cleanedInput);
-    return "url";
-  } catch (_) {
-    const file = this.app.vault.getAbstractFileByPath(cleanedInput);
-    if (file && "extension" in file) {
-      if (file.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/i)) {
-        return "vaultPath";
-      }
-    }
-    const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(cleanedInput, sourcePath);
-    if (resolvedFile && "extension" in resolvedFile) {
-      if (resolvedFile.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/i)) {
-        return "vaultPath";
-      }
-    }
-    return "keyword";
-  }
+// src/core/eventHandler.js
+var import_obsidian33 = require("obsidian");
+init_modals();
+init_frontmatterUtils();
+init_confettiManager();
+init_confettiConfig();
+
+// src/utils/unquotedBannerLink.js
+var import_obsidian32 = require("obsidian");
+function getBannerFieldNames(fieldNames) {
+  const fields = Array.isArray(fieldNames) ? fieldNames : [fieldNames];
+  return fields.flatMap((field) => typeof field === "string" ? field.split(",") : []).map((field) => field.trim()).filter((field) => field.length > 0);
 }
-function getPathFromObsidianLink(link) {
-  let cleanLink = link.replace(/^["'](.*)["']$/, "$1");
-  cleanLink = cleanLink.startsWith("!") ? cleanLink.slice(1) : cleanLink;
-  let innerLink = cleanLink.startsWith("[[") ? cleanLink.slice(2) : cleanLink;
-  innerLink = innerLink.endsWith("]]") ? innerLink.slice(0, -2) : innerLink;
-  const path = innerLink.split("|")[0];
-  return this.app.metadataCache.getFirstLinkpathDest(path, "");
+function escapeRegExp(text) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
-function getPathFromMarkdownImage(link) {
-  let cleanLink = link.replace(/^["'](.*)["']$/, "$1");
-  const match = cleanLink.match(/^!\[\]\((.*)\)$/);
-  if (match && match[1]) {
-    const path = match[1];
-    try {
-      new URL(path);
-      return path;
-    } catch (_) {
-      return this.app.metadataCache.getFirstLinkpathDest(path, "");
+function findUnquotedBannerLink(frontmatter, fieldNames) {
+  if (!frontmatter) return null;
+  for (const field of getBannerFieldNames(fieldNames)) {
+    const value = frontmatter[field];
+    if (Array.isArray(value) && value.length === 1 && Array.isArray(value[0]) && value[0].length === 1 && typeof value[0][0] === "string") {
+      return { field, value: `[[${value[0][0]}]]` };
     }
   }
   return null;
 }
-async function getVaultImageUrl(path) {
-  const file = this.app.vault.getAbstractFileByPath(path);
-  if (file && "extension" in file) {
-    try {
-      const fileExt = file.extension.toLowerCase();
-      const videoExtensions = ["mp4", "mov"];
-      if (videoExtensions.includes(fileExt)) {
-        const resourcePath = this.app.vault.getResourcePath(file);
-        return {
-          url: resourcePath,
-          isVideo: true,
-          fileType: fileExt,
-          // Store original path to help with caching
-          originalPath: path
-        };
-      }
-      const arrayBuffer = await this.app.vault.readBinary(file);
-      const mimeType = fileExt === "svg" ? "image/svg+xml" : `image/${fileExt}`;
-      const blob = new Blob([arrayBuffer], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      return {
-        url,
-        isVideo: false,
-        fileType: fileExt
-      };
-    } catch (error) {
-      console.error("Error reading vault file:", error);
-      return null;
+function findUnquotedBannerLinkInText(text, fieldNames) {
+  if (typeof text !== "string") return null;
+  const block = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  if (!block) return null;
+  for (const field of getBannerFieldNames(fieldNames)) {
+    const line = block[1].match(new RegExp(`^${escapeRegExp(field)}:[ \\t]*(!?\\[\\[[^\\r\\n]*?)[ \\t]*$`, "m"));
+    if (line) {
+      return { field, value: line[1] };
     }
   }
   return null;
 }
-function preloadImage(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(url);
-    img.onerror = reject;
-    img.src = url;
-  });
-}
-function getIconImageInputType(input, sourcePath = "") {
-  if (Array.isArray(input)) {
-    input = input.flat()[0];
+async function checkUnquotedBannerLink(plugin, file) {
+  var _a, _b;
+  if (!file || file.extension !== "md") return;
+  if (!plugin.unquotedBannerLinkWarned) {
+    plugin.unquotedBannerLinkWarned = /* @__PURE__ */ new Set();
   }
-  if (typeof input !== "string") {
-    return "invalid";
-  }
-  let cleanedInput = input.trim().replace(/^["'](.*)["']$/, "$1");
-  cleanedInput = cleanedInput.replace(/^!\[\[(.*)\]\]$/, "$1").replace(/^\[\[(.*)\]\]$/, "$1");
-  if (cleanedInput.includes("file:///")) {
-    return "fileUrl";
-  }
-  if (input.match(/^!?\[{2}.*\]{2}$/) || input.match(/^"?!?\[{2}.*\]{2}"?$/)) {
-    return "obsidianLink";
-  }
-  if (input.match(/^!\[\]\(.*\)$/) || input.match(/^"?!\[\]\(.*\)"?$/)) {
-    return "markdownImage";
-  }
-  try {
-    new URL(cleanedInput);
-    return "url";
-  } catch (_) {
-    const file = this.app.vault.getAbstractFileByPath(cleanedInput);
-    if (file && "extension" in file) {
-      if (file.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/i)) {
-        return "vaultPath";
-      }
+  if (plugin.unquotedBannerLinkWarned.has(file.path)) return;
+  const fieldNames = plugin.settings.customBannerField;
+  const cache = plugin.app.metadataCache.getFileCache(file);
+  const frontmatter = cache == null ? void 0 : cache.frontmatter;
+  let found = findUnquotedBannerLink(frontmatter, fieldNames);
+  if (!found && !frontmatter && ((_b = (_a = cache == null ? void 0 : cache.sections) == null ? void 0 : _a[0]) == null ? void 0 : _b.type) === "yaml") {
+    const path = file.path;
+    plugin.unquotedBannerLinkWarned.add(path);
+    try {
+      const content = await plugin.app.vault.cachedRead(file);
+      found = findUnquotedBannerLinkInText(content, fieldNames);
+    } finally {
+      if (!found) plugin.unquotedBannerLinkWarned.delete(path);
     }
-    const resolvedFile = this.app.metadataCache.getFirstLinkpathDest(cleanedInput, sourcePath);
-    if (resolvedFile && "extension" in resolvedFile) {
-      if (resolvedFile.extension.match(/^(jpg|jpeg|png|gif|bmp|svg|webp|avif|mp4|mov)$/i)) {
-        return "vaultPath";
-      }
-    }
-    return "keyword";
   }
-}
-function getFolderPath(filePath) {
-  if (!filePath) return "/";
-  if (!filePath.includes("/")) {
-    return "/";
-  }
-  const lastSlashIndex = filePath.lastIndexOf("/");
-  return lastSlashIndex !== -1 ? filePath.substring(0, lastSlashIndex) : "";
-}
-function getFolderSpecificImage(filePath) {
-  if (!filePath) return null;
-  const folderPath = this.getFolderPath(filePath);
-  const sortedFolderImages = [...this.settings.folderImages].sort(
-    (a, b) => {
-      var _a, _b;
-      return (((_a = b.folder) == null ? void 0 : _a.length) || 0) - (((_b = a.folder) == null ? void 0 : _b.length) || 0);
-    }
+  if (!found) return;
+  plugin.unquotedBannerLinkWarned.add(file.path);
+  new import_obsidian32.Notice(
+    `Pixel Banner: the "${found.field}" property in "${file.basename}" is not in quotes, so it can't be read correctly. Write it as ${found.field}: "${found.value}" (with the quotes).`,
+    12e3
   );
-  for (const folderImage of sortedFolderImages) {
-    if (!folderImage.folder) continue;
-    if (folderImage.folder === "/") {
-      if (folderImage.directChildrenOnly) {
-        if (!filePath.includes("/")) {
-          return this.createFolderImageSettings(folderImage);
-        }
-      } else {
-        return this.createFolderImageSettings(folderImage);
-      }
-      continue;
-    }
-    const normalizedFolderPath = folderImage.folder.startsWith("/") ? folderImage.folder : "/" + folderImage.folder;
-    const normalizedFileFolderPath = "/" + folderPath;
-    if (folderImage.directChildrenOnly) {
-      if (normalizedFileFolderPath === normalizedFolderPath) {
-        return this.createFolderImageSettings(folderImage);
-      }
-    } else {
-      if (normalizedFileFolderPath.startsWith(normalizedFolderPath)) {
-        return this.createFolderImageSettings(folderImage);
-      }
-    }
-  }
-  return null;
 }
-function getFolderSpecificSetting(filePath, settingName) {
+var UNQUOTED_BANNER_LINK_SETTLE_MS = 3e3;
+function scheduleUnquotedBannerLinkCheck(plugin, file) {
   var _a;
-  const folderPath = this.getFolderPath(filePath);
-  for (const folderImage of this.settings.folderImages) {
-    if (folderPath.startsWith(folderImage.folder)) {
-      return (_a = folderImage[settingName]) != null ? _a : void 0;
+  if (!file || file.extension !== "md") return;
+  if (!plugin.unquotedBannerLinkTimers) {
+    plugin.unquotedBannerLinkTimers = /* @__PURE__ */ new Map();
+    (_a = plugin.register) == null ? void 0 : _a.call(plugin, () => {
+      plugin.unquotedBannerLinkTimers.forEach((timer2) => clearTimeout(timer2));
+      plugin.unquotedBannerLinkTimers.clear();
+    });
+  }
+  const timers = plugin.unquotedBannerLinkTimers;
+  const path = file.path;
+  clearTimeout(timers.get(path));
+  const timer = setTimeout(() => {
+    if (timers.get(path) === timer) {
+      timers.delete(path);
     }
-  }
-  return void 0;
-}
-function getRandomImageFromFolder(folderPath) {
-  try {
-    const folder = this.app.vault.getAbstractFileByPath(folderPath);
-    if (!folder || !folder.children) return null;
-    const imageFiles = folder.children.filter(
-      (file) => file.extension && ["png", "jpg", "jpeg", "gif", "webp", "svg", "avif"].includes(file.extension.toLowerCase())
-    );
-    if (imageFiles.length === 0) return null;
-    const randomImage = imageFiles[Math.floor(Math.random() * imageFiles.length)];
-    return randomImage.path;
-  } catch (error) {
-    console.error("Error getting random image:", error);
-    return null;
-  }
-}
-function getActiveApiProvider() {
-  if (this.settings.apiProvider !== "all") {
-    return this.settings.apiProvider;
-  }
-  if (this.settings.apiProviders && Array.isArray(this.settings.apiProviders)) {
-    for (const provider of this.settings.apiProviders) {
-      const hasKey = provider === "pexels" && this.settings.pexelsApiKey || provider === "pixabay" && this.settings.pixabayApiKey || provider === "flickr" && this.settings.flickrApiKey || provider === "unsplash" && this.settings.unsplashApiKey;
-      if (hasKey) {
-        return provider;
-      }
-    }
-  }
-  const availableProviders = [];
-  if (this.settings.pexelsApiKey) availableProviders.push("pexels");
-  if (this.settings.pixabayApiKey) availableProviders.push("pixabay");
-  if (this.settings.flickrApiKey) availableProviders.push("flickr");
-  if (this.settings.unsplashApiKey) availableProviders.push("unsplash");
-  if (availableProviders.length === 0) {
-    return null;
-  }
-  return availableProviders[Math.floor(Math.random() * availableProviders.length)];
-}
-function hasBannerFrontmatter(file) {
-  const metadata = this.app.metadataCache.getFileCache(file);
-  if (!(metadata == null ? void 0 : metadata.frontmatter)) return false;
-  return this.settings.customBannerField.some(
-    (fieldName) => metadata.frontmatter[fieldName] !== void 0
-  );
-}
-function createFolderImageSettings(folderImage) {
-  const settings = { ...folderImage };
-  if (folderImage.enableImageShuffle && folderImage.shuffleFolder) {
-    const randomImagePath = this.getRandomImageFromFolder(folderImage.shuffleFolder);
-    if (randomImagePath) {
-      settings.image = randomImagePath;
-    }
-  }
-  return settings;
+    const isOpen = plugin.app.workspace.getLeavesOfType("markdown").some((leaf) => {
+      var _a2;
+      return ((_a2 = leaf.view) == null ? void 0 : _a2.file) === file;
+    });
+    if (!isOpen) return;
+    checkUnquotedBannerLink(plugin, file).catch(() => {
+    });
+  }, UNQUOTED_BANNER_LINK_SETTLE_MS);
+  timers.set(path, timer);
 }
 
 // src/core/eventHandler.js
-var import_obsidian29 = require("obsidian");
-init_modals();
-init_frontmatterUtils();
-var bannerUpdateDebounceMap = /* @__PURE__ */ new Map();
+init_fieldRegistry();
+var bannerUpdateDebounceMap = /* @__PURE__ */ new WeakMap();
 var BANNER_UPDATE_DEBOUNCE_DELAY = 300;
 async function handleActiveLeafChange(leaf) {
   var _a;
-  if (!leaf || !(leaf.view instanceof import_obsidian29.MarkdownView) || !leaf.view.file) {
+  if (!leaf || !(leaf.view instanceof import_obsidian33.MarkdownView) || !leaf.view.file) {
     return;
   }
   const filePath = leaf.view.file.path;
   const debounceCheckTime = Date.now();
-  const lastUpdateTime = bannerUpdateDebounceMap.get(filePath);
-  if (lastUpdateTime && debounceCheckTime - lastUpdateTime < BANNER_UPDATE_DEBOUNCE_DELAY) {
+  checkUnquotedBannerLink(this, leaf.view.file).catch(() => {
+  });
+  const lastUpdate = bannerUpdateDebounceMap.get(leaf.view);
+  if (lastUpdate && lastUpdate.filePath === filePath && debounceCheckTime - lastUpdate.time < BANNER_UPDATE_DEBOUNCE_DELAY) {
     return;
   }
-  bannerUpdateDebounceMap.set(filePath, debounceCheckTime);
+  bannerUpdateDebounceMap.set(leaf.view, { filePath, time: debounceCheckTime });
   this.cleanupCache();
   const previousLeaf = this.app.workspace.activeLeaf;
-  if (previousLeaf && previousLeaf.view instanceof import_obsidian29.MarkdownView && previousLeaf !== leaf) {
+  if (previousLeaf && previousLeaf.view instanceof import_obsidian33.MarkdownView && previousLeaf !== leaf) {
     this.cleanupPreviousLeaf(previousLeaf);
     this.cleanupIconOverlay(previousLeaf.view);
+    handleConfettiCleanup(previousLeaf);
   }
   const currentPath = leaf.view.file.path;
   const leafId = leaf.id;
   const frontmatter = (_a = this.app.metadataCache.getFileCache(leaf.view.file)) == null ? void 0 : _a.frontmatter;
   const currentTime = Date.now();
   const hasBannerIcon = this.settings.customBannerIconField.some((field) => frontmatter == null ? void 0 : frontmatter[field]);
-  if (!hasBannerIcon) {
+  const hasBannerIconImage = !!getFrontmatterValue(frontmatter, this.settings.customBannerIconImageField);
+  if (!hasBannerIcon && !hasBannerIconImage) {
     this.cleanupIconOverlay(leaf.view);
   }
   try {
@@ -35570,30 +39082,7 @@ async function handleActiveLeafChange(leaf) {
         this.bannerStateCache.delete(cacheKey);
       } else {
         cachedState.timestamp = currentTime;
-        const relevantFields = [
-          ...this.settings.customBannerField,
-          ...this.settings.customYPositionField,
-          ...this.settings.customXPositionField,
-          ...this.settings.customContentStartField,
-          ...this.settings.customImageDisplayField,
-          ...this.settings.customImageRepeatField,
-          ...this.settings.customBannerHeightField,
-          ...this.settings.customFadeField,
-          ...this.settings.customBorderRadiusField,
-          ...this.settings.customTitleColorField,
-          ...this.settings.customBannerShuffleField,
-          ...this.settings.customBannerIconField,
-          ...this.settings.customBannerIconSizeField,
-          ...this.settings.customBannerIconXPositionField,
-          ...this.settings.customBannerIconOpacityField,
-          ...this.settings.customBannerIconColorField,
-          ...this.settings.customBannerIconFontWeightField,
-          ...this.settings.customBannerIconBackgroundColorField,
-          ...this.settings.customBannerIconPaddingXField,
-          ...this.settings.customBannerIconPaddingYField,
-          ...this.settings.customBannerIconBorderRadiusField,
-          ...this.settings.customBannerIconVerticalOffsetField
-        ];
+        const relevantFields = getAllFieldNames(this, { excludeGroups: ["confetti"] });
         const hasRelevantChanges = relevantFields.some(
           (field) => {
             var _a2;
@@ -35615,16 +39104,16 @@ async function handleActiveLeafChange(leaf) {
       const bannerIcon = getFrontmatterValue(frontmatter, this.settings.customBannerIconField);
       const iconState = bannerIcon ? {
         icon: bannerIcon,
-        size: getFrontmatterValue(frontmatter, this.settings.customBannerIconSizeField) || this.settings.bannerIconSize,
-        xPosition: getFrontmatterValue(frontmatter, this.settings.customBannerIconXPositionField) || this.settings.bannerIconXPosition,
-        opacity: getFrontmatterValue(frontmatter, this.settings.customBannerIconOpacityField) || this.settings.bannerIconOpacity,
-        color: getFrontmatterValue(frontmatter, this.settings.customBannerIconColorField) || this.settings.bannerIconColor,
-        fontWeight: getFrontmatterValue(frontmatter, this.settings.customBannerIconFontWeightField) || this.settings.bannerIconFontWeight,
-        backgroundColor: getFrontmatterValue(frontmatter, this.settings.customBannerIconBackgroundColorField) || this.settings.bannerIconBackgroundColor,
-        paddingX: getFrontmatterValue(frontmatter, this.settings.customBannerIconPaddingXField) || this.settings.bannerIconPaddingX,
-        paddingY: getFrontmatterValue(frontmatter, this.settings.customBannerIconPaddingYField) || this.settings.bannerIconPaddingY,
-        borderRadius: getFrontmatterValue(frontmatter, this.settings.customBannerIconBorderRadiusField) || this.settings.bannerIconBorderRadius,
-        verticalOffset: getFrontmatterValue(frontmatter, this.settings.customBannerIconVerticalOffsetField) || this.settings.bannerIconVerticalOffset
+        size: resolveField(this, "iconSize", frontmatter),
+        xPosition: resolveField(this, "iconXPosition", frontmatter),
+        opacity: resolveField(this, "iconOpacity", frontmatter),
+        color: resolveField(this, "iconColor", frontmatter),
+        fontWeight: resolveField(this, "iconFontWeight", frontmatter),
+        backgroundColor: resolveField(this, "iconBackgroundColor", frontmatter),
+        paddingX: resolveField(this, "iconPaddingX", frontmatter),
+        paddingY: resolveField(this, "iconPaddingY", frontmatter),
+        borderRadius: resolveField(this, "iconBorderRadius", frontmatter),
+        verticalOffset: resolveField(this, "iconVerticalOffset", frontmatter)
       } : null;
       this.bannerStateCache.set(cacheKey, {
         timestamp: currentTime,
@@ -35636,8 +39125,24 @@ async function handleActiveLeafChange(leaf) {
           iconState
         }
       });
+      if (!isLeafStillShowing(leaf, currentPath)) {
+        return;
+      }
+      try {
+        handleConfettiForNote.call(this, leaf, readLeafFrontmatter.call(this, leaf));
+      } catch (error) {
+        console.error("Pixel Banner: Confetti error:", error);
+      }
     } else {
       await this.updateBanner(leaf.view, false, this.UPDATE_MODE.ENSURE_VISIBILITY);
+      if (!isLeafStillShowing(leaf, currentPath)) {
+        return;
+      }
+      try {
+        handleConfettiForNote.call(this, leaf, readLeafFrontmatter.call(this, leaf));
+      } catch (error) {
+        console.error("Pixel Banner: Confetti error:", error);
+      }
     }
   } catch (error) {
     console.error("Error in handleActiveLeafChange:", error);
@@ -35649,25 +39154,42 @@ async function handleActiveLeafChange(leaf) {
     }
   }
 }
+function isLeafStillShowing(leaf, filePath) {
+  var _a;
+  const view = leaf && leaf.view;
+  if (!view || !view.file || view.file.path !== filePath) {
+    return false;
+  }
+  return ((_a = view.containerEl) == null ? void 0 : _a.isConnected) !== false;
+}
+function readLeafFrontmatter(leaf) {
+  var _a;
+  return (_a = this.app.metadataCache.getFileCache(leaf.view.file)) == null ? void 0 : _a.frontmatter;
+}
 function handleLayoutChange() {
   var _a;
   const currentLeafIds = new Set(
     this.app.workspace.getLeavesOfType("markdown").map((leaf) => leaf.id)
   );
-  for (const [key, entry] of this.bannerStateCache) {
-    if (entry.leafId && !currentLeafIds.has(entry.leafId)) {
-      if (((_a = entry.state) == null ? void 0 : _a.imageUrl) && typeof entry.state.imageUrl === "string" && entry.state.imageUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(entry.state.imageUrl);
+  for (const [key, entry2] of this.bannerStateCache) {
+    if (entry2.leafId && !currentLeafIds.has(entry2.leafId)) {
+      if (((_a = entry2.state) == null ? void 0 : _a.imageUrl) && typeof entry2.state.imageUrl === "string" && entry2.state.imageUrl.startsWith("blob:") && !isVaultImageBlobUrl(entry2.state.imageUrl)) {
+        URL.revokeObjectURL(entry2.state.imageUrl);
       }
       this.bannerStateCache.delete(key);
     }
   }
+  try {
+    reconcileConfettiEffects.call(this);
+  } catch (error) {
+    console.error("Pixel Banner: Confetti error:", error);
+  }
   setTimeout(() => {
     const activeLeaf = this.app.workspace.activeLeaf;
-    if (activeLeaf && activeLeaf.view instanceof import_obsidian29.MarkdownView) {
+    if (activeLeaf && activeLeaf.view instanceof import_obsidian33.MarkdownView) {
       const contentEl = activeLeaf.view.contentEl;
       if (contentEl) {
-        const hasBanner = contentEl.querySelector(".pixel-banner-image");
+        const hasBanner = contentEl.querySelector(".pixel-banner-image, .banner-icon-overlay");
         if (hasBanner) {
           const cacheKey = activeLeaf.id;
           const cachedState = this.bannerStateCache.get(cacheKey);
@@ -35677,10 +39199,26 @@ function handleLayoutChange() {
         }
       }
     }
+    this.app.workspace.getLeavesOfType("markdown").forEach((leaf) => {
+      if (leaf === activeLeaf || !(leaf.view instanceof import_obsidian33.MarkdownView) || !leaf.view.file) return;
+      const { contentEl, containerEl } = leaf.view;
+      if (!contentEl || contentEl._pixelBannerFilePath === leaf.view.file.path) return;
+      const isShown = typeof (containerEl == null ? void 0 : containerEl.isShown) === "function" ? containerEl.isShown() : !!(containerEl == null ? void 0 : containerEl.offsetParent);
+      if (!isShown) return;
+      const leafPath = leaf.view.file.path;
+      Promise.resolve(this.updateBanner(leaf.view, false, this.UPDATE_MODE.ENSURE_VISIBILITY)).then(() => {
+        if (!isLeafStillShowing(leaf, leafPath)) {
+          return;
+        }
+        handleConfettiForNote.call(this, leaf, readLeafFrontmatter.call(this, leaf));
+      }).catch((error) => {
+        console.error("Pixel Banner: Confetti error:", error);
+      });
+    });
   }, 100);
 }
 async function handleModeChange(leaf) {
-  if (leaf && leaf.view instanceof import_obsidian29.MarkdownView && leaf.view.file) {
+  if (leaf && leaf.view instanceof import_obsidian33.MarkdownView && leaf.view.file) {
     await this.updateBanner(leaf.view, true);
     if (this.settings.hidePixelBannerFields) {
       this.updateFieldVisibility(leaf.view);
@@ -35690,7 +39228,7 @@ async function handleModeChange(leaf) {
 async function handleSelectImage() {
   const activeFile = this.app.workspace.getActiveFile();
   if (!activeFile) {
-    new import_obsidian29.Notice("No active file");
+    new import_obsidian33.Notice("No active file");
     return;
   }
   new ImageSelectionModal(
@@ -35703,44 +39241,13 @@ async function handleSelectImage() {
         const matchingFiles = allFiles.filter((f) => f.name === selectedFile.name);
         imageReference = matchingFiles.length === 1 ? selectedFile.name : selectedFile.path;
       }
-      let fileContent = await this.app.vault.read(activeFile);
-      const frontmatterRegex = /^---\n([\s\S]*?)\n---/;
-      const hasFrontmatter = frontmatterRegex.test(fileContent);
-      const bannerField = Array.isArray(this.settings.customBannerField) && this.settings.customBannerField.length > 0 ? this.settings.customBannerField[0] : "banner";
-      fileContent = fileContent.replace(/^\s+/, "");
-      let updatedContent;
-      if (hasFrontmatter) {
-        updatedContent = fileContent.replace(frontmatterRegex, (match, frontmatter) => {
-          let cleanedFrontmatter = frontmatter.trim();
-          this.settings.customBannerField.forEach((field) => {
-            const fieldRegex = new RegExp(`${field}:\\s*.+\\n?`, "g");
-            cleanedFrontmatter = cleanedFrontmatter.replace(fieldRegex, "");
-          });
-          const format = this.settings.imagePropertyFormat;
-          const bannerValue = format === "[[image]]" ? `[[${imageReference}]]` : `![[${imageReference}]]`;
-          const newFrontmatter = `${bannerField}: "${bannerValue}"${cleanedFrontmatter ? "\n" + cleanedFrontmatter : ""}`;
-          return `---
-${newFrontmatter}
----`;
-        });
+      const format = this.settings.imagePropertyFormat;
+      const bannerValue = format === "[[image]]" ? `[[${imageReference}]]` : `![[${imageReference}]]`;
+      await this.app.fileManager.processFrontMatter(activeFile, (fm) => writeField(fm, this, "banner", bannerValue));
+      if (this.settings.useShortPath && imageReference === selectedFile.path) {
+        new import_obsidian33.Notice("Banner image updated (full path used due to duplicate filenames)");
       } else {
-        const cleanContent = fileContent.replace(/^\s+/, "");
-        const format = this.settings.imagePropertyFormat;
-        const bannerValue = format === "[[image]]" ? `[[${imageReference}]]` : `![[${imageReference}]]`;
-        updatedContent = `---
-${bannerField}: "${bannerValue}"
----
-
-${cleanContent}`;
-      }
-      updatedContent = updatedContent.replace(/^\s+/, "");
-      if (updatedContent !== fileContent) {
-        await this.app.vault.modify(activeFile, updatedContent);
-        if (this.settings.useShortPath && imageReference === selectedFile.path) {
-          new import_obsidian29.Notice("Banner image updated (full path used due to duplicate filenames)");
-        } else {
-          new import_obsidian29.Notice("Banner image updated");
-        }
+        new import_obsidian33.Notice("Banner image updated");
       }
     },
     this.settings.defaultSelectImagePath
@@ -35749,9 +39256,110 @@ ${cleanContent}`;
 function handleBannerIconClick() {
   new SelectPixelBannerModal(this.app, this).open();
 }
+function handleConfettiForNote(leaf, frontmatter) {
+  if (!leaf || !leaf.view || !leaf.view.file) {
+    return;
+  }
+  const effectId = leaf.id;
+  const filePath = leaf.view.file.path;
+  const containerEl = leaf.view.contentEl;
+  const existing = confettiManager.getEffect(effectId);
+  if (existing && existing.filePath !== filePath) {
+    confettiManager.stop(effectId, 500);
+  }
+  const confettiValue = getFrontmatterValue(frontmatter || {}, this.settings.customBannerConfettiField);
+  const confettiConfig = confettiValue ? parse(confettiValue) : null;
+  if (!confettiConfig) {
+    if (confettiManager.hasActiveEffect(effectId)) {
+      confettiManager.stop(effectId, 500);
+    }
+    return;
+  }
+  if (!shouldRunConfetti(this, confettiConfig.overrides)) {
+    if (confettiManager.hasActiveEffect(effectId)) {
+      confettiManager.stop(effectId, 500);
+    }
+    return;
+  }
+  confettiManager.update(
+    effectId,
+    containerEl,
+    confettiConfig.presetName,
+    confettiConfig.overrides,
+    { filePath }
+  );
+}
+function handleConfettiCleanup(previousLeaf) {
+  if (!previousLeaf) {
+    return;
+  }
+  const effect = confettiManager.getEffect(previousLeaf.id);
+  if (!effect) {
+    return;
+  }
+  const view = previousLeaf.view;
+  const filePath = view && view.file ? view.file.path : null;
+  if (filePath !== effect.filePath) {
+    confettiManager.stop(previousLeaf.id, 500);
+  }
+}
+function handleConfettiMetadataChange(file, cache) {
+  if (!file) {
+    return;
+  }
+  const frontmatter = cache && cache.frontmatter || {};
+  const leaves = this.app.workspace.getLeavesOfType("markdown");
+  for (const leaf of leaves) {
+    if (leaf.view && leaf.view.file && leaf.view.file.path === file.path) {
+      try {
+        handleConfettiForNote.call(this, leaf, frontmatter);
+      } catch (error) {
+        console.error("Pixel Banner: Error updating confetti on metadata change:", error);
+      }
+    }
+  }
+}
+function runConfettiPass() {
+  var _a;
+  const leaves = this.app.workspace.getLeavesOfType("markdown");
+  for (const leaf of leaves) {
+    const file = leaf.view && leaf.view.file;
+    if (!file) continue;
+    const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
+    if (frontmatter && this.lastFrontmatter) {
+      this.lastFrontmatter.set(file.path, JSON.parse(JSON.stringify(frontmatter)));
+    }
+    try {
+      handleConfettiForNote.call(this, leaf, frontmatter);
+    } catch (error) {
+      console.error("Pixel Banner: Confetti error:", error);
+    }
+  }
+}
+function reconcileConfettiEffects() {
+  var _a;
+  const leavesById = new Map(
+    this.app.workspace.getLeavesOfType("markdown").map((leaf) => [leaf.id, leaf])
+  );
+  for (const effectId of confettiManager.getNoteEffectIds()) {
+    const effect = confettiManager.getEffect(effectId);
+    const leaf = leavesById.get(effectId);
+    const filePath = leaf && leaf.view && leaf.view.file ? leaf.view.file.path : null;
+    if (!effect) continue;
+    if (!leaf || filePath !== effect.filePath) {
+      confettiManager.stop(effectId, 0);
+      if (filePath) {
+        const frontmatter = (_a = this.app.metadataCache.getFileCache(leaf.view.file)) == null ? void 0 : _a.frontmatter;
+        handleConfettiForNote.call(this, leaf, frontmatter);
+      }
+    }
+  }
+  confettiManager.refreshVisibility();
+}
 
 // src/core/domManager.js
-var import_obsidian30 = require("obsidian");
+var import_obsidian34 = require("obsidian");
+init_fieldRegistry();
 function setupMutationObserver() {
   if (this.observer && typeof this.observer.disconnect === "function") {
     this.observer.disconnect();
@@ -35764,19 +39372,21 @@ function setupMutationObserver() {
         const bannerRemoved = removedNodes.some(
           (node) => node.classList && node.classList.contains("pixel-banner-image")
         );
+        const iconOverlayRemoved = removedNodes.some(
+          (node) => node.classList && node.classList.contains("banner-icon-overlay")
+        ) && !!(mutation.target && typeof mutation.target.closest === "function" && mutation.target.closest(".pixel-banner-icon-only"));
         const structuralChange = addedNodes.some(
-          (node) => node.nodeType === Node.ELEMENT_NODE && (node.classList.contains("markdown-preview-section") || node.classList.contains("cm-sizer"))
-          // Changed from cm-content to cm-sizer
+          (node) => node.nodeType === Node.ELEMENT_NODE && node.classList.contains("cm-sizer")
         );
-        if (bannerRemoved || structuralChange) {
+        if (bannerRemoved || iconOverlayRemoved || structuralChange) {
           const activeLeaf = this.app.workspace.activeLeaf;
-          if (activeLeaf && activeLeaf.view instanceof import_obsidian30.MarkdownView) {
+          if (activeLeaf && activeLeaf.view instanceof import_obsidian34.MarkdownView) {
             const contentEl = activeLeaf.view.contentEl;
             const hasBanner = contentEl.querySelector('.pixel-banner-image[style*="display: block"]');
             if (!hasBanner) {
               contentEl.classList.remove("pixel-banner");
             }
-            if (bannerRemoved || structuralChange) {
+            if (bannerRemoved || iconOverlayRemoved || structuralChange) {
               this.debouncedEnsureBanner();
             }
           }
@@ -35806,39 +39416,8 @@ function setupResizeObserver(viewContent) {
   }
 }
 function updateFieldVisibility(view) {
-  if (!view || view.getMode() !== "preview") return;
-  const fieldsToHide = [
-    ...this.settings.customBannerField,
-    ...this.settings.customYPositionField,
-    ...this.settings.customXPositionField,
-    ...this.settings.customContentStartField,
-    ...this.settings.customImageDisplayField,
-    ...this.settings.customImageRepeatField,
-    ...this.settings.customBannerMaxWidthField,
-    ...this.settings.customBannerHeightField,
-    ...this.settings.customBannerAlignmentField,
-    ...this.settings.customFadeField,
-    ...this.settings.customBorderRadiusField,
-    ...this.settings.customTitleColorField,
-    ...this.settings.customBannerShuffleField,
-    ...this.settings.customBannerIconField,
-    ...this.settings.customBannerIconImageField,
-    ...this.settings.customBannerIconImageAlignmentField,
-    ...this.settings.customBannerIconSizeField,
-    ...this.settings.customBannerIconImageSizeMultiplierField,
-    ...this.settings.customBannerIconTextVerticalOffsetField,
-    ...this.settings.customBannerIconRotateField,
-    ...this.settings.customBannerIconXPositionField,
-    ...this.settings.customBannerIconOpacityField,
-    ...this.settings.customBannerIconColorField,
-    ...this.settings.customBannerIconFontWeightField,
-    ...this.settings.customBannerIconBackgroundColorField,
-    ...this.settings.customBannerIconPaddingXField,
-    ...this.settings.customBannerIconPaddingYField,
-    ...this.settings.customBannerIconBorderRadiusField,
-    ...this.settings.customBannerIconVerticalOffsetField,
-    ...this.settings.customFlagColorField
-  ];
+  if (!view || !view.contentEl) return;
+  const fieldsToHide = getAllFieldNames(this);
   const propertiesContainer = view.contentEl.querySelector(".metadata-container");
   if (!propertiesContainer) {
     return;
@@ -35894,8 +39473,8 @@ function updateEmbeddedBannersVisibility() {
                 padding-top: unset !important;
             }
             /* hide pusher to prevent content from being pushed down */
-            .internal-embed > .markdown-embed-content .cm-sizer:first-of-type > .pixel-banner-image + .markdown-preview-pusher,
-            .internal-embed > .markdown-embed-content .markdown-preview-sizer:first-of-type > .pixel-banner-image + .markdown-preview-pusher {
+            .internal-embed > .markdown-embed-content .cm-sizer:first-of-type > .pixel-banner-image ~ .markdown-preview-pusher,
+            .internal-embed > .markdown-embed-content .markdown-preview-sizer:first-of-type > .pixel-banner-image ~ .markdown-preview-pusher {
                 display: none !important;
             }
         `;
@@ -35916,11 +39495,12 @@ function cleanupPreviousLeaf(previousLeaf) {
       if (previousBanner) {
         if (previousLeaf.view.file) {
           const existingUrl = this.loadedImages.get(previousLeaf.view.file.path);
-          if (existingUrl && typeof existingUrl === "string" && existingUrl.startsWith("blob:")) {
+          if (existingUrl && typeof existingUrl === "string" && existingUrl.startsWith("blob:") && !isVaultImageBlobUrl(existingUrl)) {
             URL.revokeObjectURL(existingUrl);
           }
           this.loadedImages.delete(previousLeaf.view.file.path);
         }
+        previousBanner._pixelBannerRender = null;
         previousBanner.style.backgroundImage = "";
         previousBanner.style.display = "none";
       }
@@ -35934,9 +39514,159 @@ function cleanupPreviousLeaf(previousLeaf) {
   });
 }
 
+// src/core/printBanner.js
+var import_obsidian35 = require("obsidian");
+init_frontmatterUtils();
+init_fieldRegistry();
+init_headerMode();
+function isPrintRender(containerEl) {
+  if (!containerEl) return false;
+  return containerEl.classList.contains("markdown-preview-view") && containerEl.closest(".print") !== null && containerEl.closest(".markdown-embed") === null;
+}
+function isCachedVideo(cached) {
+  if (cached && typeof cached === "object") return cached.isVideo === true;
+  if (typeof cached !== "string") return false;
+  const url = cached.toLowerCase();
+  return cached.includes("/media-attachment/") && (url.endsWith(".mp4") || url.endsWith(".mov"));
+}
+function resolvePrintImageSource(plugin, file, bannerImage) {
+  var _a, _b, _c, _d, _e;
+  const cached = plugin.loadedImages.get(file.path);
+  if (isCachedVideo(cached)) {
+    const frame = grabVideoFrame(plugin, file);
+    return frame ? { src: frame } : null;
+  }
+  if (typeof cached === "string" && cached) {
+    return { src: cached };
+  }
+  if (cached && typeof cached === "object" && cached.url) {
+    return { src: cached.url };
+  }
+  const input = Array.isArray(bannerImage) ? bannerImage.flat()[0] : bannerImage;
+  if (typeof input !== "string") return null;
+  const type = plugin.getInputType(input, file.path);
+  if (type === "url") {
+    return { src: input.trim() };
+  }
+  let vaultPath = null;
+  if (type === "vaultPath") {
+    const exact = plugin.app.vault.getAbstractFileByPath(input);
+    if (exact && "extension" in exact) {
+      vaultPath = input;
+    } else {
+      vaultPath = (_b = (_a = plugin.app.metadataCache.getFirstLinkpathDest(input, file.path)) == null ? void 0 : _a.path) != null ? _b : null;
+    }
+  } else if (type === "obsidianLink") {
+    vaultPath = (_d = (_c = plugin.getPathFromObsidianLink(input)) == null ? void 0 : _c.path) != null ? _d : null;
+  } else if (type === "markdownImage") {
+    const target = plugin.getPathFromMarkdownImage(input, file.path);
+    if (typeof target === "string") {
+      try {
+        new URL(target);
+        return { src: target };
+      } catch (_) {
+        vaultPath = target;
+      }
+    } else {
+      vaultPath = (_e = target == null ? void 0 : target.path) != null ? _e : null;
+    }
+  }
+  if (!vaultPath) return null;
+  const tfile = plugin.app.vault.getAbstractFileByPath(vaultPath);
+  if (!tfile || !("extension" in tfile)) return null;
+  if (/^(mp4|mov)$/i.test(tfile.extension)) return null;
+  return { src: plugin.app.vault.getResourcePath(tfile) };
+}
+function findPaneForFile(plugin, file) {
+  return plugin.app.workspace.getLeavesOfType("markdown").find((leaf) => leaf.view instanceof import_obsidian35.MarkdownView && leaf.view.file === file);
+}
+function grabVideoFrame(plugin, file) {
+  var _a, _b, _c;
+  const video = (_c = (_b = (_a = findPaneForFile(plugin, file)) == null ? void 0 : _a.view) == null ? void 0 : _b.contentEl) == null ? void 0 : _c.querySelector("video.pixel-banner-video");
+  if (!video || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return null;
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext("2d").drawImage(video, 0, 0);
+    return canvas.toDataURL("image/jpeg", 0.9);
+  } catch (error) {
+    return null;
+  }
+}
+function clonePaneIcon(plugin, file) {
+  var _a, _b, _c;
+  const leaf = findPaneForFile(plugin, file);
+  const overlays = (_c = (_b = (_a = leaf == null ? void 0 : leaf.view) == null ? void 0 : _a.contentEl) == null ? void 0 : _b.querySelectorAll(".banner-icon-overlay")) != null ? _c : [];
+  const overlay = Array.from(overlays).find((el) => !el.closest(".internal-embed, .markdown-embed"));
+  if (!overlay) return null;
+  const clone = overlay.cloneNode(true);
+  clone.removeAttribute("data-persistent");
+  return clone;
+}
+function setIconVars(el, vars) {
+  for (const [name, value] of Object.entries(vars)) {
+    el.style.setProperty(name, value);
+  }
+}
+function addPrintIconOnly(plugin, containerEl, { file, frontmatter, folderSpecific }) {
+  const icon = clonePaneIcon(plugin, file);
+  if (!icon) return false;
+  const doc = containerEl.ownerDocument;
+  const wrapper = doc.createElement("div");
+  wrapper.className = "pixel-banner-print pixel-banner-print-icon-only";
+  wrapper.appendChild(icon.ownerDocument === doc ? icon : doc.importNode(icon, true));
+  setIconVars(wrapper, getIconLayoutVars(plugin, frontmatter, folderSpecific, { mode: "icon-only" }));
+  containerEl.insertBefore(wrapper, containerEl.firstChild);
+  return true;
+}
+function addPrintBanner(plugin, containerEl, { file, frontmatter, bannerImage }) {
+  var _a, _b;
+  if (containerEl.querySelector(":scope > .pixel-banner-print")) return false;
+  let wrapper = null;
+  try {
+    const folderSpecific = plugin.getFolderSpecificImage(file.path);
+    const source = bannerImage ? resolvePrintImageSource(plugin, file, bannerImage) : null;
+    if (!source) return addPrintIconOnly(plugin, containerEl, { file, frontmatter, folderSpecific });
+    const doc = containerEl.ownerDocument;
+    wrapper = doc.createElement("div");
+    wrapper.className = "pixel-banner-print";
+    const img = doc.createElement("img");
+    img.className = "pixel-banner-print-image";
+    img.setAttribute("src", source.src);
+    img.setAttribute("alt", "");
+    img.setAttribute("loading", "eager");
+    img.setAttribute("decoding", "sync");
+    wrapper.appendChild(img);
+    const icon = clonePaneIcon(plugin, file);
+    if (icon) {
+      wrapper.appendChild(icon.ownerDocument === doc ? icon : doc.importNode(icon, true));
+      wrapper.classList.add("has-icon");
+    }
+    containerEl.insertBefore(wrapper, containerEl.firstChild);
+    setIconVars(wrapper, getIconLayoutVars(plugin, frontmatter, folderSpecific, {
+      mode: "banner",
+      bannerHeight: resolveField(plugin, "height", frontmatter, folderSpecific)
+    }));
+    const imageDisplay = getFrontmatterValue(frontmatter, plugin.settings.customImageDisplayField) || (folderSpecific == null ? void 0 : folderSpecific.imageDisplay) || plugin.settings.imageDisplay;
+    const imageRepeat = (_b = (_a = getFrontmatterValue(frontmatter, plugin.settings.customImageRepeatField)) != null ? _a : folderSpecific == null ? void 0 : folderSpecific.imageRepeat) != null ? _b : plugin.settings.imageRepeat;
+    img.classList.toggle("pixel-banner-print-contain", imageDisplay === "contain");
+    plugin.applyBannerSettings(img, { file, frontmatter, imageDisplay, imageRepeat }, false);
+    return true;
+  } catch (error) {
+    wrapper == null ? void 0 : wrapper.remove();
+    console.warn("Pixel Banner: could not add the banner to the PDF export", error);
+    return false;
+  }
+}
+
 // src/core/pixelBannerPlugin.js
 init_frontmatterUtils();
-var PixelBannerPlugin = class extends import_obsidian31.Plugin {
+init_fieldRegistry();
+init_headerMode();
+init_confettiManager();
+init_confettiShapes();
+var PixelBannerPlugin = class extends import_obsidian36.Plugin {
   constructor() {
     super(...arguments);
     // Update modes for banner refresh
@@ -35957,7 +39687,6 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       minInterval: 1e3
       // 1 second between requests
     });
-    __publicField(this, "lastYPositions", /* @__PURE__ */ new Map());
     __publicField(this, "lastFrontmatter", /* @__PURE__ */ new Map());
     // Enhanced cache management properties
     __publicField(this, "bannerStateCache", /* @__PURE__ */ new Map());
@@ -35975,9 +39704,9 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
     // -----------------------------
     __publicField(this, "debouncedEnsureBanner", debounce(() => {
       const activeLeaf = this.app.workspace.activeLeaf;
-      if (activeLeaf && activeLeaf.view instanceof import_obsidian31.MarkdownView) {
+      if (activeLeaf && activeLeaf.view instanceof import_obsidian36.MarkdownView) {
         const contentEl = activeLeaf.view.contentEl;
-        const hasBanner = contentEl.querySelector(".pixel-banner-image");
+        const hasBanner = contentEl.querySelector(".pixel-banner-image, .banner-icon-overlay");
         if (hasBanner) {
           this.updateBanner(activeLeaf.view, false);
         }
@@ -36024,7 +39753,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
     return debouncedUpdateBanner(this, view, isContentChange, updateMode);
   }
   applyBannerSettings(bannerDiv, ctx, isEmbedded) {
-    return debouncedApplyBannerSettings(this, bannerDiv, ctx, isEmbedded);
+    return applyBannerSettings(this, bannerDiv, ctx, isEmbedded);
   }
   applyContentStartPosition(el, contentStartPosition) {
     return debouncedApplyContentStartPosition(this, el, contentStartPosition);
@@ -36053,8 +39782,8 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
   getPathFromObsidianLink(link) {
     return getPathFromObsidianLink.call(this, link);
   }
-  getPathFromMarkdownImage(link) {
-    return getPathFromMarkdownImage.call(this, link);
+  getPathFromMarkdownImage(link, sourcePath = "") {
+    return getPathFromMarkdownImage.call(this, link, sourcePath);
   }
   getVaultImageUrl(path) {
     return getVaultImageUrl.call(this, path);
@@ -36068,9 +39797,6 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
   getFolderSpecificImage(filePath) {
     return getFolderSpecificImage.call(this, filePath);
   }
-  getFolderSpecificSetting(filePath, settingName) {
-    return getFolderSpecificSetting.call(this, filePath, settingName);
-  }
   getRandomImageFromFolder(folderPath) {
     return getRandomImageFromFolder.call(this, folderPath);
   }
@@ -36079,6 +39805,12 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
   }
   hasBannerFrontmatter(file) {
     return hasBannerFrontmatter.call(this, file);
+  }
+  hasBannerSource(file) {
+    return hasBannerSource.call(this, file);
+  }
+  hasBannerOrIcon(file) {
+    return hasBannerOrIcon.call(this, file);
   }
   createFolderImageSettings(folderImage) {
     return createFolderImageSettings.call(this, folderImage);
@@ -36100,6 +39832,12 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
   }
   handleBannerIconClick() {
     return handleBannerIconClick.call(this);
+  }
+  handleConfettiForNote(leaf, frontmatter) {
+    return handleConfettiForNote.call(this, leaf, frontmatter);
+  }
+  runConfettiPass() {
+    return runConfettiPass.call(this);
   }
   // -------------------------------------
   // -- add bindings for DOM management --
@@ -36150,6 +39888,14 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         new DailyGameModal(this.app, this.settings.pixelBannerPlusEmail, this.settings.pixelBannerPlusApiKey, this).open();
       }
     });
+    confettiManager.init(this);
+    this.app.workspace.onLayoutReady(() => this.runConfettiPass());
+    if (typeof window.matchMedia === "function") {
+      const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+      if (reducedMotionQuery && typeof reducedMotionQuery.addEventListener === "function") {
+        this.registerDomEvent(reducedMotionQuery, "change", () => this.runConfettiPass());
+      }
+    }
     this.registerEvent(
       this.app.workspace.on("active-leaf-change", this.handleActiveLeafChange.bind(this))
     );
@@ -36160,10 +39906,17 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       this.app.workspace.on("resize", this.debouncedEnsureBanner.bind(this))
     );
     this.registerEvent(
-      this.app.metadataCache.on("changed", async (file) => {
+      this.app.metadataCache.on("changed", async (file, data, cache) => {
         var _a;
+        scheduleUnquotedBannerLinkCheck(this, file);
         const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
         if (!frontmatter) {
+          this.lastFrontmatter.delete(file.path);
+          try {
+            handleConfettiMetadataChange.call(this, file, cache || { frontmatter: {} });
+          } catch (error) {
+            console.error("Pixel Banner: Confetti metadata change error:", error);
+          }
           return;
         }
         const previousFrontmatter = this.lastFrontmatter.get(file.path);
@@ -36172,53 +39925,35 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
           return;
         }
         this.lastFrontmatter.set(file.path, JSON.parse(currentFrontmatterStr));
-        const relevantFields = [
-          ...this.settings.customBannerField,
-          ...this.settings.customYPositionField,
-          ...this.settings.customXPositionField,
-          ...this.settings.customContentStartField,
-          ...this.settings.customImageDisplayField,
-          ...this.settings.customImageRepeatField,
-          ...this.settings.customBannerMaxWidthField,
-          ...this.settings.customBannerHeightField,
-          ...this.settings.customFadeField,
-          ...this.settings.customBorderRadiusField,
-          ...this.settings.customTitleColorField,
-          ...this.settings.customBannerShuffleField,
-          ...this.settings.customBannerIconField,
-          ...this.settings.customBannerIconSizeField,
-          ...this.settings.customBannerIconImageSizeMultiplierField,
-          ...this.settings.customBannerIconTextVerticalOffsetField,
-          ...this.settings.customBannerIconRotateField,
-          ...this.settings.customBannerIconImageAlignmentField,
-          ...this.settings.customBannerIconXPositionField,
-          ...this.settings.customBannerIconOpacityField,
-          ...this.settings.customBannerIconColorField,
-          ...this.settings.customBannerIconFontWeightField,
-          ...this.settings.customBannerIconBackgroundColorField,
-          ...this.settings.customBannerIconPaddingXField,
-          ...this.settings.customBannerIconPaddingYField,
-          ...this.settings.customBannerIconBorderRadiusField,
-          ...this.settings.customBannerIconVerticalOffsetField
-        ];
+        try {
+          handleConfettiMetadataChange.call(this, file, cache || { frontmatter });
+        } catch (error) {
+          console.error("Pixel Banner: Confetti metadata change error:", error);
+        }
+        const relevantFields = getAllFieldNames(this, { excludeGroups: ["confetti"] });
         const changedFields = relevantFields.filter(
           (field) => frontmatter[field] !== (previousFrontmatter == null ? void 0 : previousFrontmatter[field])
         );
         if (changedFields.length === 0) {
           return;
         }
+        this.loadedImages.delete(file.path);
+        this.lastKeywords.delete(file.path);
         const leaves = this.app.workspace.getLeavesOfType("markdown");
+        let imageLoaded = false;
         for (const leaf of leaves) {
-          if (leaf.view instanceof import_obsidian31.MarkdownView && leaf.view.file === file) {
-            this.loadedImages.delete(file.path);
-            this.lastKeywords.delete(file.path);
-            await this.updateBanner(leaf.view, true);
+          if (leaf.view instanceof import_obsidian36.MarkdownView && leaf.view.file === file) {
+            if (imageLoaded) {
+              await this.updateBanner(leaf.view, false, this.UPDATE_MODE.ENSURE_VISIBILITY);
+            } else {
+              imageLoaded = await this.updateBanner(leaf.view, true);
+            }
           }
         }
       })
     );
     this.registerMarkdownPostProcessor((el, ctx) => {
-      var _a;
+      var _a, _b, _c;
       const isPreview = ctx.containerEl.classList.contains("markdown-preview-view");
       const isHoverPopover = ctx.containerEl.closest(".hover-popover") !== null;
       if (!isPreview && !isHoverPopover) return;
@@ -36239,12 +39974,29 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
           bannerImage = folderSpecific2.image;
         }
       }
-      if (!bannerImage) return;
+      if (!bannerImage) {
+        if (isHoverPopover) return;
+        const iconMode = getHeaderMode({
+          hasBannerSource: false,
+          icon: getFrontmatterValue(frontmatter, getFieldNames(this, "icon")),
+          // an unquoted [[wikilink]] arrives as a nested array
+          iconImage: [getFrontmatterValue(frontmatter, getFieldNames(this, "iconImage"))].flat(2)[0]
+        });
+        if (iconMode !== "icon-only") return;
+      }
+      if (isPrintRender(ctx.containerEl)) {
+        if (this.settings.includeBannerInPdfExport) {
+          addPrintBanner(this, ctx.containerEl, { file, frontmatter, bannerImage });
+        }
+        return;
+      }
       const folderSpecific = this.getFolderSpecificImage(file.path);
       const yPosition = getFrontmatterValue(frontmatter, this.settings.customYPositionField) || (folderSpecific == null ? void 0 : folderSpecific.yPosition) || this.settings.yPosition;
       const xPosition = getFrontmatterValue(frontmatter, this.settings.customXPositionField) || (folderSpecific == null ? void 0 : folderSpecific.xPosition) || this.settings.xPosition;
       const contentStartPosition = getFrontmatterValue(frontmatter, this.settings.customContentStartField) || (folderSpecific == null ? void 0 : folderSpecific.contentStartPosition) || this.settings.contentStartPosition;
       if (isHoverPopover) {
+        const imageDisplay = getFrontmatterValue(frontmatter, this.settings.customImageDisplayField) || (folderSpecific == null ? void 0 : folderSpecific.imageDisplay) || this.settings.imageDisplay;
+        const imageRepeat = (_c = (_b = getFrontmatterValue(frontmatter, this.settings.customImageRepeatField)) != null ? _b : folderSpecific == null ? void 0 : folderSpecific.imageRepeat) != null ? _c : this.settings.imageRepeat;
         this.addPixelBanner(ctx.containerEl, {
           frontmatter,
           file,
@@ -36253,10 +40005,17 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
           xPosition,
           contentStartPosition,
           bannerImage,
+          imageDisplay,
+          imageRepeat,
           isReadingView: true
         });
       } else {
-        this.updateBanner({
+        const isEmbed = !!ctx.containerEl.closest(".markdown-embed");
+        const ownerLeaf = isEmbed ? null : this.app.workspace.getLeavesOfType("markdown").find((leaf) => {
+          var _a2, _b2;
+          return leaf.view instanceof import_obsidian36.MarkdownView && leaf.view.file === file && ((_b2 = (_a2 = leaf.view.containerEl) == null ? void 0 : _a2.contains) == null ? void 0 : _b2.call(_a2, ctx.containerEl));
+        });
+        this.updateBanner(ownerLeaf ? ownerLeaf.view : {
           file,
           contentEl: ctx.containerEl,
           getMode: () => "preview"
@@ -36269,7 +40028,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       name: "\u{1F4CC} Pin current banner image",
       checkCallback: (checking) => {
         var _a;
-        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian31.MarkdownView);
+        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian36.MarkdownView);
         if (!activeView || !activeView.file) return false;
         const imageUrl = this.loadedImages.get(activeView.file.path);
         const frontmatter = (_a = this.app.metadataCache.getFileCache(activeView.file)) == null ? void 0 : _a.frontmatter;
@@ -36285,7 +40044,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         const canPin = imageUrl && (inputType === "keyword" || inputType === "url") && this.settings.showPinIcon;
         if (checking) return canPin;
         if (canPin) {
-          setTimeout(() => handlePinIconClick(imageUrl, this, usedField), 0);
+          setTimeout(() => handlePinIconClick(imageUrl, this, usedField, null, true, activeView.file), 0);
         }
         return true;
       }
@@ -36295,7 +40054,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       name: "\u{1F504} Refresh current banner image",
       checkCallback: (checking) => {
         var _a;
-        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian31.MarkdownView);
+        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian36.MarkdownView);
         if (!activeView || !activeView.file) return false;
         const frontmatter = (_a = this.app.metadataCache.getFileCache(activeView.file)) == null ? void 0 : _a.frontmatter;
         let bannerImage;
@@ -36311,11 +40070,8 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         if (canRefresh) {
           this.loadedImages.delete(activeView.file.path);
           this.lastKeywords.delete(activeView.file.path);
-          this.updateBanner(activeView, true).then(() => {
-            new import_obsidian31.Notice("\u{1F504} Refreshed banner image");
-          }).catch((error) => {
-            console.error("Error refreshing image:", error);
-            new import_obsidian31.Notice("\u{1F62D} Failed to refresh image");
+          this.updateBanner(activeView, true).then((ok) => {
+            new import_obsidian36.Notice(ok ? "\u{1F504} Refreshed banner image" : "\u{1F62D} Failed to refresh image");
           });
         }
         return true;
@@ -36342,21 +40098,10 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       id: "set-banner-icon-image",
       name: "\u2B50 Select Banner Icon Image",
       checkCallback: (checking) => {
-        var _a;
-        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian31.MarkdownView);
+        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian36.MarkdownView);
         if (!activeView || !activeView.file) return false;
-        const frontmatter = (_a = this.app.metadataCache.getFileCache(activeView.file)) == null ? void 0 : _a.frontmatter;
-        let hasBanner = false;
-        for (const field of this.settings.customBannerField) {
-          if (frontmatter == null ? void 0 : frontmatter[field]) {
-            hasBanner = true;
-            break;
-          }
-        }
-        if (checking) return hasBanner;
-        if (hasBanner) {
-          handleSetBannerIconImage(this);
-        }
+        if (checking) return true;
+        handleSetBannerIconImage(this);
         return true;
       }
     });
@@ -36364,21 +40109,10 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       id: "set-banner-icon",
       name: "\u{1F4F0} Set Banner Icon Text / Emoji",
       checkCallback: (checking) => {
-        var _a;
-        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian31.MarkdownView);
+        const activeView = this.app.workspace.getActiveViewOfType(import_obsidian36.MarkdownView);
         if (!activeView || !activeView.file) return false;
-        const frontmatter = (_a = this.app.metadataCache.getFileCache(activeView.file)) == null ? void 0 : _a.frontmatter;
-        let hasBanner = false;
-        for (const field of this.settings.customBannerField) {
-          if (frontmatter == null ? void 0 : frontmatter[field]) {
-            hasBanner = true;
-            break;
-          }
-        }
-        if (checking) return hasBanner;
-        if (hasBanner) {
-          handleSetBannerIcon(this);
-        }
+        if (checking) return true;
+        handleSetBannerIcon(this);
         return true;
       }
     });
@@ -36387,11 +40121,11 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       name: "\u{1F3AF} Adjust Position, Size, & Style",
       checkCallback: (checking) => {
         const activeFile = this.app.workspace.getActiveFile();
-        const hasBanner = activeFile && this.hasBannerFrontmatter(activeFile);
+        const hasBannerOrIcon2 = activeFile && this.hasBannerOrIcon(activeFile);
         if (checking) {
-          return hasBanner;
+          return hasBannerOrIcon2;
         }
-        if (hasBanner) {
+        if (hasBannerOrIcon2) {
           new TargetPositionModal(
             this.app,
             this,
@@ -36409,9 +40143,9 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       this.app.metadataCache.on("resolved", () => {
         var _a;
         const leaf = this.app.workspace.activeLeaf;
-        if (leaf && leaf.view instanceof import_obsidian31.MarkdownView) {
+        if (leaf && leaf.view instanceof import_obsidian36.MarkdownView) {
           const contentEl = leaf.view.contentEl;
-          const hasBanner = contentEl.querySelector(".pixel-banner-image");
+          const hasBanner = contentEl.querySelector(".pixel-banner-image, .banner-icon-overlay");
           if (hasBanner) {
             const file = leaf.view.file;
             const frontmatter = (_a = this.app.metadataCache.getFileCache(file)) == null ? void 0 : _a.frontmatter;
@@ -36420,35 +40154,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
             const currentStr = JSON.stringify(frontmatter);
             if (currentStr !== JSON.stringify(previousFrontmatter)) {
               this.lastFrontmatter.set(file.path, JSON.parse(currentStr));
-              const relevantFields = [
-                ...this.settings.customBannerField,
-                ...this.settings.customYPositionField,
-                ...this.settings.customXPositionField,
-                ...this.settings.customContentStartField,
-                ...this.settings.customImageDisplayField,
-                ...this.settings.customImageRepeatField,
-                ...this.settings.customBannerMaxWidthField,
-                ...this.settings.customBannerHeightField,
-                ...this.settings.customFadeField,
-                ...this.settings.customBorderRadiusField,
-                ...this.settings.customTitleColorField,
-                ...this.settings.customBannerShuffleField,
-                ...this.settings.customBannerIconField,
-                ...this.settings.customBannerIconSizeField,
-                ...this.settings.customBannerIconImageSizeMultiplierField,
-                ...this.settings.customBannerIconTextVerticalOffsetField,
-                ...this.settings.customBannerIconRotateField,
-                ...this.settings.customBannerIconImageAlignmentField,
-                ...this.settings.customBannerIconXPositionField,
-                ...this.settings.customBannerIconOpacityField,
-                ...this.settings.customBannerIconColorField,
-                ...this.settings.customBannerIconFontWeightField,
-                ...this.settings.customBannerIconBackgroundColorField,
-                ...this.settings.customBannerIconPaddingXField,
-                ...this.settings.customBannerIconPaddingYField,
-                ...this.settings.customBannerIconBorderRadiusField,
-                ...this.settings.customBannerIconVerticalOffsetField
-              ];
+              const relevantFields = getAllFieldNames(this, { excludeGroups: ["confetti"] });
               const hasRelevantChange = relevantFields.some(
                 (field) => frontmatter[field] !== (previousFrontmatter == null ? void 0 : previousFrontmatter[field])
               );
@@ -36463,24 +40169,25 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
     this.addRibbonIcon("flag", "\u{1F6A9} Pixel Banner Menu", () => {
       this.handleBannerIconClick();
     });
-    registerMarkdownPostProcessor(this);
   }
   // -------------------
   // -- get image url --
   // -------------------
   async getImageUrl(type, input, sourcePath = "") {
+    var _a;
     if (type === "url" || type === "path") {
       return input;
     }
     if (type === "fileUrl") {
-      if (import_obsidian31.Platform.isMobile) {
-        new import_obsidian31.Notice("Local file paths are only supported on desktop.");
+      if (import_obsidian36.Platform.isMobile) {
+        new import_obsidian36.Notice("Local file paths are only supported on desktop.");
         return null;
       }
       try {
         const fs = require("fs");
         const path = require("path");
-        let filePath = decodeURIComponent(input.substring(process.platform === "win32" ? 8 : 7));
+        const fileUrl = (_a = getMarkdownLinkTarget(input)) != null ? _a : input;
+        let filePath = decodeURIComponent(fileUrl.substring(process.platform === "win32" ? 8 : 7));
         filePath = filePath.replace('"', "").replace("![[", "").replace("[[", "").replace("]]", "").replace("//", "");
         if (process.platform === "win32" && /^[a-zA-Z]:/.test(filePath)) {
         } else if (process.platform === "win32" && filePath.startsWith("/")) {
@@ -36488,7 +40195,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         }
         if (!fs.existsSync(filePath)) {
           console.error(`Pixel Banner: File not found at path: ${filePath}`);
-          new import_obsidian31.Notice(`Pixel Banner: File not found at path: ${filePath}`);
+          new import_obsidian36.Notice(`Pixel Banner: File not found at path: ${filePath}`);
           return null;
         }
         const data = fs.readFileSync(filePath);
@@ -36497,7 +40204,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
         return `data:${mimeType};base64,${base64}`;
       } catch (err) {
         console.error("Pixel Banner: Error reading local file:", err);
-        new import_obsidian31.Notice("Pixel Banner: Error reading local file. Check console for details.");
+        new import_obsidian36.Notice("Pixel Banner: Error reading local file. Check console for details.");
         return null;
       }
     }
@@ -36509,7 +40216,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       return null;
     }
     if (type === "markdownImage") {
-      const path = this.getPathFromMarkdownImage(input);
+      const path = this.getPathFromMarkdownImage(input, sourcePath);
       if (typeof path === "string") {
         try {
           new URL(path);
@@ -36611,80 +40318,6 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
     }
     return null;
   }
-  // --------------------
-  // -- post processor --
-  // --------------------
-  async postProcessor(el, ctx) {
-    const frontmatter = ctx.frontmatter;
-    let bannerImageValue = null;
-    if (frontmatter) {
-      for (const field of this.settings.customBannerField) {
-        if (frontmatter[field]) {
-          bannerImageValue = frontmatter[field];
-          break;
-        }
-      }
-    }
-    if (bannerImageValue) {
-      await this.addPixelBanner(el, {
-        frontmatter,
-        file: ctx.sourcePath,
-        isContentChange: false,
-        yPosition: getFrontmatterValue(frontmatter, this.settings.customYPositionField) || this.settings.yPosition,
-        contentStartPosition: getFrontmatterValue(frontmatter, this.settings.customContentStartField) || this.settings.contentStartPosition,
-        customBannerField: this.settings.customBannerField,
-        customYPositionField: this.settings.customYPositionField,
-        customXPositionField: this.settings.customXPositionField,
-        customContentStartField: this.settings.customContentStartField,
-        customImageDisplayField: this.settings.customImageDisplayField,
-        customImageRepeatField: this.settings.customImageRepeatField,
-        customBannerMaxWidthField: this.settings.customBannerMaxWidthField,
-        bannerImage: bannerImageValue
-      });
-      if (this.settings.hidePixelBannerFields) {
-        const frontmatterEl = el.querySelector(".frontmatter");
-        if (frontmatterEl) {
-          const fieldsToHide = [
-            ...this.settings.customBannerField,
-            ...this.settings.customYPositionField,
-            ...this.settings.customXPositionField,
-            ...this.settings.customContentStartField,
-            ...this.settings.customImageDisplayField,
-            ...this.settings.customImageRepeatField,
-            ...this.settings.customBannerMaxWidthField,
-            ...this.settings.customBannerHeightField,
-            ...this.settings.customBannerAlignmentField,
-            ...this.settings.customFadeField,
-            ...this.settings.customBorderRadiusField,
-            ...this.settings.customTitleColorField,
-            ...this.settings.customBannerShuffleField,
-            ...this.settings.customBannerIconField,
-            ...this.settings.customBannerIconSizeField,
-            ...this.settings.customBannerIconImageSizeMultiplierField,
-            ...this.settings.customBannerIconTextVerticalOffsetField,
-            ...this.settings.customBannerIconRotateField,
-            ...this.settings.customBannerIconImageAlignmentField,
-            ...this.settings.customBannerIconXPositionField,
-            ...this.settings.customBannerIconOpacityField,
-            ...this.settings.customBannerIconColorField,
-            ...this.settings.customBannerIconFontWeightField,
-            ...this.settings.customBannerIconBackgroundColorField,
-            ...this.settings.customBannerIconPaddingXField,
-            ...this.settings.customBannerIconPaddingYField,
-            ...this.settings.customBannerIconBorderRadiusField,
-            ...this.settings.customBannerIconVerticalOffsetField
-          ];
-          const rows = frontmatterEl.querySelectorAll(".frontmatter-container .frontmatter-section-label");
-          rows.forEach((row) => {
-            const label = row.textContent.replace(":", "").trim();
-            if (fieldsToHide.includes(label)) {
-              row.closest(".frontmatter-section").classList.add("pixel-banner-hidden-field");
-            }
-          });
-        }
-      }
-    }
-  }
   // --------------
   // -- onunload --
   // --------------
@@ -36693,7 +40326,7 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       this.observer.disconnect();
     }
     this.app.workspace.iterateAllLeaves((leaf) => {
-      if (leaf.view instanceof import_obsidian31.MarkdownView) {
+      if (leaf.view instanceof import_obsidian36.MarkdownView) {
         const viewContent = leaf.view.contentEl;
         if (viewContent._resizeObserver && typeof viewContent._resizeObserver.disconnect === "function") {
           viewContent._resizeObserver.disconnect();
@@ -36702,6 +40335,16 @@ var PixelBannerPlugin = class extends import_obsidian31.Plugin {
       }
     });
     this.iconOverlayPool = [];
+    releaseAllVaultImageUrls();
+    try {
+      confettiManager.destroy();
+    } catch (error) {
+      console.error("Pixel Banner: Error stopping confetti effects:", error);
+    }
+    try {
+      clearShapeCache();
+    } catch (error) {
+    }
     const styleElTitle = document.getElementById("pixel-banner-embedded-titles");
     if (styleElTitle) styleElTitle.remove();
     const styleElBanner = document.getElementById("pixel-banner-embedded-banners");

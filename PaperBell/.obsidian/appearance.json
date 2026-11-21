@@ -27,5 +27,6 @@
   "accentColor": "#496ba2",
   "showViewHeader": true,
   "translucency": false,
-  "baseFontSizeAction": true
+  "baseFontSizeAction": true,
+  "showRibbon": true
 }

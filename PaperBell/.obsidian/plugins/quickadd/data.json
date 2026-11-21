@@ -543,7 +543,7 @@
     "00 - Obsidian/模板"
   ],
   "announceUpdates": "all",
-  "version": "2.32.1",
+  "version": "2.33.3",
   "globalVariables": {},
   "onePageInputEnabled": false,
   "disableOnlineFeatures": false,
@@ -607,7 +607,7 @@
             "name": "gpt-5.5",
             "maxTokens": 1050000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false,
+            "supportsTemperature": true,
             "releaseDate": "2026-04-23"
           },
           {
@@ -706,7 +706,7 @@
             "name": "gpt-5.6-sol",
             "maxTokens": 1050000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false,
+            "supportsTemperature": true,
             "releaseDate": "2026-07-09"
           },
           {
@@ -792,7 +792,7 @@
             "name": "gpt-5.6-luna",
             "maxTokens": 1050000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false,
+            "supportsTemperature": true,
             "releaseDate": "2026-07-09"
           },
           {
@@ -828,7 +828,7 @@
             "name": "gpt-5.6",
             "maxTokens": 1050000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false,
+            "supportsTemperature": true,
             "releaseDate": "2026-07-09"
           },
           {
@@ -863,7 +863,7 @@
             "name": "gpt-5.6-terra",
             "maxTokens": 1050000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false,
+            "supportsTemperature": true,
             "releaseDate": "2026-07-09"
           },
           {
@@ -884,14 +884,14 @@
             "name": "gpt-daybreak-blue-latest",
             "maxTokens": 1050000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false,
+            "supportsTemperature": true,
             "releaseDate": "2026-08-07"
           },
           {
             "name": "gpt-6-luna",
             "maxTokens": 1050000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false,
+            "supportsTemperature": true,
             "releaseDate": "2026-09-22"
           },
           {
@@ -905,8 +905,29 @@
             "name": "gpt-6-sol",
             "maxTokens": 1050000,
             "maxOutputTokens": 128000,
-            "supportsTemperature": false,
+            "supportsTemperature": true,
             "releaseDate": "2026-09-22"
+          },
+          {
+            "name": "gpt-6.2-sol",
+            "maxTokens": 1050000,
+            "maxOutputTokens": 128000,
+            "supportsTemperature": false,
+            "releaseDate": "2026-11-17"
+          },
+          {
+            "name": "gpt-6.2-astra",
+            "maxTokens": 1050000,
+            "maxOutputTokens": 128000,
+            "supportsTemperature": false,
+            "releaseDate": "2026-11-17"
+          },
+          {
+            "name": "gpt-6.1-terra",
+            "maxTokens": 1050000,
+            "maxOutputTokens": 128000,
+            "supportsTemperature": true,
+            "releaseDate": "2026-10-26"
           }
         ],
         "modelSource": "modelsDev",
@@ -914,11 +935,11 @@
         "autoSyncModels": true,
         "id": "openai",
         "lastModelSync": {
-          "at": 1791838901090
+          "at": 1795254990091
         }
       }
     ],
-    "lastModelAutoSyncAt": 1791838901090
+    "lastModelAutoSyncAt": 1795254990091
   },
   "migrations": {
     "migrateToMacroIDFromEmbeddedMacro": true,
