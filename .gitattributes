@@ -1,1 +1,8 @@
 * text=auto eol=lf
+
+# Repo-only files: kept out of the release zip built by `git archive`.
+.github/                export-ignore
+.gitattributes          export-ignore
+CHANGELOG.md            export-ignore
+CODE_OF_CONDUCT.md      export-ignore
+.pre-commit-config.yaml export-ignore

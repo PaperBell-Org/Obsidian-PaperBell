@@ -1,25 +1,103 @@
-Rainbell
-/img/
+# macOS 系统文件
 .DS_Store
-.gitignore
-node_modules
-public
-prof
-tsconfig.tsbuildinfo
-.quartz-cache
-private/
-.replit
-replit.nix
 
-PaperBell/.obsidian/workspace.json
-PaperBell/.obsidian/plugins/recent-files-obsidian/data.json
-PaperBell/Outputs/**/*.pdf
-PaperBell/Outputs/**/*.log
-.env
+# 日记与周记默认不进版本库。
+# 例外：2024年05月13~15日 三篇日记 + 2024年第20周记录 已被跟踪，作为示例随模板分发
+#（它们演示「#想法 → 概念卡相关想法」的联动；已跟踪的文件不受下面规则影响）。
+30 - Metadata/DailyNote/
+30 - Metadata/WeeklyNote/
+
+# Inputs Bell 在首次运行时写入并在版本升级时覆盖这些内置脚本，
+# 不要提交——改行为请改插件设置里的 scriptParams，而不是改脚本文件。
+00 - Obsidian/InputsBell/
+
+# 忽略文件夹下的所有内容，但允许 Git 检查文件夹本身
+10 - Cards/*
+20 - Inputs/*
+50 - Outputs/*
+40 - Projects/*
+30 - Metadata/Scholars/*
+30 - Metadata/Institutes/*
+
+# 恢复对特定文件的跟踪（Git 需要文件夹未被完全忽略才能生效）
+!**/00*.md
+!**/00*.base
+!**/Index.md
+
+# 示例内容：概念卡与反查视图随模板一起分发
+# （`10 - Cards/_*.md` 是插件的 housekeeping 文件，仍被上面的 `10 - Cards/*` 忽略）
+!10 - Cards/概念反查.base
+!10 - Cards/Concepts/
+!10 - Cards/Concepts/**
+
+# 示例内容：草稿与 Longform 演示项目
+!50 - Outputs/Drafts/
+!50 - Outputs/Drafts/**
+!50 - Outputs/Longform/
+!50 - Outputs/Longform/**
+
+# 示例内容：folder-per-project 的项目主页与封面
+!40 - Projects/*/
+!40 - Projects/*/**
+
+# 示例内容：输入笔记（`_assets` / `_scripts` 仍被上面的 `20 - Inputs/*` 忽略）
+!20 - Inputs/Books/
+!20 - Inputs/Books/**
+!20 - Inputs/Clippings/
+!20 - Inputs/Clippings/**
+!20 - Inputs/Movies/
+!20 - Inputs/Movies/**
+!20 - Inputs/Zotero/
+!20 - Inputs/Zotero/**
+# 例外的例外：ZotLit / PaperSearch 从真实文献库抓取的笔记会带上本机绝对路径
+#（file:///Users/... ）和真实项目分组，不要随模板分发。示例文献是那 6 篇中文虚构条目。
+20 - Inputs/Zotero/yu2023.md
+
+# 专门不用的文件
+.obsidian/workspace
+.obsidian/workspace.json
+.obsidian/plugins/recent-files-obsidian/data.json
+*.pdf
+# 例外：投稿信预设需要这个占位 logo，否则 Cover Letter 工作流在新克隆里编译失败
+!00 - Obsidian/pandoc/templates/cover_letter/logo_placeholder.pdf
+
+# JSON 配置文件
 longform-sessions.json
-PaperBell/.gitignore
-PaperBell/.git
-PaperBell/.update_backup
-PaperBell/.obsidian/plugins/obsidian42-brat
+# 图谱文件
+.obsidian/graph.json
+# 快捷键
+.obsidian/hotkeys.json
+# 类别
+.obsidian/types.json
+
+# 更新备份
+.update_backup
+
+# 插件
+# BRAT 随模板分发：7 个核心插件（Cards Wrangler / Project Manager / Section /
+# Inputs Bell / Task Genius / PaperOut / PaperBell）都是 BRAT 安装的 beta，
+# 没有它克隆者既装不上也收不到更新。data.json 里 personalAccessToken 必须保持为空。
+# Inputs Bell 自动写入的 QuickAdd 备份
+.obsidian/plugins/quickadd/data.json.bak-*
+
+*.docx
+*.doc
+.claude
+.claudian
+.pandoc
 .DS_Store
-PaperBell/.DS_Store
+
+# Leftover / plugin-generated dirs — do not ship with the template.
+# 必须锚定到库根：macOS 的 core.ignorecase=true 会让未锚定的 `PaperSearch/`
+# 大小写不敏感地吞掉 .obsidian/plugins/papersearch/，导致插件整个不被分发。
+/Cards/
+/PaperSearch/
+/PaperSearch笔记/
+# PaperSearch 0.7.0 起插件 id 由 paperbell-search 改为 papersearch；
+# core/ 是本机下载的 Python 后端（数百 MB），任何一版都不该进仓库。
+.obsidian/plugins/papersearch/core/
+.obsidian/plugins/paperbell-search/core/
+
+
+# Local secrets
+.env

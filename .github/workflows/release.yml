@@ -1,0 +1,56 @@
+# Push an annotated tag (its message becomes the release notes):
+#   git tag -a v5.1.2 -F notes.md && git push origin dev v5.1.2
+# The zip is `git archive` of the tag, so it contains exactly the tracked
+# vault files minus anything marked export-ignore in .gitattributes.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ref to package (dry run: builds the zip as an artifact, no release)"
+        default: "dev"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Build zip
+        id: zip
+        env:
+          REF: ${{ github.event_name == 'push' && github.ref_name || inputs.ref }}
+        run: |
+          git fetch --force --tags origin
+          name="PaperBell-${REF//\//-}.zip"
+          git archive --format=zip -o "$name" "$REF"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Files: $(unzip -Z1 "$name" | grep -vc '/$')"
+
+      - name: Upload artifact (dry run)
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.zip.outputs.name }}
+          path: ${{ steps.zip.outputs.name }}
+
+      - name: Publish pre-release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          ZIP: ${{ steps.zip.outputs.name }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$ZIP" --clobber
+          else
+            gh release create "$TAG" "$ZIP" --title "$TAG" --prerelease --verify-tag --notes-from-tag
+          fi
