@@ -1,0 +1,59 @@
+{
+  "pluginList": [
+    "aidenlx/zotlit",
+    "PaperBell-Org/PaperBell-Cards-Wrangler",
+    "PaperBell-Org/PaperBell-Project-Manager",
+    "PaperBell-Org/Paperbell-Section",
+    "PaperBell-Org/Paper-Inputs-Bell",
+    "taskgenius/taskgenius-plugin",
+    "PaperBell-Org/longform-maintaining",
+    "PaperBell-Org/Obsidian-PaperBell-Plugin"
+  ],
+  "pluginSubListFrozenVersion": [
+    {
+      "repo": "aidenlx/zotlit",
+      "version": "latest"
+    },
+    {
+      "repo": "PaperBell-Org/PaperBell-Cards-Wrangler",
+      "version": "latest"
+    },
+    {
+      "repo": "PaperBell-Org/PaperBell-Project-Manager",
+      "version": "latest"
+    },
+    {
+      "repo": "PaperBell-Org/Paperbell-Section",
+      "version": "latest"
+    },
+    {
+      "repo": "PaperBell-Org/Paper-Inputs-Bell",
+      "version": "latest"
+    },
+    {
+      "repo": "taskgenius/taskgenius-plugin",
+      "version": "latest"
+    },
+    {
+      "repo": "PaperBell-Org/Obsidian-PaperBell-Plugin",
+      "version": "latest"
+    },
+    {
+      "repo": "PaperBell-Org/longform-maintaining",
+      "version": "latest"
+    }
+  ],
+  "themesList": [],
+  "updateAtStartup": true,
+  "updateThemesAtStartup": true,
+  "enableAfterInstall": true,
+  "loggingEnabled": false,
+  "loggingPath": "BRAT-log",
+  "loggingVerboseEnabled": false,
+  "debuggingMode": false,
+  "notificationsEnabled": true,
+  "globalTokenName": "github-brat-paperbell",
+  "personalAccessToken": "",
+  "selectLatestPluginVersionByDefault": false,
+  "allowIncompatiblePlugins": false
+}
